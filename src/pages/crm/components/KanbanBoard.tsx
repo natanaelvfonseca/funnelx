@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { KanbanColumn } from './KanbanColumn';
+import { PipelineFlow } from './PipelineFlow';
 import { Lead, LeadStatus } from '../types';
 import { useAuth } from '../../../context/AuthContext';
 import { useNotifications } from '../../../context/NotificationContext';
@@ -182,41 +183,55 @@ export function KanbanBoard({ refreshTrigger, onEditLead }: { refreshTrigger: nu
         );
     }
 
-    return (
-        <div className="flex gap-4 h-full overflow-x-auto pb-4 items-start select-none scrollbar-hide relative">
-            {syncing && (
-                <div className="absolute top-2 right-4 z-50">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-500"></div>
-                </div>
-            )}
+    // Compute pipeline stages for flow visualization
+    const pipelineStages = columns.map((col) => ({
+        title: col.title,
+        count: (leads || []).filter(l => l && l.status !== 'Cliente' && getLeadColumnTitle(l) === col.title).length,
+        color: '',
+    }));
 
-            {columns.map((col) => (
-                <div
-                    key={col.id}
-                    className="h-full flex flex-col"
-                    onDragOver={handleDragOver}
-                    onDrop={(e) => handleDrop(e, col.title)}
-                >
-                    <KanbanColumn
-                        column={{
-                            id: col.title,
-                            title: col.title,
-                            leads: (leads || []).filter((l) => {
-                                if (!l || l.status === 'Cliente') return false;
-                                return getLeadColumnTitle(l) === col.title;
-                            }),
-                        }}
-                        onDrop={(e) => handleDrop(e, col.title)}
+    return (
+        <div className="flex flex-col h-full gap-0">
+            {/* Pipeline Flow Visualization */}
+            <div className="flex-shrink-0 px-1 pb-2">
+                <PipelineFlow stages={pipelineStages} />
+            </div>
+            {/* Kanban Board */}
+            <div className="flex gap-4 flex-1 overflow-x-auto pb-4 items-start select-none scrollbar-hide relative min-h-0">
+                {syncing && (
+                    <div className="absolute top-2 right-4 z-50">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-500"></div>
+                    </div>
+                )}
+
+                {columns.map((col) => (
+                    <div
+                        key={col.id}
+                        className="h-full flex flex-col"
                         onDragOver={handleDragOver}
-                        onDragStart={handleDragStart}
-                        onDeleteLead={handleDeleteLead}
-                        onEditLead={onEditLead}
-                        onMarkAsClient={handleMarkAsClient}
-                        onAssignVendedor={handleAssignVendedor}
-                        vendedores={vendedores}
-                    />
-                </div>
-            ))}
+                        onDrop={(e) => handleDrop(e, col.title)}
+                    >
+                        <KanbanColumn
+                            column={{
+                                id: col.title,
+                                title: col.title,
+                                leads: (leads || []).filter((l) => {
+                                    if (!l || l.status === 'Cliente') return false;
+                                    return getLeadColumnTitle(l) === col.title;
+                                }),
+                            }}
+                            onDrop={(e) => handleDrop(e, col.title)}
+                            onDragOver={handleDragOver}
+                            onDragStart={handleDragStart}
+                            onDeleteLead={handleDeleteLead}
+                            onEditLead={onEditLead}
+                            onMarkAsClient={handleMarkAsClient}
+                            onAssignVendedor={handleAssignVendedor}
+                            vendedores={vendedores}
+                        />
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }
