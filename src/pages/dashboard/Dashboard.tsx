@@ -1,6 +1,6 @@
 import {
     Clock, MessageSquare, Calendar, DollarSign, CheckCircle, Users,
-    Flame, TrendingUp, ArrowRight, AlertTriangle, Target, Zap,
+    Flame, ArrowRight, AlertTriangle, Target, Zap,
     BarChart3, ThumbsUp, ThumbsDown, Timer
 } from 'lucide-react';
 import {
@@ -88,8 +88,6 @@ export function Dashboard() {
     } : { now: 0, today: 0, at_risk: 0 };
 
     const maxVelocityHours = velocity ? Math.max(...velocity.map(s => s.avg_hours_idle), 1) : 1;
-
-    const loadingCard = <div className="h-5 w-24 bg-white/5 rounded animate-pulse" />;
 
     return (
         <div className="space-y-6">
