@@ -1,6 +1,13 @@
 import { MoreHorizontal, Calendar, DollarSign, Trash2, Phone, Mail, Globe, UserCheck } from 'lucide-react';
 import { Lead } from '../types';
 
+const INTENT_CONFIG = {
+    HOT: { label: 'QUENTE', color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/25', ring: '#fb923c', cardBorder: 'border-orange-500/35' },
+    WARM: { label: 'MORNO', color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/25', ring: '#facc15', cardBorder: 'border-yellow-500/30' },
+    COLD: { label: 'FRIO', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/25', ring: '#60a5fa', cardBorder: 'border-border/50' },
+};
+
+
 interface KanbanCardProps {
     lead: Lead;
     onDragStart: (e: React.DragEvent<HTMLDivElement>, leadId: string) => void;
@@ -12,6 +19,10 @@ interface KanbanCardProps {
 export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient }: KanbanCardProps) {
     // Defensive check
     if (!lead) return null;
+
+    const intentCfg = lead.intentLabel ? INTENT_CONFIG[lead.intentLabel] : null;
+    const score = lead.score ?? 0;
+    const circumference = 2 * Math.PI * 10; // r=10
 
     const formatValue = (value: number) => {
         return new Intl.NumberFormat('pt-BR', {
@@ -41,15 +52,41 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient
         <div
             draggable
             onDragStart={(e) => onDragStart(e, lead.id)}
-            className="bg-surface border border-border/50 rounded-xl p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all cursor-move group animate-fade-in mb-3 active:scale-95 active:rotate-1 relative"
+            className={`bg-surface border rounded-xl p-4 shadow-sm hover:shadow-md transition-all cursor-move group animate-fade-in mb-3 active:scale-95 active:rotate-1 relative ${intentCfg ? intentCfg.cardBorder : 'border-border/50'
+                } hover:border-primary/30`}
         >
             <div className="flex justify-between items-start mb-3">
                 <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center text-xs font-bold text-white border border-white/5">
-                        {(lead.name || 'Sem Nome').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                    {/* Avatar with optional intent ring */}
+                    <div className="relative flex-shrink-0">
+                        {intentCfg && score > 0 ? (
+                            <svg width="36" height="36" viewBox="0 0 36 36" className="absolute inset-0">
+                                <circle cx="18" cy="18" r="10" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="3" />
+                                <circle
+                                    cx="18" cy="18" r="10" fill="none"
+                                    stroke={intentCfg.ring}
+                                    strokeWidth="3"
+                                    strokeDasharray={`${(score / 100) * circumference} ${circumference}`}
+                                    strokeLinecap="round"
+                                    transform="rotate(-90 18 18)"
+                                />
+                            </svg>
+                        ) : null}
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center text-xs font-bold text-white border border-white/5 relative z-10 m-[2px]">
+                            {(lead.name || 'Sem Nome').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                        </div>
                     </div>
-                    <div>
-                        <h4 className="font-semibold text-text-primary text-sm leading-tight group-hover:text-primary transition-colors">{lead.name || 'Sem Nome'}</h4>
+
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-semibold text-text-primary text-sm leading-tight group-hover:text-primary transition-colors">{lead.name || 'Sem Nome'}</h4>
+                            {/* Intent tier badge */}
+                            {intentCfg && score > 0 && (
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${intentCfg.bg} ${intentCfg.color} border ${intentCfg.border} flex-shrink-0 tracking-wide`}>
+                                    {intentCfg.label} {score}
+                                </span>
+                            )}
+                        </div>
 
                         {lead.phone && (
                             <p className="text-xs text-text-secondary flex items-center gap-1 mt-0.5">
@@ -69,13 +106,19 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient
                                 {lead.source}
                             </p>
                         )}
-                        {lead.temperature && (
+                        {/* AI Briefing — one-line situational summary */}
+                        {lead.briefing && (
+                            <p className="text-[10px] text-text-muted italic mt-1 leading-snug line-clamp-2" title={lead.briefing}>
+                                {lead.briefing}
+                            </p>
+                        )}
+                        {/* Fallback: show temperature if no intent label */}
+                        {!intentCfg && lead.temperature && (
                             <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold mt-1.5 border ${lead.temperature.includes('Quente') ? 'bg-red-500/10 text-red-500 border-red-500/20' :
-                                    lead.temperature.includes('Morno') ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' :
-                                        'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                                lead.temperature.includes('Morno') ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' :
+                                    'bg-blue-500/10 text-blue-500 border-blue-500/20'
                                 }`}>
                                 <span>{lead.temperature}</span>
-                                {lead.score !== undefined && <span className="opacity-70">({lead.score}%)</span>}
                             </div>
                         )}
                     </div>

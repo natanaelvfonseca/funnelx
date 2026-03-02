@@ -5,7 +5,7 @@ export interface Lead {
     name: string;
     phone?: string;
     email?: string;
-    company?: string; // Keep for backward compatibility or if needed elsewhere
+    company?: string;
     value: number;
     status: LeadStatus;
     lastContact: string;
@@ -14,6 +14,8 @@ export interface Lead {
     source?: string;
     score?: number;
     temperature?: string;
+    intentLabel?: 'HOT' | 'WARM' | 'COLD' | null;
+    briefing?: string | null;
 }
 
 export interface KanbanColumn {

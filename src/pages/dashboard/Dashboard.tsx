@@ -1,170 +1,116 @@
 import {
-    Clock,
-    MessageSquare,
-    Calendar,
-    DollarSign,
-    CheckCircle,
-    Users,
-    Flame,
-    TrendingUp,
-    ArrowRight
+    Clock, MessageSquare, Calendar, DollarSign, CheckCircle, Users,
+    Flame, TrendingUp, ArrowRight, AlertTriangle, Target, Zap,
+    BarChart3, ThumbsUp, ThumbsDown, Timer
 } from 'lucide-react';
 import {
-    AreaChart,
-    Area,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    ResponsiveContainer
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface DashboardMetrics {
-    pipeline: {
-        total_leads: number;
-        total_value: number;
-        won_value: number;
-        won_count: number;
-        appointments: number;
-    };
-    ai: {
-        active_chats: number;
-        total_messages: number;
-        saved_hours: number;
-        chart: Array<{ name: string; volume: number }>;
-    };
+    pipeline: { total_leads: number; total_value: number; won_value: number; won_count: number; appointments: number };
+    ai: { active_chats: number; total_messages: number; saved_hours: number; chart: Array<{ name: string; volume: number }> };
 }
 
-interface HeatmapLead {
-    id: string;
-    name: string;
-    phone: string;
-    company?: string;
-    status: string;
-    value: number;
-    score: number;
-    temperature: string;
-    intentLabel: 'CRITICAL' | 'HOT' | 'WARM' | 'COLD';
-    briefing?: string;
-    lastInteraction?: string;
+interface ForecastData {
+    projected: number; pipeline_total: number;
+    hot_value: number; warm_value: number; cold_value: number;
+    by_stage: { stage: string; value: number; count: number }[];
 }
 
-const intentConfig = {
-    CRITICAL: { label: 'CRÍTICO', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30', dot: 'bg-red-500' },
-    HOT: { label: 'QUENTE', color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30', dot: 'bg-orange-500' },
-    WARM: { label: 'MORNO', color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', dot: 'bg-yellow-500' },
-    COLD: { label: 'FRIO', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30', dot: 'bg-blue-500' },
+interface VelocityStage { stage: string; count: number; avg_hours_idle: number; }
+
+interface UrgencyLead {
+    id: string; name: string; phone?: string; status: string; value: number;
+    score: number; intentLabel: 'HOT' | 'WARM' | 'COLD'; briefing?: string; hours_idle: number;
+}
+interface UrgencyData { now: UrgencyLead[]; today: UrgencyLead[]; at_risk: UrgencyLead[]; }
+
+interface WinLossData {
+    win_patterns: string[]; loss_patterns: string[];
+    sample_count: number; insufficient_data?: boolean; last_updated?: string;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
+const fmtHours = (h: number) => h >= 24 ? `${Math.round(h / 24)}d` : h >= 1 ? `${Math.round(h)}h` : `${Math.round(h * 60)}min`;
+
+const URGENCY_CONFIG = {
+    now: { label: 'Agir Agora', icon: Flame, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30', dot: 'bg-orange-500' },
+    today: { label: 'Agir Hoje', icon: AlertTriangle, color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', dot: 'bg-yellow-500' },
+    at_risk: { label: 'Em Risco', icon: Timer, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30', dot: 'bg-red-500' },
 };
 
-export function Dashboard() {
-    const { user, token: authToken } = useAuth();
-    const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+const useAPI = <T,>(url: string, token: string | null, deps: unknown[] = []) => {
+    const [data, setData] = useState<T | null>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    useEffect(() => {
+        if (!token) return;
+        setLoading(true);
+        fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { setData(d); setLoading(false); })
+            .catch(() => setLoading(false));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [token, ...deps]);
+    return { data, loading };
+};
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export function Dashboard() {
+    const { user, token } = useAuth();
     const [selectedDays, setSelectedDays] = useState(7);
-    const [heatmap, setHeatmap] = useState<HeatmapLead[]>([]);
-    const [heatmapLoading, setHeatmapLoading] = useState(true);
+    const [urgencyTab, setUrgencyTab] = useState<'now' | 'today' | 'at_risk'>('now');
 
-    useEffect(() => {
-        if (!user) return;
+    const { data: metrics, loading: metricsLoading } = useAPI<DashboardMetrics>(
+        `/api/dashboard/metrics?days=${selectedDays}`, token, [selectedDays]
+    );
+    const { data: forecast, loading: forecastLoading } = useAPI<ForecastData>('/api/dashboard/forecast', token);
+    const { data: velocity, loading: velocityLoading } = useAPI<VelocityStage[]>('/api/dashboard/velocity', token);
+    const { data: urgency, loading: urgencyLoading } = useAPI<UrgencyData>('/api/dashboard/urgency', token);
+    const { data: winloss, loading: winlossLoading } = useAPI<WinLossData>('/api/dashboard/winloss', token);
 
-        const fetchMetrics = async () => {
-            try {
-                setLoading(true);
-
-
-                if (!authToken) {
-                    setError("Erro: Usuário não autenticado (sem token).");
-                    return;
-                }
-
-                const res = await fetch(`/api/dashboard/metrics?days=${selectedDays}`, {
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`
-                    }
-                });
-
-
-
-                if (res.ok) {
-                    const data = await res.json();
-                    setMetrics(data);
-                    setError(null);
-                } else {
-                    const errText = await res.text();
-                    console.error("Failed to fetch metrics:", res.status, errText);
-                    setError(`Falha ao carregar dados (${res.status}): ${errText}`);
-                }
-            } catch (error) {
-                console.error("Error fetching metrics:", error);
-                setError("Erro de conexão.");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchMetrics();
-    }, [user, authToken, selectedDays]);
-
-    useEffect(() => {
-        if (!authToken) return;
-        const fetchHeatmap = async () => {
-            setHeatmapLoading(true);
-            try {
-                const res = await fetch('/api/leads/heatmap', {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                });
-                if (res.ok) setHeatmap(await res.json());
-            } catch (e) {
-                console.error('[Heatmap] fetch error', e);
-            } finally {
-                setHeatmapLoading(false);
-            }
-        };
-        fetchHeatmap();
-    }, [authToken]);
-
-    const formatCurrency = (value: number) => {
-        return new Intl.NumberFormat('pt-BR', {
-            style: 'currency',
-            currency: 'BRL',
-            maximumFractionDigits: 0
-        }).format(value);
-    };
-
-    // Use real data if available, otherwise show a placeholder wave so the chart is always visible
-    const hasRealData = metrics?.ai.chart && metrics.ai.chart.length > 0 && metrics.ai.chart.some(d => d.volume > 0);
-    const chartData = hasRealData ? metrics!.ai.chart : [
-        { name: 'Seg', volume: 3 },
-        { name: 'Ter', volume: 7 },
-        { name: 'Qua', volume: 5 },
-        { name: 'Qui', volume: 10 },
-        { name: 'Sex', volume: 6 },
-        { name: 'Sab', volume: 4 },
-        { name: 'Dom', volume: 2 },
+    const chartData = metrics?.ai.chart?.some(d => d.volume > 0) ? metrics.ai.chart : [
+        { name: 'Seg', volume: 3 }, { name: 'Ter', volume: 7 }, { name: 'Qua', volume: 5 },
+        { name: 'Qui', volume: 10 }, { name: 'Sex', volume: 6 }, { name: 'Sab', volume: 4 }, { name: 'Dom', volume: 2 },
     ];
-    const isPlaceholderData = !hasRealData;
+    const isPlaceholder = !metrics?.ai.chart?.some(d => d.volume > 0);
+
+    const urgencyLeads = urgency ? urgency[urgencyTab] : [];
+    const urgencyCounts = urgency ? {
+        now: urgency.now.length, today: urgency.today.length, at_risk: urgency.at_risk.length
+    } : { now: 0, today: 0, at_risk: 0 };
+
+    const maxVelocityHours = velocity ? Math.max(...velocity.map(s => s.avg_hours_idle), 1) : 1;
+
+    const loadingCard = <div className="h-5 w-24 bg-white/5 rounded animate-pulse" />;
 
     return (
         <div className="space-y-6">
+
+            {/* ── Header ── */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-text-primary">Olá {user?.name || 'Visitante'}!</h1>
-                    <p className="text-text-secondary mt-1">
-                        Revenue Intelligence em tempo real.{' '}
-                        <span className="relative inline-block ml-1">
-                            <span className="absolute inset-0 bg-primary/20 blur-md rounded-full animate-pulse"></span>
-                            <span className="relative font-semibold text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-500 tracking-wide drop-shadow-sm">
-                                A IA monitora cada oportunidade.
+                    <h1 className="text-2xl font-bold text-text-primary">Olá {user?.name?.split(' ')[0] || 'Gestor'}!</h1>
+                    <p className="text-text-secondary mt-1 text-sm">
+                        Centro de Comando Revenue —{' '}
+                        <span className="relative inline-block">
+                            <span className="absolute inset-0 bg-primary/20 blur-md rounded-full animate-pulse" />
+                            <span className="relative font-semibold text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-500">
+                                dinheiro em movimento, em tempo real.
                             </span>
                         </span>
                     </p>
                 </div>
                 <select
                     value={selectedDays}
-                    onChange={(e) => setSelectedDays(Number(e.target.value))}
+                    onChange={e => setSelectedDays(Number(e.target.value))}
                     className="bg-surface border border-border/50 text-text-primary text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer font-medium shadow-sm hover:border-primary/30 transition-colors"
                 >
                     <option value={7}>Últimos 7 dias</option>
@@ -174,207 +120,128 @@ export function Dashboard() {
                 </select>
             </div>
 
-            {error && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-500 p-4 rounded-xl flex items-center gap-2">
-                    <span className="font-semibold">Erro:</span> {error}
-                </div>
-            )
-            }
-
-            {/* Metrics Grid */}
+            {/* ── KPI Cards (3) ── */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Metric 1: Pipeline Generado */}
-                <div className="bg-surface border border-border rounded-xl p-6 relative overflow-hidden group hover:border-primary/30 transition-colors">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                            <DollarSign size={24} />
-                        </div>
-                        {/* <span className="text-xs font-medium text-green-500 flex items-center gap-1 bg-green-500/10 px-2 py-1 rounded-full">
-                            +12.5% <ArrowUpRight size={12} />
-                        </span> */}
+                {[
+                    { icon: DollarSign, color: 'primary', label: 'Potenciais Negócios', value: fmt(metrics?.pipeline.total_value || 0), sub: `${metrics?.pipeline.total_leads || 0} leads` },
+                    { icon: CheckCircle, color: 'green-500', label: 'Negócios Fechados', value: fmt(metrics?.pipeline.won_value || 0), sub: `${metrics?.pipeline.won_count || 0} fechados` },
+                    { icon: Calendar, color: 'purple-500', label: 'Agendamentos', value: String(metrics?.pipeline.appointments || 0), sub: 'Reuniões pela IA' },
+                ].map(({ icon: Icon, color, label, value, sub }) => (
+                    <div key={label} className="bg-surface border border-border rounded-xl p-6 relative overflow-hidden group hover:border-primary/30 transition-colors">
+                        <div className={`p-2 bg-${color}/10 rounded-lg text-${color} w-fit mb-4`}><Icon size={24} /></div>
+                        <h3 className="text-text-secondary text-sm font-medium">{label}</h3>
+                        <p className="text-3xl font-display font-bold text-text-primary mt-1">{metricsLoading ? '...' : value}</p>
+                        <p className="text-xs text-text-secondary mt-1">{sub}</p>
+                        <div className={`absolute -bottom-4 -right-4 w-24 h-24 bg-${color}/5 rounded-full blur-2xl group-hover:bg-${color}/10 transition-colors`} />
                     </div>
-                    <div className="space-y-1">
-                        <h3 className="text-text-secondary text-sm font-medium">Potenciais Negócios</h3>
-                        <p className="text-3xl font-display font-bold text-text-primary">
-                            {loading ? '...' : formatCurrency(metrics?.pipeline.total_value || 0)}
-                        </p>
-                        <p className="text-xs text-text-secondary">
-                            Total de pipeline ({metrics?.pipeline.total_leads || 0} leads)
-                        </p>
-                    </div>
-                    <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-colors"></div>
-                </div>
-
-                {/* Metric 2: Negócios Fechados */}
-                <div className="bg-surface border border-border rounded-xl p-6 relative overflow-hidden group hover:border-primary/30 transition-colors">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-2 bg-green-500/10 rounded-lg text-green-500">
-                            <CheckCircle size={24} />
-                        </div>
-                    </div>
-                    <div className="space-y-1">
-                        <h3 className="text-text-secondary text-sm font-medium">Negócios Fechados</h3>
-                        <p className="text-3xl font-display font-bold text-text-primary">
-                            {loading ? '...' : formatCurrency(metrics?.pipeline.won_value || 0)}
-                        </p>
-                        <p className="text-xs text-text-secondary">
-                            {metrics?.pipeline.won_count || 0} negócios fechados
-                        </p>
-                    </div>
-                    <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-green-500/5 rounded-full blur-2xl group-hover:bg-green-500/10 transition-colors"></div>
-                </div>
-
-                {/* Metric 3: Agendamentos */}
-                <div className="bg-surface border border-border rounded-xl p-6 relative overflow-hidden group hover:border-primary/30 transition-colors">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500">
-                            <Calendar size={24} />
-                        </div>
-                    </div>
-                    <div className="space-y-1">
-                        <h3 className="text-text-secondary text-sm font-medium">Agendamentos</h3>
-                        <p className="text-3xl font-display font-bold text-text-primary">
-                            {loading ? '...' : (metrics?.pipeline.appointments || 0)}
-                        </p>
-                        <p className="text-xs text-text-secondary">
-                            Reuniões agendadas pela IA
-                        </p>
-                    </div>
-                    <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-purple-500/5 rounded-full blur-2xl group-hover:bg-purple-500/10 transition-colors"></div>
-                </div>
+                ))}
             </div>
 
-            {/* Main Content Info */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Chart Section */}
-                <div className="lg:col-span-2 bg-surface border border-border/50 rounded-2xl p-6 shadow-xl relative overflow-hidden transition-colors duration-300">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+            {/* ── Forecast + Velocity (2 columns) ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-                    <div className="flex items-center justify-between mb-8">
+                {/* 💰 Forecast de Receita */}
+                <div className="bg-surface border border-border/50 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-40 h-40 bg-green-500/5 rounded-full blur-3xl -translate-y-1/4 translate-x-1/4 pointer-events-none" />
+                    <div className="flex items-center gap-3 mb-5">
+                        <div className="p-2 bg-green-500/10 rounded-lg"><Target size={20} className="text-green-400" /></div>
                         <div>
-                            <h2 className="text-xl font-display font-bold text-text-primary tracking-tight">Volume de Atendimentos IA</h2>
-                            <p className="text-sm text-text-secondary mt-1">Interações nos últimos 7 dias</p>
+                            <h2 className="text-base font-bold text-text-primary">Forecast de Receita</h2>
+                            <p className="text-xs text-text-secondary">Projeção ponderada por intenção de compra</p>
                         </div>
-                        {/* <button className="p-2 hover:bg-white/5 rounded-lg text-text-secondary transition-colors border border-transparent hover:border-white/10">
-                            <MoreHorizontal size={20} />
-                        </button> */}
                     </div>
-                    <div className="h-[320px] w-full">
-                        {isPlaceholderData && (
-                            <p className="text-xs text-text-muted text-center pt-2 pb-0 italic opacity-60">
-                                Nenhuma mensagem nos últimos 7 dias — gráfico ilustrativo
-                            </p>
-                        )}
-                        <ResponsiveContainer width="100%" height={isPlaceholderData ? "92%" : "100%"}>
-                            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                                <defs>
-                                    <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#F5793B" stopOpacity={isPlaceholderData ? 0.15 : 0.4} />
-                                        <stop offset="95%" stopColor="#F5793B" stopOpacity={0} />
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#27272A" vertical={false} />
-                                <XAxis
-                                    dataKey="name"
-                                    stroke="#52525B"
-                                    fontSize={12}
-                                    tickLine={false}
-                                    axisLine={false}
-                                    dy={10}
-                                />
-                                <YAxis
-                                    stroke="#52525B"
-                                    fontSize={12}
-                                    tickLine={false}
-                                    axisLine={false}
-                                    tickFormatter={(value) => `${value}`}
-                                    dx={-10}
-                                />
-                                <Tooltip
-                                    contentStyle={{ backgroundColor: '#18181B', borderColor: '#27272A', borderRadius: '12px', boxShadow: '0 10px 30px -10px rgba(0,0,0,0.5)' }}
-                                    itemStyle={{ color: '#fff', fontSize: '14px', fontWeight: 500 }}
-                                    cursor={{ stroke: '#F5793B', strokeWidth: 1, strokeDasharray: '5 5' }}
-                                    formatter={(value: any) => isPlaceholderData ? ['—', 'Volume'] : [value, 'Volume']}
-                                />
-                                <Area
-                                    type="monotone"
-                                    dataKey="volume"
-                                    stroke="#F5793B"
-                                    strokeWidth={isPlaceholderData ? 1.5 : 3}
-                                    strokeOpacity={isPlaceholderData ? 0.4 : 1}
-                                    fillOpacity={1}
-                                    fill="url(#colorVolume)"
-                                    activeDot={isPlaceholderData ? false : { r: 6, strokeWidth: 0, fill: '#fff' }}
-                                />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    </div>
+
+                    {forecastLoading ? (
+                        <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-8 bg-white/5 rounded animate-pulse" />)}</div>
+                    ) : forecast && forecast.pipeline_total > 0 ? (
+                        <div className="space-y-4">
+                            <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-4">
+                                <p className="text-xs text-green-400/70 font-medium uppercase tracking-wide">Projeção do Mês</p>
+                                <p className="text-3xl font-display font-bold text-green-400 mt-1">{fmt(forecast.projected)}</p>
+                                <p className="text-xs text-text-secondary mt-1">de {fmt(forecast.pipeline_total)} total em pipeline</p>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                                {[
+                                    { label: '🔥 Quente', value: forecast.hot_value, color: 'text-orange-400' },
+                                    { label: '🟡 Morno', value: forecast.warm_value, color: 'text-yellow-400' },
+                                    { label: '🔵 Frio', value: forecast.cold_value, color: 'text-blue-400' },
+                                ].map(({ label, value, color }) => (
+                                    <div key={label} className="bg-surface-secondary/30 rounded-xl p-3 border border-border/40">
+                                        <p className="text-[10px] text-text-secondary">{label}</p>
+                                        <p className={`text-sm font-bold ${color} mt-0.5`}>{fmt(value)}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            {forecast.by_stage.length > 0 && (
+                                <div className="space-y-1.5">
+                                    <p className="text-xs text-text-secondary font-medium mb-2">Por Estágio</p>
+                                    {forecast.by_stage.slice(0, 4).map(s => (
+                                        <div key={s.stage} className="flex items-center justify-between text-xs">
+                                            <span className="text-text-secondary truncate max-w-[140px]">{s.stage}</span>
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-20 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-primary/60 rounded-full" style={{ width: `${Math.min((s.value / forecast.pipeline_total) * 100, 100)}%` }} />
+                                                </div>
+                                                <span className="text-text-primary font-medium w-20 text-right">{fmt(s.value)}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <EmptyState icon={Target} text="Adicione valor aos leads para ver o forecast de receita" />
+                    )}
                 </div>
 
-                {/* Activity / AI Stats Feed */}
-                <div className="bg-surface border border-border/50 rounded-2xl p-6 shadow-xl flex flex-col h-full bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent transition-colors duration-300">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-xl font-display font-bold text-text-primary tracking-tight">Performance da IA</h2>
+                {/* ⚡ Velocity Score */}
+                <div className="bg-surface border border-border/50 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-40 h-40 bg-blue-500/5 rounded-full blur-3xl -translate-y-1/4 translate-x-1/4 pointer-events-none" />
+                    <div className="flex items-center gap-3 mb-5">
+                        <div className="p-2 bg-blue-500/10 rounded-lg"><Zap size={20} className="text-blue-400" /></div>
+                        <div>
+                            <h2 className="text-base font-bold text-text-primary">Velocity Score</h2>
+                            <p className="text-xs text-text-secondary">Tempo médio sem contato por estágio</p>
+                        </div>
                     </div>
 
-                    <div className="space-y-6 flex-1">
-                        <div className="p-4 bg-surface-secondary/50 rounded-xl border border-border/50">
-                            <div className="flex items-center gap-3 mb-2">
-                                <MessageSquare className="text-primary w-5 h-5" />
-                                <h3 className="text-sm font-medium text-text-secondary">Total de Mensagens</h3>
-                            </div>
-                            <p className="text-2xl font-bold text-text-primary">{loading ? '...' : (metrics?.ai.total_messages || 0).toLocaleString()}</p>
-                        </div>
-
-                        <div className="p-4 bg-surface-secondary/50 rounded-xl border border-border/50">
-                            <div className="flex items-center gap-3 mb-2">
-                                <Users className="text-blue-500 w-5 h-5" />
-                                <h3 className="text-sm font-medium text-text-secondary">Chats Ativos</h3>
-                            </div>
-                            <p className="text-2xl font-bold text-text-primary">{loading ? '...' : (metrics?.ai.active_chats || 0).toLocaleString()}</p>
-                        </div>
-
-                        <div className="p-4 bg-surface-secondary/50 rounded-xl border border-border/50">
-                            <div className="flex items-center gap-3 mb-2">
-                                <Clock className="text-purple-500 w-5 h-5" />
-                                <h3 className="text-sm font-medium text-text-secondary">Tempo Economizado</h3>
-                            </div>
-                            <p className="text-2xl font-bold text-text-primary">{loading ? '...' : (metrics?.ai.saved_hours || 0).toLocaleString()} <span className="text-sm font-normal text-text-secondary">horas</span></p>
-                        </div>
-
-
-                        {/* Live Status */}
-                        <div className="mt-auto pt-6 border-t border-border/50">
-                            <div className="flex items-center gap-4 bg-background border border-green-500/20 p-4 rounded-xl shadow-lg relative overflow-hidden transition-colors duration-300">
-                                <div className="absolute inset-0 bg-green-500/5 pulse-slow"></div>
-                                <div className="relative">
-                                    <div className="w-3 h-3 bg-green-500 rounded-full shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div>
-                                    <div className="absolute inset-0 bg-green-500 rounded-full animate-ping opacity-75"></div>
-                                </div>
-                                <div className="relative z-10">
-                                    <p className="text-sm font-bold text-green-400 tracking-wide">SYSTEM ONLINE</p>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                        <MessageSquare size={12} className="text-green-500/70" />
-                                        <p className="text-xs text-green-500/70 font-mono">{metrics?.ai.active_chats || 0} threads ativas</p>
+                    {velocityLoading ? (
+                        <div className="space-y-3">{[1, 2, 3, 4].map(i => <div key={i} className="h-10 bg-white/5 rounded animate-pulse" />)}</div>
+                    ) : velocity && velocity.length > 0 ? (
+                        <div className="space-y-3">
+                            {velocity.map(s => {
+                                const pct = Math.min((s.avg_hours_idle / maxVelocityHours) * 100, 100);
+                                const color = s.avg_hours_idle >= 48 ? 'bg-red-500' : s.avg_hours_idle >= 24 ? 'bg-orange-500' : s.avg_hours_idle >= 8 ? 'bg-yellow-500' : 'bg-green-500';
+                                const textColor = s.avg_hours_idle >= 48 ? 'text-red-400' : s.avg_hours_idle >= 24 ? 'text-orange-400' : s.avg_hours_idle >= 8 ? 'text-yellow-400' : 'text-green-400';
+                                return (
+                                    <div key={s.stage} className="space-y-1">
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="text-text-secondary truncate max-w-[160px]">{s.stage} <span className="text-text-muted">({s.count})</span></span>
+                                            <span className={`font-bold ${textColor}`}>{fmtHours(s.avg_hours_idle)}</span>
+                                        </div>
+                                        <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                                            <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
+                                );
+                            })}
+                            <p className="text-[10px] text-text-muted pt-1">🟢 &lt;8h ótimo · 🟡 8-24h atenção · 🟠 24-48h urgente · 🔴 48h+ em risco</p>
                         </div>
-                    </div>
+                    ) : (
+                        <EmptyState icon={Zap} text="Dados de velocity disponíveis após a IA conversar com leads no pipeline" />
+                    )}
                 </div>
             </div>
 
-            {/* === LEAD HEAT MAP: Revenue OS === */}
+            {/* ── Lead Heat Map (Urgência) ── */}
             <div className="bg-surface border border-border/50 rounded-2xl p-6 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-48 h-48 bg-orange-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+                <div className="absolute top-0 right-0 w-48 h-48 bg-orange-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
                 <div className="flex items-center justify-between mb-5">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-orange-500/10 rounded-lg">
-                            <Flame size={20} className="text-orange-400" />
-                        </div>
+                        <div className="p-2 bg-orange-500/10 rounded-lg"><Flame size={20} className="text-orange-400" /></div>
                         <div>
-                            <h2 className="text-lg font-display font-bold text-text-primary">Lead Heat Map</h2>
-                            <p className="text-xs text-text-secondary">Oportunidades classificadas por intenção de compra em tempo real</p>
+                            <h2 className="text-base font-bold text-text-primary">Lead Heat Map — Ação Necessária</h2>
+                            <p className="text-xs text-text-secondary">Leads que precisam de atenção agora</p>
                         </div>
                     </div>
                     <a href="/crm" className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-primary transition-colors font-medium">
@@ -382,61 +249,65 @@ export function Dashboard() {
                     </a>
                 </div>
 
-                {heatmapLoading ? (
-                    <div className="text-center py-8 text-text-muted text-sm">Carregando inteligência...</div>
-                ) : heatmap.length === 0 ? (
-                    <div className="text-center py-10">
-                        <div className="flex flex-col items-center gap-3">
-                            <div className="p-3 bg-surface-secondary rounded-xl">
-                                <TrendingUp size={24} className="text-text-muted" />
-                            </div>
-                            <p className="text-sm text-text-secondary font-medium">Nenhum lead com score ainda</p>
-                            <p className="text-xs text-text-muted max-w-xs">
-                                O Heat Map se preenche automaticamente conforme a IA conversa com seus leads e classifica a intenção de compra.
-                            </p>
-                        </div>
+                {/* Urgency Tabs */}
+                <div className="flex gap-2 mb-4">
+                    {(Object.keys(URGENCY_CONFIG) as Array<keyof typeof URGENCY_CONFIG>).map(key => {
+                        const cfg = URGENCY_CONFIG[key];
+                        const Icon = cfg.icon;
+                        const count = urgencyCounts[key];
+                        const active = urgencyTab === key;
+                        return (
+                            <button
+                                key={key}
+                                onClick={() => setUrgencyTab(key)}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border transition-all flex-1 justify-center ${active ? `${cfg.bg} ${cfg.color} ${cfg.border}` : 'bg-surface-secondary/20 text-text-secondary border-border/30 hover:border-border'
+                                    }`}
+                            >
+                                <Icon size={13} />
+                                {cfg.label}
+                                {count > 0 && (
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${active ? 'bg-current/20' : 'bg-white/10'}`}>
+                                        {count}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                {urgencyLoading ? (
+                    <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-14 bg-white/5 rounded-xl animate-pulse" />)}</div>
+                ) : urgencyLeads.length === 0 ? (
+                    <div className="text-center py-8">
+                        <p className="text-sm text-text-secondary font-medium">
+                            {urgencyTab === 'now' ? '✅ Nenhum lead quente aguardando resposta' :
+                                urgencyTab === 'today' ? '✅ Todos os leads mornos foram contatados hoje' :
+                                    '✅ Nenhum lead em risco de esfriamento'}
+                        </p>
+                        <p className="text-xs text-text-muted mt-1">Ótimo! Continue monitorando.</p>
                     </div>
                 ) : (
                     <div className="space-y-2">
-                        {heatmap.map((lead) => {
-                            const cfg = intentConfig[lead.intentLabel] || intentConfig.COLD;
+                        {urgencyLeads.map(lead => {
+                            const tier = URGENCY_CONFIG[urgencyTab];
                             return (
-                                <div key={lead.id} className={`flex items-center gap-4 p-3.5 rounded-xl border ${cfg.border} ${cfg.bg} hover:opacity-90 transition-opacity cursor-pointer`}>
-                                    {/* Score ring */}
-                                    <div className="flex-shrink-0 relative w-10 h-10 flex items-center justify-center">
-                                        <svg className="absolute inset-0" viewBox="0 0 36 36">
-                                            <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-white/5" />
-                                            <circle
-                                                cx="18" cy="18" r="15" fill="none"
-                                                stroke={lead.score >= 85 ? '#f87171' : lead.score >= 65 ? '#fb923c' : lead.score >= 35 ? '#facc15' : '#60a5fa'}
-                                                strokeWidth="2.5"
-                                                strokeDasharray={`${(lead.score / 100) * 94.2} 94.2`}
-                                                strokeLinecap="round"
-                                                transform="rotate(-90 18 18)"
-                                            />
-                                        </svg>
-                                        <span className="text-xs font-bold text-text-primary">{lead.score}</span>
-                                    </div>
-
-                                    {/* Lead info */}
+                                <div key={lead.id} className={`flex items-center gap-3 p-3.5 rounded-xl border ${tier.bg} ${tier.border}`}>
+                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${tier.dot}`} />
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
                                             <p className="text-sm font-semibold text-text-primary truncate">{lead.name}</p>
-                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${cfg.bg} ${cfg.color} border ${cfg.border} flex-shrink-0`}>{cfg.label}</span>
+                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${tier.bg} ${tier.color} border ${tier.border} flex-shrink-0`}>
+                                                {lead.score}pts
+                                            </span>
                                         </div>
                                         <p className="text-xs text-text-secondary truncate mt-0.5">
-                                            {lead.briefing || lead.temperature}
+                                            {lead.briefing || lead.status}
                                         </p>
                                     </div>
-
-                                    {/* Value */}
-                                    {lead.value > 0 && (
-                                        <div className="flex-shrink-0 text-right">
-                                            <p className="text-xs font-bold text-text-primary">
-                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(lead.value)}
-                                            </p>
-                                        </div>
-                                    )}
+                                    <div className="flex-shrink-0 text-right">
+                                        <p className={`text-xs font-bold ${tier.color}`}>{fmtHours(lead.hours_idle)}</p>
+                                        <p className="text-[10px] text-text-muted">sem contato</p>
+                                    </div>
                                 </div>
                             );
                         })}
@@ -444,10 +315,121 @@ export function Dashboard() {
                 )}
             </div>
 
-            {/* Last updated timestamp */}
+            {/* ── AI Volume Chart + Win/Loss (2 columns) ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                {/* Volume Chart */}
+                <div className="bg-surface border border-border/50 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                    <h2 className="text-base font-display font-bold text-text-primary mb-1">Volume de Atendimentos IA</h2>
+                    <p className="text-xs text-text-secondary mb-4">Interações nos últimos {selectedDays} dias</p>
+                    {isPlaceholder && <p className="text-[10px] text-text-muted text-center italic opacity-60 mb-1">Sem dados reais — gráfico ilustrativo</p>}
+                    <div className="h-[220px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                                <defs>
+                                    <linearGradient id="colorVol" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#F5793B" stopOpacity={isPlaceholder ? 0.1 : 0.4} />
+                                        <stop offset="95%" stopColor="#F5793B" stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#27272A" vertical={false} />
+                                <XAxis dataKey="name" stroke="#52525B" fontSize={11} tickLine={false} axisLine={false} dy={8} />
+                                <YAxis stroke="#52525B" fontSize={11} tickLine={false} axisLine={false} />
+                                <Tooltip contentStyle={{ backgroundColor: '#18181B', borderColor: '#27272A', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '13px' }} formatter={(v: any) => isPlaceholder ? ['—', 'Volume'] : [v, 'Volume']} cursor={{ stroke: '#F5793B', strokeWidth: 1, strokeDasharray: '5 5' }} />
+                                <Area type="monotone" dataKey="volume" stroke="#F5793B" strokeWidth={isPlaceholder ? 1.5 : 2.5} strokeOpacity={isPlaceholder ? 0.4 : 1} fillOpacity={1} fill="url(#colorVol)" activeDot={isPlaceholder ? false : { r: 5, strokeWidth: 0, fill: '#fff' }} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-border/40">
+                        {[
+                            { icon: MessageSquare, label: 'Mensagens', value: (metricsLoading ? '...' : (metrics?.ai.total_messages || 0).toLocaleString()), color: 'text-primary' },
+                            { icon: Users, label: 'Chats Ativos', value: metricsLoading ? '...' : (metrics?.ai.active_chats || 0), color: 'text-blue-400' },
+                            { icon: Clock, label: 'Horas Salvas', value: metricsLoading ? '...' : (metrics?.ai.saved_hours || 0), color: 'text-purple-400' },
+                        ].map(({ icon: Icon, label, value, color }) => (
+                            <div key={label} className="text-center">
+                                <Icon size={14} className={`${color} mx-auto mb-1`} />
+                                <p className="text-sm font-bold text-text-primary">{value}</p>
+                                <p className="text-[10px] text-text-muted">{label}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 🧠 Win/Loss Intelligence */}
+                <div className="bg-surface border border-border/50 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-40 h-40 bg-purple-500/5 rounded-full blur-3xl -translate-y-1/4 translate-x-1/4 pointer-events-none" />
+                    <div className="flex items-center gap-3 mb-5">
+                        <div className="p-2 bg-purple-500/10 rounded-lg"><BarChart3 size={20} className="text-purple-400" /></div>
+                        <div>
+                            <h2 className="text-base font-bold text-text-primary">Win/Loss Intelligence</h2>
+                            <p className="text-xs text-text-secondary">Padrões de vitória e derrota (IA)</p>
+                        </div>
+                    </div>
+
+                    {winlossLoading ? (
+                        <div className="space-y-3">{[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-8 bg-white/5 rounded animate-pulse" />)}</div>
+                    ) : winloss?.insufficient_data || (winloss?.win_patterns?.length === 0 && winloss?.loss_patterns?.length === 0) ? (
+                        <EmptyState icon={BarChart3} text={`Ainda sem dados suficientes. Necessário pelo menos 3 leads ganhos ou perdidos com briefing da IA. (${winloss?.sample_count || 0} encontrado${winloss?.sample_count === 1 ? '' : 's'})`} />
+                    ) : winloss ? (
+                        <div className="space-y-4">
+                            {winloss.win_patterns.length > 0 && (
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <ThumbsUp size={13} className="text-green-400" />
+                                        <p className="text-xs font-bold text-green-400 uppercase tracking-wide">Padrões de Vitória</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {winloss.win_patterns.map((p, i) => (
+                                            <div key={i} className="flex items-start gap-2 p-2.5 bg-green-500/5 border border-green-500/15 rounded-xl">
+                                                <span className="text-green-500 text-xs font-bold mt-0.5 flex-shrink-0">{i + 1}.</span>
+                                                <p className="text-xs text-text-secondary leading-relaxed">{p}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            {winloss.loss_patterns.length > 0 && (
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <ThumbsDown size={13} className="text-red-400" />
+                                        <p className="text-xs font-bold text-red-400 uppercase tracking-wide">Padrões de Derrota</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {winloss.loss_patterns.map((p, i) => (
+                                            <div key={i} className="flex items-start gap-2 p-2.5 bg-red-500/5 border border-red-500/15 rounded-xl">
+                                                <span className="text-red-500 text-xs font-bold mt-0.5 flex-shrink-0">{i + 1}.</span>
+                                                <p className="text-xs text-text-secondary leading-relaxed">{p}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            {winloss.last_updated && (
+                                <p className="text-[10px] text-text-muted text-right">
+                                    Análise de {winloss.sample_count} negócios · Atualizado a cada 24h
+                                </p>
+                            )}
+                        </div>
+                    ) : null}
+                </div>
+            </div>
+
+            {/* Footer */}
             <div className="text-center text-xs text-text-secondary/60 pb-2">
                 Última atualização: {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
             </div>
+        </div>
+    );
+}
+
+function EmptyState({ icon: Icon, text }: { icon: React.ElementType; text: string }) {
+    return (
+        <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <div className="p-3 bg-surface-secondary rounded-xl">
+                <Icon size={22} className="text-text-muted" />
+            </div>
+            <p className="text-xs text-text-muted max-w-xs leading-relaxed">{text}</p>
         </div>
     );
 }

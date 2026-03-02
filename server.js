@@ -5048,13 +5048,14 @@ app.get("/api/leads", verifyJWT, async (req, res) => {
       phone: row.phone,
       email: row.email,
       source: row.source,
-      value: Number(row.value), // Decimal comes as string from PG
+      value: Number(row.value),
       status: row.status,
       tags: row.tags || [],
-      lastContact: row.last_contact, // mappings
+      lastContact: row.last_contact,
       score: row.score,
       temperature: row.temperature,
-      // created_at is available if needed
+      intentLabel: row.intent_label || null,
+      briefing: row.last_ia_briefing || null,
     }));
 
     res.json(leads);
@@ -7097,6 +7098,231 @@ app.get("/api/dashboard/metrics", verifyJWT, async (req, res) => {
   }
 });
 
+// --- REVENUE INTELLIGENCE ENDPOINTS ---
+
+// GET /api/dashboard/forecast — Revenue Forecast weighted by intent tier
+app.get("/api/dashboard/forecast", verifyJWT, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const userRes = await pool.query("SELECT organization_id FROM users WHERE id = $1", [userId]);
+    const orgId = userRes.rows[0]?.organization_id;
+    if (!orgId) return res.json({ projected: 0, pipeline_total: 0, hot_value: 0, warm_value: 0, cold_value: 0, by_stage: [] });
+
+    // Get all active leads with value, score, intent, status
+    const result = await pool.query(
+      `SELECT status, value, COALESCE(score, 0) as score, COALESCE(intent_label, 'COLD') as intent_label
+       FROM leads
+       WHERE organization_id = $1
+         AND LOWER(status) NOT IN ('cliente', 'fechado', 'closed', 'won', 'ganho', 'perdido', 'lost')
+         AND COALESCE(value, 0) > 0`,
+      [orgId]
+    );
+
+    // Probability weights by tier
+    const weights = { HOT: 0.70, WARM: 0.30, COLD: 0.05 };
+
+    let hot_value = 0, warm_value = 0, cold_value = 0, projected = 0;
+    const stageMap = {};
+
+    result.rows.forEach(row => {
+      const v = parseFloat(row.value) || 0;
+      const tier = row.intent_label || 'COLD';
+      const weight = weights[tier] || 0.05;
+
+      if (tier === 'HOT') hot_value += v;
+      else if (tier === 'WARM') warm_value += v;
+      else cold_value += v;
+
+      projected += v * weight;
+
+      const stage = row.status || 'Sem Estágio';
+      if (!stageMap[stage]) stageMap[stage] = { stage, value: 0, count: 0 };
+      stageMap[stage].value += v;
+      stageMap[stage].count += 1;
+    });
+
+    const by_stage = Object.values(stageMap).sort((a, b) => b.value - a.value).slice(0, 6);
+
+    res.json({
+      projected: Math.round(projected),
+      pipeline_total: Math.round(hot_value + warm_value + cold_value),
+      hot_value: Math.round(hot_value),
+      warm_value: Math.round(warm_value),
+      cold_value: Math.round(cold_value),
+      by_stage,
+    });
+  } catch (err) {
+    log("GET /api/dashboard/forecast error: " + err.toString());
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/dashboard/velocity — Avg hours without contact per pipeline stage
+app.get("/api/dashboard/velocity", verifyJWT, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const userRes = await pool.query("SELECT organization_id FROM users WHERE id = $1", [userId]);
+    const orgId = userRes.rows[0]?.organization_id;
+    if (!orgId) return res.json([]);
+
+    const result = await pool.query(
+      `SELECT
+         status,
+         COUNT(*) as lead_count,
+         ROUND(AVG(EXTRACT(EPOCH FROM (NOW() - COALESCE(last_interaction_at, last_contact, created_at))) / 3600)::numeric, 1) as avg_hours_idle
+       FROM leads
+       WHERE organization_id = $1
+         AND LOWER(status) NOT IN ('cliente', 'fechado', 'closed', 'won', 'ganho', 'perdido', 'lost')
+       GROUP BY status
+       ORDER BY avg_hours_idle DESC
+       LIMIT 8`,
+      [orgId]
+    );
+
+    const stages = result.rows.map(r => ({
+      stage: r.status,
+      count: parseInt(r.lead_count),
+      avg_hours_idle: parseFloat(r.avg_hours_idle) || 0,
+    }));
+
+    res.json(stages);
+  } catch (err) {
+    log("GET /api/dashboard/velocity error: " + err.toString());
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/dashboard/urgency — Leads needing action: now (2h), today (24h), at-risk (48h+)
+app.get("/api/dashboard/urgency", verifyJWT, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const userRes = await pool.query("SELECT organization_id FROM users WHERE id = $1", [userId]);
+    const orgId = userRes.rows[0]?.organization_id;
+    if (!orgId) return res.json({ now: [], today: [], at_risk: [] });
+
+    const result = await pool.query(
+      `SELECT
+         id, name, phone, status, value,
+         COALESCE(score, 0) as score,
+         COALESCE(intent_label, 'COLD') as intent_label,
+         last_ia_briefing,
+         COALESCE(last_interaction_at, last_contact, created_at) as last_activity,
+         EXTRACT(EPOCH FROM (NOW() - COALESCE(last_interaction_at, last_contact, created_at))) / 3600 as hours_idle
+       FROM leads
+       WHERE organization_id = $1
+         AND LOWER(status) NOT IN ('cliente', 'fechado', 'closed', 'won', 'ganho', 'perdido', 'lost')
+       ORDER BY score DESC, hours_idle DESC
+       LIMIT 60`,
+      [orgId]
+    );
+
+    const now = [], today = [], at_risk = [];
+
+    result.rows.forEach(r => {
+      const h = parseFloat(r.hours_idle) || 0;
+      const tier = r.intent_label;
+      const lead = {
+        id: r.id,
+        name: r.name,
+        phone: r.phone,
+        status: r.status,
+        value: parseFloat(r.value) || 0,
+        score: parseInt(r.score),
+        intentLabel: tier,
+        briefing: r.last_ia_briefing,
+        hours_idle: Math.round(h * 10) / 10,
+      };
+
+      // Agir Agora: HOT leads idle > 2h
+      if (tier === 'HOT' && h >= 2 && now.length < 10) now.push(lead);
+      // Agir Hoje: WARM idle > 8h OR HOT idle > 6h
+      else if (((tier === 'WARM' && h >= 8) || (tier === 'HOT' && h >= 6)) && today.length < 10) today.push(lead);
+      // Em Risco: any non-COLD lead idle > 48h
+      else if (tier !== 'COLD' && h >= 48 && at_risk.length < 10) at_risk.push(lead);
+    });
+
+    res.json({ now, today, at_risk });
+  } catch (err) {
+    log("GET /api/dashboard/urgency error: " + err.toString());
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// In-memory Win/Loss cache (per org, 24h TTL)
+const winLossCache = new Map();
+
+// GET /api/dashboard/winloss — AI pattern analysis of wins and losses
+app.get("/api/dashboard/winloss", verifyJWT, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const userRes = await pool.query("SELECT organization_id FROM users WHERE id = $1", [userId]);
+    const orgId = userRes.rows[0]?.organization_id;
+    if (!orgId) return res.json({ win_patterns: [], loss_patterns: [], sample_count: 0 });
+
+    // Check cache (24h TTL)
+    const cached = winLossCache.get(orgId);
+    if (cached && (Date.now() - cached.ts) < 24 * 60 * 60 * 1000) {
+      return res.json(cached.data);
+    }
+
+    // Fetch recent won/lost leads with briefings
+    const result = await pool.query(
+      `SELECT name, status, value, last_ia_briefing, score, temperature
+       FROM leads
+       WHERE organization_id = $1
+         AND LOWER(status) IN ('cliente', 'fechado', 'closed', 'won', 'ganho', 'perdido', 'lost')
+         AND last_ia_briefing IS NOT NULL
+       ORDER BY last_contact DESC
+       LIMIT 30`,
+      [orgId]
+    );
+
+    if (result.rows.length < 3) {
+      return res.json({ win_patterns: [], loss_patterns: [], sample_count: result.rows.length, insufficient_data: true });
+    }
+
+    const wins = result.rows.filter(r => ['cliente', 'fechado', 'closed', 'won', 'ganho'].includes(r.status?.toLowerCase()));
+    const losses = result.rows.filter(r => ['perdido', 'lost'].includes(r.status?.toLowerCase()));
+
+    const prompt = `Você é um analista de vendas da Kogna Revenue OS.
+Analise os dados abaixo de leads ganhos e perdidos e identifique padrões.
+
+LEADS GANHOS (${wins.length}):
+${wins.map(r => `- ${r.name}: "${r.last_ia_briefing}" (score ${r.score})`).join('\n')}
+
+LEADS PERDIDOS (${losses.length}):
+${losses.map(r => `- ${r.name}: "${r.last_ia_briefing}" (score ${r.score})`).join('\n')}
+
+Retorne APENAS um JSON válido com:
+- win_patterns: array de 3 strings curtas (max 80 chars cada) descrevendo padrões dos leads ganhos
+- loss_patterns: array de 3 strings curtas (max 80 chars cada) descrevendo padrões dos leads perdidos
+
+JSON:`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "system", content: prompt }],
+      response_format: { type: "json_object" }
+    });
+
+    const analysis = JSON.parse(completion.choices[0].message.content);
+    const responseData = {
+      win_patterns: analysis.win_patterns || [],
+      loss_patterns: analysis.loss_patterns || [],
+      sample_count: result.rows.length,
+      last_updated: new Date().toISOString(),
+    };
+
+    // Cache for 24h
+    winLossCache.set(orgId, { ts: Date.now(), data: responseData });
+
+    res.json(responseData);
+  } catch (err) {
+    log("GET /api/dashboard/winloss error: " + err.toString());
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // --- ADMIN API ---
 
 app.get("/api/admin/stats", verifyAdmin, async (req, res) => {
@@ -8554,14 +8780,11 @@ async function advancePipelineStage(leadId, organizationId, score) {
     let targetIndex = -1; // -1 means no movement
     const lastIdx = columns.length - 1;
 
-    if (score >= 85) {
-      // CRITICAL: move to ~85% through pipeline (penultimate or close)
-      targetIndex = Math.max(1, Math.floor(lastIdx * 0.85));
-    } else if (score >= 65) {
+    if (score >= 65) {
       // HOT: move to ~65% through pipeline
       targetIndex = Math.max(1, Math.floor(lastIdx * 0.65));
     } else if (score >= 35) {
-      // WARM: move to ~40% through pipeline  
+      // WARM: move to ~40% through pipeline
       targetIndex = Math.max(1, Math.floor(lastIdx * 0.40));
     } else {
       // COLD: no movement
@@ -8603,22 +8826,23 @@ async function advancePipelineStage(leadId, organizationId, score) {
 }
 
 
-// Intent label mapping from score
+// Intent label mapping from score — 3 tiers: QUENTE / MORNO / FRIO
 function scoreToIntentLabel(score) {
-  if (score >= 85) return 'CRITICAL'; // Pronto para fechar
-  if (score >= 65) return 'HOT';      // Alto engajamento
-  if (score >= 35) return 'WARM';     // Interesse moderado
-  return 'COLD';                       // Baixo engajamento
+  if (score >= 65) return 'HOT';   // 🔥 Quente — alto engajamento
+  if (score >= 35) return 'WARM';  // 🟡 Morno — interesse moderado
+  return 'COLD';                    // 🔵 Frio  — baixo engajamento
 }
 
 async function updateLeadScore(agentId, remoteJid, organizationId, historyMessages) {
   try {
     // 1. Find Lead
     const leadRes = await pool.query(
-      "SELECT id FROM leads WHERE organization_id = $1 AND (phone LIKE $2 OR mobile_phone LIKE $2) LIMIT 1",
+      "SELECT id, name, score as prev_score FROM leads WHERE organization_id = $1 AND (phone LIKE $2 OR mobile_phone LIKE $2) LIMIT 1",
       [organizationId, `%${remoteJid.split("@")[0]}%`],
     );
-    const leadId = leadRes.rows[0]?.id;
+    const leadRow = leadRes.rows[0];
+    const leadId = leadRow?.id;
+    const prevScore = leadRow?.prev_score ?? 0;
 
     if (!leadId) {
       log(`[INTENT-SCORE] No lead found for ${remoteJid} in org ${organizationId}. Skipping.`);
@@ -8637,8 +8861,8 @@ async function updateLeadScore(agentId, remoteJid, organizationId, historyMessag
 Analise a conversa abaixo e retorne APENAS um JSON válido.
 
 CAMPOS OBRIGATÓRIOS:
-- score: (0-100) Pontuação de intenção de compra e urgência. 85-100 = pronto para fechar, 65-84 = alta intenção, 35-64 = interesse moderado, 0-34 = frio.
-- temperature: "🔥 Quente", "🟡 Morno" ou "🔵 Frio" (compatível com sistema existente).
+- score: (0-100) Pontuação de intenção de compra e urgência. 65-100 = quente (alta intenção), 35-64 = morno (interesse moderado), 0-34 = frio.
+- temperature: "🔥 Quente", "🟡 Morno" ou "🔵 Frio".
 - briefing: Uma frase curta (máx 100 chars) descrevendo o estado atual do lead. Ex: "Interessado no plano Pro, objeção de preço, aguarda proposta".
 - reason: Justificativa interna curta (máx 80 chars) para o score.
 
@@ -8646,10 +8870,9 @@ CONVERSA:
 ${context}
 
 Regras:
-- Se lead pediu preço, demonstração ou disse "quero fechar": score >= 75.
+- Se lead pediu preço, demonstração ou disse "quero fechar": score >= 70.
 - Se lead desapareceu ou disse "vou pensar": score <= 40.
-- Se lead tem objeção ativa (preço, tempo, concorrente): score entre 45-70.
-- "temperature" deve ser compatível com o sistema anterior (Quente/Morno/Frio com emojis).
+- Se lead tem objeção ativa (preço, tempo, concorrente): score entre 40-64.
 
 JSON:`;
 
@@ -8660,7 +8883,8 @@ JSON:`;
     });
 
     const result = JSON.parse(completion.choices[0].message.content);
-    const intentLabel = scoreToIntentLabel(result.score || 0);
+    const newScore = result.score || 0;
+    const intentLabel = scoreToIntentLabel(newScore);
 
     // 4. Update Database with all Revenue OS fields
     await pool.query(
@@ -8671,13 +8895,43 @@ JSON:`;
            last_ia_briefing = $4,
            last_interaction_at = NOW()
        WHERE id = $5`,
-      [result.score, result.temperature, intentLabel, result.briefing || null, leadId]
+      [newScore, result.temperature, intentLabel, result.briefing || null, leadId]
     );
 
-    log(`[INTENT-SCORE] Lead ${leadId}: ${intentLabel} (${result.score}pts) | ${result.briefing || result.reason}`);
+    log(`[INTENT-SCORE] Lead ${leadId}: ${intentLabel} (${newScore}pts) | ${result.briefing || result.reason}`);
 
-    // 5. AI Pipeline Movement — advance stage if score warrants it (non-blocking)
-    advancePipelineStage(leadId, organizationId, result.score || 0)
+    // 5. 🔥 HEAT ALERT — notify when lead transitions to HOT (Quente)
+    // Only fires when lead crosses the HOT threshold for the first time in this turn
+    if (newScore >= 65 && prevScore < 65) {
+      try {
+        // Get org's users to notify
+        const usersRes = await pool.query(
+          `SELECT u.id FROM users u WHERE u.organization_id = $1`,
+          [organizationId]
+        );
+        const leadNameRes = await pool.query(`SELECT name FROM leads WHERE id = $1`, [leadId]);
+        const leadName = leadNameRes.rows[0]?.name || 'Lead';
+
+        for (const u of usersRes.rows) {
+          await pool.query(
+            `INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)`,
+            [
+              u.id,
+              `🔥 Lead Esquentou: ${leadName}`,
+              result.briefing
+                ? `${leadName} está quente! ${result.briefing} Score: ${newScore}/100`
+                : `${leadName} acabou de atingir score ${newScore}/100 — hora de agir!`
+            ]
+          );
+        }
+        log(`[HEAT-ALERT] Notificação criada para lead ${leadName} (score ${newScore})`);
+      } catch (notifyErr) {
+        log(`[HEAT-ALERT] Erro ao criar notificação: ${notifyErr.message}`);
+      }
+    }
+
+    // 6. AI Pipeline Movement — advance stage if score warrants it (non-blocking)
+    advancePipelineStage(leadId, organizationId, newScore)
       .catch(e => log(`[PIPELINE-AI] Movement error: ${e.message}`));
 
   } catch (err) {
