@@ -934,8 +934,8 @@ export function LiveChat() {
                                     {activeLeadTemp && (
                                         <div className="flex items-center gap-2 mt-0.5">
                                             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${activeLeadTemp.includes('Quente') ? 'bg-red-500/10 text-red-500 border-red-500/20' :
-                                                    activeLeadTemp.includes('Morno') ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' :
-                                                        'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                                                activeLeadTemp.includes('Morno') ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' :
+                                                    'bg-blue-500/10 text-blue-500 border-blue-500/20'
                                                 }`}>
                                                 {activeLeadTemp} {activeLeadScore > 0 ? `(${activeLeadScore}%)` : ''}
                                             </span>
@@ -968,8 +968,25 @@ export function LiveChat() {
                         {/* Messages Area */}
                         <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 dark:bg-[#0C0C0C] relative scroll-smooth">
 
-
-
+                            {/* Handoff Banner — shown when AI is paused (may be auto-handoff or manual) */}
+                            {isChatPaused && (
+                                <div className="flex items-start gap-3 p-4 mb-2 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                                    <span className="text-2xl flex-shrink-0">🤝</span>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-bold text-amber-500">Handoff Humano Ativo</p>
+                                        <p className="text-xs text-amber-400/80 mt-0.5 leading-relaxed">
+                                            A IA foi pausada automaticamente pelo Revenue OS — este lead atingiu alta intenção de compra.
+                                            Uma notificação foi enviada com o brief completo. Assuma a conversa agora.
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={handleToggleChatPause}
+                                        className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-white text-xs font-bold transition-colors"
+                                    >
+                                        <Play size={12} /> Retomar IA
+                                    </button>
+                                </div>
+                            )}
 
                             {fetchError && (
                                 <div className="p-2 bg-red-100 text-red-700 text-xs text-center border-b border-red-200">

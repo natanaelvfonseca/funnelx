@@ -17,6 +17,7 @@ import { OnboardingGuard } from './components/auth/OnboardingGuard';
 import { MyAIs } from './pages/brain/MyAIs';
 import { Billing } from './pages/billing/Billing';
 import { Agenda } from './pages/agenda/Agenda';
+import { Vendedores } from './pages/vendedores/Vendedores';
 import { PartnerDashboard } from './pages/partners/PartnerDashboard';
 import { PartnerRegister } from './pages/partners/PartnerRegister';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
@@ -62,6 +63,7 @@ function App() {
                                 <Route path="settings" element={<Settings />} />
                                 <Route path="billing" element={<Billing />} />
                                 <Route path="agenda" element={<Agenda />} />
+                                <Route path="vendedores" element={<Vendedores />} />
                                 <Route path="recovery" element={<FollowupManager />} />
                                 <Route path="partners" element={<PartnerDashboard />} />
 

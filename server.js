@@ -3666,6 +3666,60 @@ app.get("/api/chats/status/:agentId/:remoteJid", async (req, res) => {
   }
 });
 
+// PATCH /api/vendedores/:id/toggle-ativo — activate or deactivate a vendedor
+app.patch("/api/vendedores/:id/toggle-ativo", verifyJWT, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const userId = req.userId;
+    const orgRes = await pool.query("SELECT organization_id FROM users WHERE id = $1", [userId]);
+    const orgId = orgRes.rows[0]?.organization_id;
+    if (!orgId) return res.status(400).json({ error: "No organization" });
+
+    const cur = await pool.query("SELECT ativo FROM vendedores WHERE id = $1 AND organization_id = $2", [id, orgId]);
+    if (cur.rows.length === 0) return res.status(404).json({ error: "Vendedor not found" });
+
+    const newAtivo = !cur.rows[0].ativo;
+    const result = await pool.query(
+      "UPDATE vendedores SET ativo = $1 WHERE id = $2 AND organization_id = $3 RETURNING *",
+      [newAtivo, id, orgId]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    log("[ERROR] PATCH /api/vendedores/:id/toggle-ativo: " + err.toString());
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// PATCH /api/vendedores/:id — update porcentagem and/or other fields
+app.patch("/api/vendedores/:id", verifyJWT, async (req, res) => {
+  const { id } = req.params;
+  const { porcentagem, nome, whatsapp } = req.body;
+  try {
+    const userId = req.userId;
+    const orgRes = await pool.query("SELECT organization_id FROM users WHERE id = $1", [userId]);
+    const orgId = orgRes.rows[0]?.organization_id;
+    if (!orgId) return res.status(400).json({ error: "No organization" });
+
+    const fields = [];
+    const values = [];
+    let idx = 1;
+    if (porcentagem !== undefined) { fields.push(`porcentagem = $${idx++}`); values.push(porcentagem); }
+    if (nome !== undefined) { fields.push(`nome = $${idx++}`); values.push(nome); }
+    if (whatsapp !== undefined) { fields.push(`whatsapp = $${idx++}`); values.push(whatsapp); }
+    if (fields.length === 0) return res.json({ message: "No changes" });
+
+    values.push(id); values.push(orgId);
+    const result = await pool.query(
+      `UPDATE vendedores SET ${fields.join(", ")} WHERE id = $${idx++} AND organization_id = $${idx++} RETURNING *`,
+      values
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    log("[ERROR] PATCH /api/vendedores/:id: " + err.toString());
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
 // GET CHAT CONTEXT (Agent Info + Pause Status)
 app.get(
   "/api/chat-context/:instanceName/:remoteJid",
@@ -8930,6 +8984,12 @@ JSON:`;
       }
     }
 
+    // 5b. 🤝 HANDOFF INTELIGENTE — score >= 80 (acima do alerta simples de 65)
+    if (newScore >= 80 && prevScore < 80) {
+      triggerIntelligentHandoff(agentId, remoteJid, organizationId, leadId, leadRow.name, context, newScore)
+        .catch(e => log(`[HANDOFF] Error: ${e.message}`));
+    }
+
     // 6. AI Pipeline Movement — advance stage if score warrants it (non-blocking)
     advancePipelineStage(leadId, organizationId, newScore)
       .catch(e => log(`[PIPELINE-AI] Movement error: ${e.message}`));
@@ -8938,6 +8998,116 @@ JSON:`;
     log(`[INTENT-SCORE] Error: ${err.message}`);
   }
 }
+
+// ─── INTELLIGENT HANDOFF ──────────────────────────────────────────────────────
+// Triggered when lead score crosses 80: pauses AI, generates brief, notifies sellers
+
+async function triggerIntelligentHandoff(agentId, remoteJid, orgId, leadId, leadName, context, score) {
+  try {
+    log(`[HANDOFF] Initiating intelligent handoff for lead "${leadName}" (score ${score})`);
+
+    // 0. Send a transition message to the lead before going silent
+    try {
+      const agentRes = await pool.query(
+        `SELECT a.id, v.instance_name
+         FROM agents a
+         JOIN vendedores v ON v.id = a.vendedor_id
+         WHERE a.id = $1 LIMIT 1`,
+        [agentId]
+      );
+      const instanceName = agentRes.rows[0]?.instance_name;
+
+      if (instanceName) {
+        const transferMsg = "Ótimo! Vou te transferir agora para um dos nossos especialistas para continuar o atendimento. Aguarde um instante. 🤝";
+        await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: EVOLUTION_API_KEY,
+          },
+          body: JSON.stringify({
+            number: remoteJid,
+            text: transferMsg,
+            options: { delay: 1200 },
+          }),
+        });
+        log(`[HANDOFF] Transfer message sent to ${remoteJid}`);
+      }
+    } catch (msgErr) {
+      log(`[HANDOFF] Could not send transfer message: ${msgErr.message}`);
+      // Non-fatal — continue with pause and notification
+    }
+
+    // 1. Pause the AI for this specific chat
+    await pool.query(
+      `INSERT INTO chat_sessions (agent_id, remote_jid, is_paused)
+       VALUES ($1, $2, true)
+       ON CONFLICT (agent_id, remote_jid) DO UPDATE SET is_paused = true`,
+      [agentId, remoteJid]
+    );
+    log(`[HANDOFF] AI paused for ${remoteJid} (agent ${agentId})`);
+
+
+    // 2. Generate intelligent Lead Brief via GPT
+    const briefPrompt = `Você é um gerente de vendas sênior da Kogna Revenue OS.
+Um lead atingiu score ${score}/100, indicando alta intenção de compra e necessidade de atendimento humano.
+Baseado na conversa abaixo, crie um brief operacional conciso para o vendedor humano que vai assumir agora.
+
+CONVERSA:
+${context}
+
+Retorne APENAS um JSON válido com:
+- interest: O que o lead quer/precisa (1 frase objetiva, máx 80 chars)
+- objection: Principal objeção ou preocupação (1 frase, ou "Nenhuma identificada", máx 80 chars)
+- approach: Melhor ação recomendada para fechar (1 frase imperativa, máx 100 chars)
+- urgency: "Alta" | "Média" | "Baixa"
+
+JSON:`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "system", content: briefPrompt }],
+      response_format: { type: "json_object" }
+    });
+
+    const brief = JSON.parse(completion.choices[0].message.content);
+    log(`[HANDOFF] Lead brief generated for "${leadName}": ${JSON.stringify(brief)}`);
+
+    // 3. Store brief on the lead for retrieval in LiveChat
+    await pool.query(
+      `UPDATE leads SET handoff_brief = $1, handoff_at = NOW() WHERE id = $2`,
+      [JSON.stringify(brief), leadId]
+    ).catch(() => {
+      // Column may not exist yet — non-fatal, notification still fires
+      log(`[HANDOFF] Could not store brief on lead (handoff_brief column missing?)`);
+    });
+
+    // 4. Notify all org users with the full brief
+    const usersRes = await pool.query(
+      `SELECT id FROM users WHERE organization_id = $1`, [orgId]
+    );
+
+    const urgencyEmoji = brief.urgency === 'Alta' ? '🔴' : brief.urgency === 'Média' ? '🟡' : '🟢';
+    const notifMessage =
+      `🎯 Interesse: ${brief.interest}\n` +
+      `⚠️ Objeção: ${brief.objection}\n` +
+      `✅ Ação: ${brief.approach}\n` +
+      `${urgencyEmoji} Urgência: ${brief.urgency} | Score: ${score}/100`;
+
+    for (const u of usersRes.rows) {
+      await pool.query(
+        `INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)`,
+        [u.id, `🤝 Handoff Humano: ${leadName}`, notifMessage]
+      );
+    }
+
+    log(`[HANDOFF] Notifications sent to ${usersRes.rows.length} user(s) for lead "${leadName}"`);
+  } catch (err) {
+    log(`[HANDOFF] triggerIntelligentHandoff error: ${err.message}`);
+    throw err;
+  }
+}
+
 
 async function processAIResponse(
   agent,
