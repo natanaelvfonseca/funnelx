@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { MoreHorizontal, Calendar, DollarSign, Trash2, Phone, Mail, Globe, UserCheck, User, Brain } from 'lucide-react';
+import { MoreHorizontal, Calendar, DollarSign, Trash2, Phone, Mail, Globe, UserCheck, User, Brain, Bell } from 'lucide-react';
 import { Lead } from '../types';
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || '';
@@ -29,6 +29,7 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const [intelligence, setIntelligence] = useState<any>(null);
+    const [followupStatus, setFollowupStatus] = useState<string | null>(null);
 
     // Fetch AI Opportunity Score for this lead (non-blocking)
     useEffect(() => {
@@ -40,6 +41,18 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient
             .then(data => { if (data?.hasScore) setIntelligence(data); })
             .catch(() => { });
     }, [lead.id, token]);
+
+    // Fetch Follow-up Engine status for this lead (non-blocking)
+    useEffect(() => {
+        if (!token || !lead.phone) return;
+        const jid = encodeURIComponent(lead.phone.replace(/\D/g, '') + '@s.whatsapp.net');
+        fetch(`${apiBase}/api/followup/status/${jid}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => { if (data && data.status !== 'none') setFollowupStatus(data.status); })
+            .catch(() => { });
+    }, [lead.id, lead.phone, token]);
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
@@ -111,6 +124,22 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient
                                     <Brain size={10} />
                                     {intelligence.temperature === 'quente' ? '🔥' : intelligence.temperature === 'morno' ? '🌡️' : '❄️'} {intelligence.score}
                                 </div>
+                            )}
+                            {/* Follow-up Engine Status Badge */}
+                            {followupStatus === 'pending' && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 border border-violet-500/25 flex items-center gap-1 flex-shrink-0">
+                                    <Bell size={8} /> FOLLOW-UP ACTIVE
+                                </span>
+                            )}
+                            {followupStatus === 'sent' && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/25 flex items-center gap-1 flex-shrink-0">
+                                    <Bell size={8} /> FOLLOW-UP SENT
+                                </span>
+                            )}
+                            {followupStatus === 'replied' && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/25 flex items-center gap-1 flex-shrink-0">
+                                    ✅ LEAD REENGAGED
+                                </span>
                             )}
                         </div>
                         {lead.phone && (

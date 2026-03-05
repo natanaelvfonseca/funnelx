@@ -571,6 +571,472 @@ async function calculateOpportunityScore(orgId, leadId) {
 
 // ── END OSE Engine ────────────────────────────────────────────────────────────
 
+// ══════════════════════════════════════════════════════════════════════════════
+// AI FOLLOW-UP ENGINE — Smart Revenue Recovery System
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function ensureFollowupEngineTables() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS followup_sequences_v2 (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        pipeline_stage TEXT DEFAULT NULL,
+        active BOOLEAN DEFAULT TRUE,
+        ai_mode BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_fseq_org ON followup_sequences_v2(organization_id);
+
+      CREATE TABLE IF NOT EXISTS followup_steps (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        sequence_id UUID NOT NULL REFERENCES followup_sequences_v2(id) ON DELETE CASCADE,
+        step_number INT NOT NULL DEFAULT 1,
+        delay_minutes INT NOT NULL DEFAULT 60,
+        message_template TEXT NOT NULL,
+        media_url TEXT DEFAULT NULL,
+        followup_type TEXT DEFAULT 'reminder',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_fstep_seq ON followup_steps(sequence_id);
+
+      CREATE TABLE IF NOT EXISTS followup_queue (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id TEXT NOT NULL,
+        lead_id UUID DEFAULT NULL,
+        remote_jid TEXT NOT NULL,
+        instance_name TEXT NOT NULL,
+        sequence_id UUID DEFAULT NULL,
+        current_step INT DEFAULT 1,
+        total_steps INT DEFAULT 1,
+        scheduled_at TIMESTAMPTZ NOT NULL,
+        status TEXT DEFAULT 'pending',
+        conversation_temperature TEXT DEFAULT 'frio',
+        pipeline_stage TEXT DEFAULT NULL,
+        last_customer_message_at TIMESTAMPTZ DEFAULT NULL,
+        followup_trigger_reason TEXT DEFAULT NULL,
+        detected_objection TEXT DEFAULT NULL,
+        detected_product_interest TEXT DEFAULT NULL,
+        intent_score INT DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_fqueue_org ON followup_queue(organization_id);
+      CREATE INDEX IF NOT EXISTS idx_fqueue_jid ON followup_queue(remote_jid);
+      CREATE INDEX IF NOT EXISTS idx_fqueue_status ON followup_queue(status);
+      CREATE INDEX IF NOT EXISTS idx_fqueue_scheduled ON followup_queue(scheduled_at);
+
+      CREATE TABLE IF NOT EXISTS followup_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        followup_queue_id UUID DEFAULT NULL,
+        organization_id TEXT NOT NULL,
+        sequence_id UUID DEFAULT NULL,
+        step_number INT DEFAULT 1,
+        final_message_sent TEXT DEFAULT NULL,
+        template_used TEXT DEFAULT NULL,
+        message_sent_at TIMESTAMPTZ DEFAULT NOW(),
+        customer_replied BOOLEAN DEFAULT FALSE,
+        reply_time_minutes INT DEFAULT NULL,
+        converted_to_sale BOOLEAN DEFAULT FALSE
+      );
+      CREATE INDEX IF NOT EXISTS idx_fevents_org ON followup_events(organization_id);
+      CREATE INDEX IF NOT EXISTS idx_fevents_queue ON followup_events(followup_queue_id);
+
+      CREATE TABLE IF NOT EXISTS followup_settings (
+        organization_id TEXT PRIMARY KEY,
+        enabled BOOLEAN DEFAULT TRUE,
+        ai_mode_enabled BOOLEAN DEFAULT FALSE,
+        max_followups_per_lead INT DEFAULT 4,
+        quente_delay_minutes INT DEFAULT 30,
+        morno_delay_minutes INT DEFAULT 120,
+        frio_delay_minutes INT DEFAULT 720,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    log('[FOLLOWUP] Follow-up Engine tables verified.');
+  } catch (err) {
+    log(`[FOLLOWUP] ensureFollowupEngineTables error: ${err.message}`);
+  }
+}
+
+/**
+ * Get or create followup_settings for an org.
+ */
+async function getFollowupSettings(orgId) {
+  const res = await pool.query(
+    `INSERT INTO followup_settings (organization_id) VALUES ($1)
+     ON CONFLICT (organization_id) DO NOTHING;
+     SELECT * FROM followup_settings WHERE organization_id = $1`,
+    [orgId]
+  );
+  // pg doesn't return from the INSERT part easily with ON CONFLICT DO NOTHING in one query,
+  // so we use two queries when needed. But for simplicity, do a separate SELECT:
+  const settingsRes = await pool.query('SELECT * FROM followup_settings WHERE organization_id = $1', [orgId]);
+  if (settingsRes.rows.length === 0) {
+    await pool.query('INSERT INTO followup_settings (organization_id) VALUES ($1) ON CONFLICT DO NOTHING', [orgId]);
+    const settings2 = await pool.query('SELECT * FROM followup_settings WHERE organization_id = $1', [orgId]);
+    return settings2.rows[0];
+  }
+  return settingsRes.rows[0];
+}
+
+/**
+ * Event-Driven: Schedule a follow-up directly after the agent replies.
+ * Called when `role = 'assistant'` message is sent to the customer.
+ */
+async function scheduleFollowupEvent(orgId, remoteJid, instanceName) {
+  try {
+    const settings = await getFollowupSettings(orgId);
+    if (!settings.enabled) return;
+
+    // Check if there's already a pending follow-up
+    const existingQ = await pool.query(
+      `SELECT id FROM followup_queue WHERE remote_jid = $1 AND organization_id = $2 AND status = 'pending'`,
+      [remoteJid, orgId]
+    );
+    if (existingQ.rows.length > 0) return;
+
+    // Get lead temperature
+    const phone = remoteJid.split('@')[0];
+    const leadRes = await pool.query(
+      `SELECT l.id AS lead_id, os.temperature, os.intent, os.product_interest, os.top_objection, os.score, l.status AS pipeline_stage
+       FROM leads l
+       LEFT JOIN opportunity_scores os ON os.lead_id = l.id
+       WHERE l.organization_id = $1 AND (l.phone LIKE $2 OR l.mobile_phone LIKE $2)
+       LIMIT 1`,
+      [orgId, `%${phone}%`]
+    );
+
+    const lead = leadRes.rows[0];
+    const temperature = lead?.temperature || 'frio';
+    const pipelineStage = lead?.pipeline_stage || 'Novo Lead';
+
+    // Adaptive delay
+    let requiredDelay;
+    if (temperature === 'quente') requiredDelay = settings.quente_delay_minutes;
+    else if (temperature === 'morno') requiredDelay = settings.morno_delay_minutes;
+    else requiredDelay = settings.frio_delay_minutes;
+
+    // Check sent count
+    const sentCount = await pool.query(
+      `SELECT COUNT(*) FROM followup_queue WHERE remote_jid = $1 AND organization_id = $2 AND status IN ('sent', 'replied')`,
+      [remoteJid, orgId]
+    );
+    if (parseInt(sentCount.rows[0].count) >= settings.max_followups_per_lead) return;
+
+    // Find the best sequence
+    const seqRes = await pool.query(
+      `SELECT fs.id, COUNT(st.id) AS step_count
+       FROM followup_sequences_v2 fs
+       LEFT JOIN followup_steps st ON st.sequence_id = fs.id
+       WHERE fs.organization_id = $1 AND fs.active = TRUE
+         AND (fs.pipeline_stage IS NULL OR fs.pipeline_stage = $2)
+       GROUP BY fs.id
+       ORDER BY fs.pipeline_stage NULLS LAST
+       LIMIT 1`,
+      [orgId, pipelineStage]
+    );
+
+    if (seqRes.rows.length === 0) return;
+
+    const sequence = seqRes.rows[0];
+    const trigger = temperature === 'quente' ? 'high_temp_inactivity' :
+      temperature === 'morno' ? 'medium_temp_inactivity' : 'low_temp_inactivity';
+
+    // Schedule directly into the queue
+    await pool.query(`
+      INSERT INTO followup_queue (
+        organization_id, lead_id, remote_jid, instance_name, sequence_id,
+        current_step, total_steps, scheduled_at, status,
+        conversation_temperature, pipeline_stage, last_customer_message_at,
+        followup_trigger_reason, detected_objection, detected_product_interest, intent_score
+      ) VALUES ($1,$2,$3,$4,$5,1,$6,NOW() + ($7 || ' minutes')::interval,'pending',$8,$9,NOW(),$10,$11,$12,$13)
+    `, [
+      orgId,
+      lead?.lead_id || null,
+      remoteJid,
+      instanceName,
+      sequence.id,
+      parseInt(sequence.step_count) || 1,
+      requiredDelay,
+      temperature,
+      pipelineStage,
+      trigger,
+      lead?.top_objection || null,
+      lead?.product_interest || null,
+      lead?.score || 0
+    ]);
+
+    log(`[FOLLOWUP] Queued future follow-up (+${requiredDelay}m) for ${remoteJid} (${temperature})`);
+  } catch (err) {
+    log(`[FOLLOWUP] scheduleFollowupEvent error: ${err.message}`);
+  }
+}
+
+/**
+ * Resolve {{variable}} placeholders in a message template.
+ */
+async function resolveMessageTemplate(template, queueEntry) {
+  try {
+    let message = template;
+
+    // Fetch lead name
+    if (queueEntry.lead_id) {
+      const leadRes = await pool.query('SELECT name FROM leads WHERE id = $1', [queueEntry.lead_id]);
+      const leadName = leadRes.rows[0]?.name || '';
+      message = message.replace(/\{\{nome_cliente\}\}/gi, leadName.split(' ')[0] || '');
+    } else {
+      message = message.replace(/\{\{nome_cliente\}\}/gi, '');
+    }
+
+    // Other variables
+    const product = queueEntry.detected_product_interest || '';
+    message = message.replace(/\{\{produto_interesse\}\}/gi, product);
+
+    const minutesSilent = queueEntry.last_customer_message_at
+      ? Math.round((Date.now() - new Date(queueEntry.last_customer_message_at).getTime()) / 60000)
+      : 0;
+
+    if (minutesSilent < 60) {
+      message = message.replace(/\{\{tempo_sem_resposta\}\}/gi, `${minutesSilent} minutos`);
+    } else if (minutesSilent < 1440) {
+      message = message.replace(/\{\{tempo_sem_resposta\}\}/gi, `${Math.round(minutesSilent / 60)} horas`);
+    } else {
+      message = message.replace(/\{\{tempo_sem_resposta\}\}/gi, `${Math.round(minutesSilent / 1440)} dias`);
+    }
+
+    // {{ultima_pergunta}} - last customer message
+    const lastMsgRes = await pool.query(`
+      SELECT content FROM chat_messages
+      WHERE remote_jid = $1 AND role = 'user'
+      ORDER BY created_at DESC LIMIT 1
+    `, [queueEntry.remote_jid]);
+    const lastQuestion = lastMsgRes.rows[0]?.content?.substring(0, 100) || '';
+    message = message.replace(/\{\{ultima_pergunta\}\}/gi, lastQuestion);
+
+    return message;
+  } catch (err) {
+    log(`[FOLLOWUP] resolveMessageTemplate error: ${err.message}`);
+    return template;
+  }
+}
+
+/**
+ * Generate a contextual follow-up message using AI (when ai_mode is enabled).
+ */
+async function generateAIFollowupMessage(queueEntry, step) {
+  try {
+    // Gather context
+    const recentMessages = await pool.query(`
+      SELECT role, content FROM chat_messages
+      WHERE remote_jid = $1
+      ORDER BY created_at DESC LIMIT 10
+    `, [queueEntry.remote_jid]);
+
+    const history = recentMessages.rows.reverse().map(m => `${m.role === 'user' ? 'Cliente' : 'Vendedor'}: ${m.content}`).join('\n');
+
+    const prompt = `Você é um assistente de vendas da empresa. Gere uma mensagem de follow-up personalizada e natural.
+
+Contexto:
+- Temperatura do lead: ${queueEntry.conversation_temperature}
+- Estágio no funil: ${queueEntry.pipeline_stage}
+- Produto de interesse detectado: ${queueEntry.detected_product_interest || 'não identificado'}
+- Objeção detectada: ${queueEntry.detected_objection || 'nenhuma'}
+- Score de oportunidade: ${queueEntry.intent_score}/100
+- Tipo de follow-up recomendado: ${step.followup_type}
+- Silêncio há: ${Math.round((Date.now() - new Date(queueEntry.last_customer_message_at).getTime()) / 60000)} minutos
+
+Últimas mensagens da conversa:
+${history}
+
+Gere uma mensagem de follow-up curta (máximo 3 parágrafos), natural, sem ser invasivo, adequada ao contexto. Não use emojis em excesso. Responda SOMENTE com o texto da mensagem.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 300,
+      temperature: 0.7
+    });
+
+    return completion.choices[0]?.message?.content?.trim() || null;
+  } catch (err) {
+    log(`[FOLLOWUP] generateAIFollowupMessage error: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Send a WhatsApp message via Evolution API.
+ */
+async function sendFollowupWhatsApp(instanceName, remoteJid, message, mediaUrl) {
+  try {
+    const evoBase = process.env.EVOLUTION_API_URL;
+    const evoKey = process.env.EVOLUTION_API_KEY;
+    if (!evoBase || !evoKey) {
+      log('[FOLLOWUP] Missing Evolution API config — cannot send message');
+      return false;
+    }
+
+    // Text message
+    const textRes = await fetch(`${evoBase}/message/sendText/${instanceName}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: evoKey },
+      body: JSON.stringify({
+        number: remoteJid,
+        text: message
+      })
+    });
+
+    if (!textRes.ok) {
+      const errorText = await textRes.text();
+      log(`[FOLLOWUP] sendText failed: ${textRes.status} ${errorText}`);
+      return false;
+    }
+
+    // Optional media
+    if (mediaUrl) {
+      await fetch(`${evoBase}/message/sendMedia/${instanceName}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: evoKey },
+        body: JSON.stringify({
+          number: remoteJid,
+          mediatype: 'image',
+          media: mediaUrl
+        })
+      });
+    }
+
+    return true;
+  } catch (err) {
+    log(`[FOLLOWUP] sendFollowupWhatsApp error: ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * [CRON] Process the follow-up queue every 2 minutes.
+ */
+async function processFollowupQueue() {
+  try {
+    const pendingRes = await pool.query(`
+      SELECT fq.*, fs.ai_mode AS sequence_ai_mode
+      FROM followup_queue fq
+      LEFT JOIN followup_sequences_v2 fs ON fs.id = fq.sequence_id
+      WHERE fq.status = 'pending' AND fq.scheduled_at <= NOW()
+      LIMIT 50
+    `);
+
+    if (pendingRes.rows.length === 0) return;
+
+    log(`[FOLLOWUP] Processing ${pendingRes.rows.length} queued follow-ups`);
+
+    for (const queueEntry of pendingRes.rows) {
+      try {
+        // Fetch the step
+        const stepRes = await pool.query(
+          `SELECT * FROM followup_steps WHERE sequence_id = $1 AND step_number = $2`,
+          [queueEntry.sequence_id, queueEntry.current_step]
+        );
+        if (stepRes.rows.length === 0) {
+          // No more steps, close
+          await pool.query(`UPDATE followup_queue SET status = 'completed', updated_at = NOW() WHERE id = $1`, [queueEntry.id]);
+          continue;
+        }
+
+        const step = stepRes.rows[0];
+
+        // Generate message
+        let finalMessage;
+        if (queueEntry.sequence_ai_mode) {
+          finalMessage = await generateAIFollowupMessage(queueEntry, step);
+        }
+        if (!finalMessage) {
+          finalMessage = await resolveMessageTemplate(step.message_template, queueEntry);
+        }
+
+        // Send
+        const sent = await sendFollowupWhatsApp(queueEntry.instance_name, queueEntry.remote_jid, finalMessage, step.media_url);
+
+        if (sent) {
+          // Record event
+          await pool.query(`
+            INSERT INTO followup_events (followup_queue_id, organization_id, sequence_id, step_number, final_message_sent, template_used, message_sent_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW())
+          `, [queueEntry.id, queueEntry.organization_id, queueEntry.sequence_id, queueEntry.current_step, finalMessage, step.message_template]);
+
+          // Check if there's a next step
+          const nextStep = queueEntry.current_step + 1;
+          const nextStepRes = await pool.query(
+            `SELECT delay_minutes FROM followup_steps WHERE sequence_id = $1 AND step_number = $2`,
+            [queueEntry.sequence_id, nextStep]
+          );
+
+          if (nextStepRes.rows.length > 0 && nextStep <= queueEntry.total_steps) {
+            // Schedule next step
+            const delayMins = nextStepRes.rows[0].delay_minutes;
+            await pool.query(`
+              UPDATE followup_queue
+              SET status = 'pending', current_step = $1, scheduled_at = NOW() + ($2 || ' minutes')::interval, updated_at = NOW()
+              WHERE id = $3
+            `, [nextStep, delayMins, queueEntry.id]);
+          } else {
+            await pool.query(`UPDATE followup_queue SET status = 'sent', updated_at = NOW() WHERE id = $1`, [queueEntry.id]);
+          }
+
+          log(`[FOLLOWUP] Sent follow-up step ${queueEntry.current_step} to ${queueEntry.remote_jid}`);
+        } else {
+          // Mark as failed temporarily — retry on next run
+          await pool.query(`UPDATE followup_queue SET updated_at = NOW() WHERE id = $1`, [queueEntry.id]);
+        }
+      } catch (itemErr) {
+        log(`[FOLLOWUP] Error processing queue item ${queueEntry.id}: ${itemErr.message}`);
+      }
+    }
+  } catch (err) {
+    log(`[FOLLOWUP] processFollowupQueue error: ${err.message}`);
+  }
+}
+
+/**
+ * Cancel any pending follow-ups for a JID when the customer replies.
+ * Call this inside MESSAGES_UPSERT handler.
+ */
+async function cancelFollowupOnReply(orgId, remoteJid, replyTimestamp) {
+  try {
+    const result = await pool.query(`
+      UPDATE followup_queue
+      SET status = 'replied', updated_at = NOW()
+      WHERE organization_id = $1 AND remote_jid = $2 AND status = 'pending'
+      RETURNING id
+    `, [orgId, remoteJid]);
+
+    // Mark followup_events as replied
+    if (result.rows.length > 0) {
+      for (const row of result.rows) {
+        const lastEvent = await pool.query(
+          `SELECT id, message_sent_at FROM followup_events WHERE followup_queue_id = $1 ORDER BY message_sent_at DESC LIMIT 1`,
+          [row.id]
+        );
+        if (lastEvent.rows.length > 0) {
+          const sentAt = new Date(lastEvent.rows[0].message_sent_at);
+          const replyAt = replyTimestamp ? new Date(replyTimestamp * 1000) : new Date();
+          const replyMinutes = Math.round((replyAt - sentAt) / 60000);
+          await pool.query(
+            `UPDATE followup_events SET customer_replied = TRUE, reply_time_minutes = $1 WHERE id = $2`,
+            [Math.max(0, replyMinutes), lastEvent.rows[0].id]
+          );
+        }
+      }
+      log(`[FOLLOWUP] Cancelled ${result.rows.length} pending follow-ups for ${remoteJid} (customer replied)`);
+    }
+  } catch (err) {
+    log(`[FOLLOWUP] cancelFollowupOnReply error: ${err.message}`);
+  }
+}
+
+// ── END AI Follow-up Engine ────────────────────────────────────────────────────
+
 // Inicia as conexões e migrações em segundo plano para não travar o boot da Vercel
 initPool().then(() => {
   ensureLeadsColumns();
@@ -579,6 +1045,17 @@ initPool().then(() => {
   setTimeout(ensureCoachingTables, 7000); // Revenue OS Coaching: insights table
   setTimeout(ensureConversationIntelligenceTables, 9000); // CIL: Conversation Intelligence tables
   setTimeout(ensureOpportunityScoresTable, 10000); // OSE: Opportunity Scores table
+  setTimeout(ensureFollowupEngineTables, 12000); // AI Follow-up Engine tables
+
+  // Start Follow-up Engine cron jobs (fire after tables are ready)
+  setTimeout(() => {
+    // Process queue every 1 minute
+    cron.schedule('* * * * *', () => {
+      processFollowupQueue().catch(err => log(`[FOLLOWUP CRON] processQueue: ${err.message}`));
+    });
+    log('[FOLLOWUP] Cron jobs started: queue processor (1m)');
+  }, 15000);
+
 }).catch(e => log("Startup error: " + e.message));
 
 app.use(cors({ origin: true, credentials: true }));
@@ -6452,6 +6929,9 @@ app.post("/api/evolution/webhook", async (req, res) => {
       [agent.id, remoteJid, content],
     );
 
+    // Event-driven: Cancel follow-up since user replied
+    await cancelFollowupOnReply(agent.organization_id, remoteJid);
+
     // 5. Trigger AI Processing
     // We pass the message content directly to `processAIResponse`
     // Note: `processAIResponse` fetches history, so we just inserted it.
@@ -9195,6 +9675,12 @@ app.post("/api/chat/send", verifyJWT, async (req, res) => {
                  VALUES ($1, $2, 'assistant', $3, 0, $4, 0)`,
         [agentId, number, text, estimatedTokens],
       );
+
+      const resOrg = await pool.query('SELECT organization_id FROM agents WHERE id = $1', [agentId]);
+      if (resOrg.rows.length > 0) {
+        scheduleFollowupEvent(resOrg.rows[0].organization_id, number, instanceName)
+          .catch(e => log(`[FOLLOWUP] Manual send error: ${e.message}`));
+      }
     } else {
       log(
         `[LIVE-CHAT] Warning: Message sent without agentId, metrics will be missed. Instance: ${instanceName}, To: ${number}`,
@@ -9259,6 +9745,12 @@ app.post("/api/chat/send-media", verifyJWT, async (req, res) => {
                  VALUES ($1, $2, 'assistant', $3, 0, 0, 0)`,
         [agentId, number, caption || `[${mediatype.toUpperCase()} SENT]`],
       );
+
+      const resOrg = await pool.query('SELECT organization_id FROM agents WHERE id = $1', [agentId]);
+      if (resOrg.rows.length > 0) {
+        scheduleFollowupEvent(resOrg.rows[0].organization_id, number, instanceName)
+          .catch(e => log(`[FOLLOWUP] Manual media error: ${e.message}`));
+      }
     }
 
     // 2. Forward to Evolution
@@ -10542,6 +11034,9 @@ Se o cliente apresentar uma objeção, NUNCA discuta, NUNCA diminua o problema e
     if (user && user.organization_id) {
       updateLeadScore(agent.id, remoteJid, user.organization_id, apiMessages)
         .catch(err => log(`[LEAD-SCORE-TRIGGER] Error: ${err.message}`));
+
+      scheduleFollowupEvent(user.organization_id, remoteJid, instanceName)
+        .catch(err => log(`[FOLLOWUP SCHEDULE] Error: ${err.message}`));
     }
 
   } catch (error) {
@@ -11620,9 +12115,361 @@ app.get("/api/run-migration-temp", async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// AI FOLLOW-UP ENGINE — API ROUTES
+// ══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/followup/sequences — List all sequences for this org
+app.get('/api/followup/sequences', verifyJWT, async (req, res) => {
+  try {
+    const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
+    const orgId = orgRes.rows[0]?.organization_id;
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+
+    const result = await pool.query(
+      `SELECT fs.*, COUNT(st.id)::int AS step_count
+       FROM followup_sequences_v2 fs
+       LEFT JOIN followup_steps st ON st.sequence_id = fs.id
+       WHERE fs.organization_id = $1
+       GROUP BY fs.id
+       ORDER BY fs.created_at DESC`,
+      [orgId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    log('GET /api/followup/sequences error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/followup/sequences — Create a new sequence
+app.post('/api/followup/sequences', verifyJWT, async (req, res) => {
+  try {
+    const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
+    const orgId = orgRes.rows[0]?.organization_id;
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+
+    const { name, pipeline_stage, ai_mode } = req.body;
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    const result = await pool.query(
+      `INSERT INTO followup_sequences_v2 (organization_id, name, pipeline_stage, ai_mode) VALUES ($1,$2,$3,$4) RETURNING *`,
+      [orgId, name, pipeline_stage || null, ai_mode || false]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    log('POST /api/followup/sequences error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/followup/sequences/:id — Update a sequence
+app.put('/api/followup/sequences/:id', verifyJWT, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, pipeline_stage, active, ai_mode } = req.body;
+    const result = await pool.query(
+      `UPDATE followup_sequences_v2 SET name = COALESCE($1, name), pipeline_stage = $2, active = COALESCE($3, active), ai_mode = COALESCE($4, ai_mode) WHERE id = $5 RETURNING *`,
+      [name, pipeline_stage || null, active, ai_mode, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    log('PUT /api/followup/sequences error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/followup/sequences/:id — Delete a sequence (cascades to steps)
+app.delete('/api/followup/sequences/:id', verifyJWT, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM followup_sequences_v2 WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    log('DELETE /api/followup/sequences error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/followup/sequences/:id/steps — List steps for a sequence
+app.get('/api/followup/sequences/:id/steps', verifyJWT, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM followup_steps WHERE sequence_id = $1 ORDER BY step_number ASC`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    log('GET /api/followup/sequences/:id/steps error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/followup/sequences/:id/steps — Add a step to a sequence
+app.post('/api/followup/sequences/:id/steps', verifyJWT, async (req, res) => {
+  try {
+    const { id: sequenceId } = req.params;
+    const { step_number, delay_minutes, message_template, media_url, followup_type } = req.body;
+    if (!message_template) return res.status(400).json({ error: 'message_template is required' });
+
+    // Auto-number if not provided
+    let stepNum = step_number;
+    if (!stepNum) {
+      const countRes = await pool.query('SELECT COUNT(*) FROM followup_steps WHERE sequence_id = $1', [sequenceId]);
+      stepNum = parseInt(countRes.rows[0].count) + 1;
+    }
+
+    const result = await pool.query(
+      `INSERT INTO followup_steps (sequence_id, step_number, delay_minutes, message_template, media_url, followup_type)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [sequenceId, stepNum, delay_minutes || 60, message_template, media_url || null, followup_type || 'reminder']
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    log('POST /api/followup/sequences/:id/steps error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/followup/steps/:id — Update a step
+app.put('/api/followup/steps/:id', verifyJWT, async (req, res) => {
+  try {
+    const { delay_minutes, message_template, media_url, followup_type, step_number } = req.body;
+    const result = await pool.query(
+      `UPDATE followup_steps SET
+         delay_minutes = COALESCE($1, delay_minutes),
+         message_template = COALESCE($2, message_template),
+         media_url = $3,
+         followup_type = COALESCE($4, followup_type),
+         step_number = COALESCE($5, step_number)
+       WHERE id = $6 RETURNING *`,
+      [delay_minutes, message_template, media_url || null, followup_type, step_number, req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    log('PUT /api/followup/steps error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/followup/steps/:id — Delete a step
+app.delete('/api/followup/steps/:id', verifyJWT, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM followup_steps WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    log('DELETE /api/followup/steps error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/followup/settings — Get org follow-up settings
+app.get('/api/followup/settings', verifyJWT, async (req, res) => {
+  try {
+    const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
+    const orgId = orgRes.rows[0]?.organization_id;
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+
+    const settings = await getFollowupSettings(orgId);
+    res.json(settings);
+  } catch (err) {
+    log('GET /api/followup/settings error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/followup/settings — Save org follow-up settings
+app.put('/api/followup/settings', verifyJWT, async (req, res) => {
+  try {
+    const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
+    const orgId = orgRes.rows[0]?.organization_id;
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+
+    const { enabled, ai_mode_enabled, max_followups_per_lead, quente_delay_minutes, morno_delay_minutes, frio_delay_minutes } = req.body;
+
+    const result = await pool.query(`
+      INSERT INTO followup_settings (organization_id, enabled, ai_mode_enabled, max_followups_per_lead, quente_delay_minutes, morno_delay_minutes, frio_delay_minutes, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7, NOW())
+      ON CONFLICT (organization_id) DO UPDATE SET
+        enabled = EXCLUDED.enabled,
+        ai_mode_enabled = EXCLUDED.ai_mode_enabled,
+        max_followups_per_lead = EXCLUDED.max_followups_per_lead,
+        quente_delay_minutes = EXCLUDED.quente_delay_minutes,
+        morno_delay_minutes = EXCLUDED.morno_delay_minutes,
+        frio_delay_minutes = EXCLUDED.frio_delay_minutes,
+        updated_at = NOW()
+      RETURNING *
+    `, [orgId, enabled ?? true, ai_mode_enabled ?? false, max_followups_per_lead ?? 4,
+      quente_delay_minutes ?? 30, morno_delay_minutes ?? 120, frio_delay_minutes ?? 720]);
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    log('PUT /api/followup/settings error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/followup/queue — View active queue for this org
+app.get('/api/followup/queue', verifyJWT, async (req, res) => {
+  try {
+    const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
+    const orgId = orgRes.rows[0]?.organization_id;
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+
+    const result = await pool.query(`
+      SELECT fq.*, l.name AS lead_name,
+             fs.name AS sequence_name
+      FROM followup_queue fq
+      LEFT JOIN leads l ON l.id = fq.lead_id
+      LEFT JOIN followup_sequences_v2 fs ON fs.id = fq.sequence_id
+      WHERE fq.organization_id = $1
+        AND fq.status IN ('pending', 'sent', 'replied')
+      ORDER BY fq.scheduled_at DESC
+      LIMIT 100
+    `, [orgId]);
+
+    res.json(result.rows);
+  } catch (err) {
+    log('GET /api/followup/queue error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/followup/queue/:id — Cancel a queued follow-up
+app.delete('/api/followup/queue/:id', verifyJWT, async (req, res) => {
+  try {
+    await pool.query(`UPDATE followup_queue SET status = 'cancelled', updated_at = NOW() WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    log('DELETE /api/followup/queue error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/followup/dashboard — Recovery metrics dashboard
+app.get('/api/followup/dashboard', verifyJWT, async (req, res) => {
+  try {
+    const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
+    const orgId = orgRes.rows[0]?.organization_id;
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+
+    const [recoveredRes, responseRateRes, avgTimeRes, conversionRes, byStepRes, trendRes] = await Promise.all([
+      // Leads recovered (replied after follow-up sent) in last 30d
+      pool.query(`
+        SELECT COUNT(DISTINCT fq.id) AS count
+        FROM followup_queue fq
+        WHERE fq.organization_id = $1 AND fq.status = 'replied'
+          AND fq.updated_at >= NOW() - INTERVAL '30 days'
+      `, [orgId]),
+      // Response rate
+      pool.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE customer_replied = TRUE)::float / NULLIF(COUNT(*), 0) AS rate
+        FROM followup_events
+        WHERE organization_id = $1
+          AND message_sent_at >= NOW() - INTERVAL '30 days'
+      `, [orgId]),
+      // Average reply time
+      pool.query(`
+        SELECT AVG(reply_time_minutes) AS avg_minutes
+        FROM followup_events
+        WHERE organization_id = $1 AND customer_replied = TRUE
+          AND message_sent_at >= NOW() - INTERVAL '30 days'
+      `, [orgId]),
+      // Conversions after follow-up
+      pool.query(`
+        SELECT COUNT(*) AS count
+        FROM followup_events
+        WHERE organization_id = $1 AND converted_to_sale = TRUE
+          AND message_sent_at >= NOW() - INTERVAL '30 days'
+      `, [orgId]),
+      // Follow-ups by step
+      pool.query(`
+        SELECT step_number, COUNT(*) AS sent, COUNT(*) FILTER (WHERE customer_replied) AS replied
+        FROM followup_events
+        WHERE organization_id = $1
+          AND message_sent_at >= NOW() - INTERVAL '30 days'
+        GROUP BY step_number
+        ORDER BY step_number
+      `, [orgId]),
+      // Daily trend (last 14 days)
+      pool.query(`
+        SELECT DATE(message_sent_at) AS day, COUNT(*) AS sent, COUNT(*) FILTER (WHERE customer_replied) AS replied
+        FROM followup_events
+        WHERE organization_id = $1
+          AND message_sent_at >= NOW() - INTERVAL '14 days'
+        GROUP BY DATE(message_sent_at)
+        ORDER BY day
+      `, [orgId])
+    ]);
+
+    res.json({
+      kpis: {
+        recovered: parseInt(recoveredRes.rows[0]?.count || 0),
+        responseRate: parseFloat(responseRateRes.rows[0]?.rate || 0),
+        avgReplyMinutes: parseInt(avgTimeRes.rows[0]?.avg_minutes || 0),
+        conversions: parseInt(conversionRes.rows[0]?.count || 0)
+      },
+      byStep: byStepRes.rows,
+      trend: trendRes.rows
+    });
+  } catch (err) {
+    log('GET /api/followup/dashboard error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/followup/status/:jid — Get follow-up status for a specific JID
+app.get('/api/followup/status/:jid', verifyJWT, async (req, res) => {
+  try {
+    const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
+    const orgId = orgRes.rows[0]?.organization_id;
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+
+    const jid = decodeURIComponent(req.params.jid);
+    const result = await pool.query(
+      `SELECT id, status, current_step, total_steps, scheduled_at, conversation_temperature
+       FROM followup_queue
+       WHERE organization_id = $1 AND remote_jid = $2
+       ORDER BY created_at DESC LIMIT 1`,
+      [orgId, jid]
+    );
+
+    if (result.rows.length === 0) return res.json({ status: 'none' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    log('GET /api/followup/status error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── END AI Follow-up Engine API Routes ────────────────────────────────────────
+
+// ── VERCEL CRONS ──────────────────────────────────────────────────────────────
+
+
+
+// GET /api/cron/process-queue
+app.get('/api/cron/process-queue', async (req, res) => {
+  if (process.env.CRON_SECRET && req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: 'Unauthorized CRON request' });
+  }
+
+  try {
+    log('[VERCEL CRON] Running processFollowupQueue...');
+    await processFollowupQueue();
+    res.json({ success: true, message: 'Queue processed successfully' });
+  } catch (err) {
+    log(`[VERCEL CRON] processQueue Error: ${err.message}`);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Start Server only if NOT running on Vercel
+
 if (process.env.VERCEL !== '1') {
   const PORT = process.env.PORT || 8080;
   try {
