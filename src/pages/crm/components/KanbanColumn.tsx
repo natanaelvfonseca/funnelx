@@ -15,9 +15,10 @@ interface KanbanColumnProps {
     onMarkAsClient?: (leadId: string) => void;
     onAssignVendedor?: (leadId: string, vendedorId: string | null) => void;
     vendedores?: Vendedor[];
+    token?: string;
 }
 
-export function KanbanColumn({ column, onDrop, onDragOver, onDragStart, onDeleteLead, onEditLead, onMarkAsClient, onAssignVendedor, vendedores }: KanbanColumnProps) {
+export function KanbanColumn({ column, onDrop, onDragOver, onDragStart, onDeleteLead, onEditLead, onMarkAsClient, onAssignVendedor, vendedores, token }: KanbanColumnProps) {
     const columnRef = useRef<HTMLDivElement>(null);
     const [visibleCount, setVisibleCount] = useState(20);
 
@@ -50,6 +51,7 @@ export function KanbanColumn({ column, onDrop, onDragOver, onDragStart, onDelete
                         onMarkAsClient={onMarkAsClient}
                         onAssignVendedor={onAssignVendedor}
                         vendedores={vendedores}
+                        token={token}
                     />
                 ))}
                 {column.leads.length === 0 && (

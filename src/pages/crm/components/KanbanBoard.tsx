@@ -239,6 +239,7 @@ export function KanbanBoard({ refreshTrigger, onEditLead }: { refreshTrigger: nu
                             onMarkAsClient={handleMarkAsClient}
                             onAssignVendedor={handleAssignVendedor}
                             vendedores={vendedores}
+                            token={token || undefined}
                         />
                     </div>
                 ))}

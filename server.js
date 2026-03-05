@@ -170,12 +170,265 @@ const ensureCoachingTables = async () => {
   }
 };
 
+// ── CONVERSATION INTELLIGENCE LAYER ──────────────────────────────────────────
+const ensureConversationIntelligenceTables = async () => {
+  try {
+    log("[CIL] Ensuring Conversation Intelligence tables exist...");
+
+    // Main analysis table: one row per analyzed message
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS conversation_intelligence (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id TEXT NOT NULL,
+        lead_id TEXT,
+        conversation_id TEXT,
+        message_id TEXT UNIQUE,
+        timestamp TIMESTAMPTZ DEFAULT NOW(),
+        intent VARCHAR(50),
+        product_interest TEXT,
+        stage VARCHAR(50),
+        urgency VARCHAR(20),
+        sentiment VARCHAR(20),
+        objections TEXT[],
+        purchase_probability FLOAT,
+        estimated_ticket FLOAT,
+        decision_maker BOOLEAN,
+        segment TEXT,
+        city TEXT,
+        state TEXT,
+        source TEXT,
+        agent_id TEXT,
+        closed_won BOOLEAN DEFAULT FALSE,
+        closed_lost BOOLEAN DEFAULT FALSE,
+        lost_reason TEXT,
+        days_to_close INT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // Events table: one row per detected behavioral event
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS conversation_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id TEXT NOT NULL,
+        lead_id TEXT,
+        conversation_id TEXT,
+        timestamp TIMESTAMPTZ DEFAULT NOW(),
+        event_type VARCHAR(100) NOT NULL,
+        event_metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // Sales behavior graph: one row per conversation
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS sales_behavior_graph (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id TEXT NOT NULL,
+        lead_id TEXT,
+        conversation_id TEXT UNIQUE,
+        intent_sequence JSONB DEFAULT '[]',
+        objection_sequence JSONB DEFAULT '[]',
+        message_count INT DEFAULT 0,
+        time_between_messages FLOAT,
+        time_to_decision FLOAT,
+        conversion_result VARCHAR(20) DEFAULT 'pending',
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // Indexes for performance
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ci_org_id ON conversation_intelligence(organization_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ci_lead_id ON conversation_intelligence(lead_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ce_org_id ON conversation_events(organization_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_sbg_org_id ON sales_behavior_graph(organization_id)`);
+
+    log("[CIL] Conversation Intelligence tables verified.");
+  } catch (err) {
+    log("[ERROR] ensureConversationIntelligenceTables failed: " + err.message);
+  }
+};
+
+// ── CIL: AI Analysis Engine ───────────────────────────────────────────────────
+
+/**
+ * Calls OpenAI to extract structured sales intelligence from a message.
+ * Returns null on any error (non-blocking, never throws).
+ */
+async function analyzeMessageIntelligence(messageContent, context = {}) {
+  try {
+    if (!messageContent || !messageContent.trim()) return null;
+
+    const systemPrompt = `Você é um especialista em análise de conversas de vendas. Analise a mensagem do lead e retorne um JSON com exatamente os campos abaixo. Seja objetivo e preciso.
+
+Campos obrigatórios:
+- intent: "informacao" | "comparacao" | "compra" | "suporte" | "outro"
+- product_interest: string (produto mencionado ou null)
+- stage: "novo_lead" | "qualificacao" | "interesse" | "proposta" | "negociacao" | "fechamento"
+- urgency: "baixa" | "media" | "alta"
+- sentiment: "positivo" | "neutro" | "negativo"
+- objections: array de strings com objeções detectadas (ex: ["preco_alto", "sem_tempo"])
+- purchase_probability: number de 0 a 1
+- estimated_ticket: number estimado em BRL ou null
+- decision_maker: boolean (lead parece ser o tomador de decisão?)
+- event_types: array de eventos detectados dentre: ["lead_started_conversation","lead_requested_information","lead_requested_price","lead_showed_interest","lead_objected_price","lead_objected_time","lead_objected_trust","lead_requested_proposal","lead_ready_to_buy","lead_stopped_responding","lead_closed_won","lead_closed_lost"]
+
+Contexto adicional disponível: ${JSON.stringify(context)}
+
+Responda APENAS com o JSON, sem markdown, sem explicações.`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: messageContent }
+      ],
+      max_tokens: 300,
+      temperature: 0.1,
+      response_format: { type: "json_object" }
+    });
+
+    const raw = completion.choices[0]?.message?.content;
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    return parsed;
+  } catch (err) {
+    log(`[CIL] analyzeMessageIntelligence error: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Persists analysis into conversation_intelligence table.
+ */
+async function recordConversationIntelligence(analysis, context) {
+  try {
+    const { orgId, leadId, agentId, conversationId, messageId } = context;
+    await pool.query(`
+      INSERT INTO conversation_intelligence
+        (organization_id, lead_id, agent_id, conversation_id, message_id,
+         intent, product_interest, stage, urgency, sentiment, objections,
+         purchase_probability, estimated_ticket, decision_maker)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      ON CONFLICT (message_id) DO UPDATE SET
+        intent = EXCLUDED.intent,
+        stage = EXCLUDED.stage,
+        urgency = EXCLUDED.urgency,
+        sentiment = EXCLUDED.sentiment,
+        objections = EXCLUDED.objections,
+        purchase_probability = EXCLUDED.purchase_probability,
+        estimated_ticket = EXCLUDED.estimated_ticket,
+        decision_maker = EXCLUDED.decision_maker
+    `, [
+      orgId, leadId || null, agentId || null, conversationId || null, messageId || null,
+      analysis.intent || null,
+      analysis.product_interest || null,
+      analysis.stage || null,
+      analysis.urgency || null,
+      analysis.sentiment || null,
+      analysis.objections || [],
+      analysis.purchase_probability != null ? analysis.purchase_probability : null,
+      analysis.estimated_ticket || null,
+      analysis.decision_maker != null ? analysis.decision_maker : null
+    ]);
+  } catch (err) {
+    log(`[CIL] recordConversationIntelligence error: ${err.message}`);
+  }
+}
+
+/**
+ * Persists detected events into conversation_events table.
+ */
+async function recordConversationEvents(analysis, context) {
+  try {
+    const { orgId, leadId, conversationId } = context;
+    const eventTypes = analysis.event_types || [];
+    for (const eventType of eventTypes) {
+      await pool.query(`
+        INSERT INTO conversation_events (organization_id, lead_id, conversation_id, event_type, event_metadata)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [
+        orgId, leadId || null, conversationId || null, eventType,
+        JSON.stringify({ intent: analysis.intent, stage: analysis.stage, urgency: analysis.urgency })
+      ]);
+    }
+  } catch (err) {
+    log(`[CIL] recordConversationEvents error: ${err.message}`);
+  }
+}
+
+/**
+ * Updates the sales behavior graph (upsert on conversation_id).
+ */
+async function updateSalesBehaviorGraph(analysis, context) {
+  try {
+    const { orgId, leadId, conversationId } = context;
+    if (!conversationId) return;
+
+    // Get or create the graph row
+    const existing = await pool.query(
+      `SELECT id, intent_sequence, objection_sequence, message_count FROM sales_behavior_graph WHERE conversation_id = $1`,
+      [conversationId]
+    );
+
+    if (existing.rows.length === 0) {
+      await pool.query(`
+        INSERT INTO sales_behavior_graph (organization_id, lead_id, conversation_id, intent_sequence, objection_sequence, message_count, conversion_result)
+        VALUES ($1,$2,$3,$4,$5,1,'pending')
+      `, [
+        orgId, leadId || null, conversationId,
+        JSON.stringify([analysis.intent]),
+        JSON.stringify(analysis.objections || [])
+      ]);
+    } else {
+      const row = existing.rows[0];
+      const intents = [...(row.intent_sequence || []), analysis.intent].filter(Boolean);
+      const objections = [...(row.objection_sequence || []), ...(analysis.objections || [])];
+      await pool.query(`
+        UPDATE sales_behavior_graph SET
+          intent_sequence = $1,
+          objection_sequence = $2,
+          message_count = message_count + 1,
+          updated_at = NOW()
+        WHERE id = $3
+      `, [JSON.stringify(intents), JSON.stringify(objections), row.id]);
+    }
+  } catch (err) {
+    log(`[CIL] updateSalesBehaviorGraph error: ${err.message}`);
+  }
+}
+
+/**
+ * Main entry point: analyze a WhatsApp message and record all intelligence.
+ * Designed to be called fire-and-forget with .catch(log).
+ */
+async function processConversationIntelligence(messageContent, context) {
+  try {
+    const analysis = await analyzeMessageIntelligence(messageContent, context);
+    if (!analysis) return;
+
+    await Promise.all([
+      recordConversationIntelligence(analysis, context),
+      recordConversationEvents(analysis, context),
+      updateSalesBehaviorGraph(analysis, context)
+    ]);
+
+    log(`[CIL] Intelligence recorded for lead ${context.leadId || 'unknown'}: stage=${analysis.stage}, prob=${analysis.purchase_probability}`);
+  } catch (err) {
+    log(`[CIL] processConversationIntelligence error: ${err.message}`);
+  }
+}
+// ── END CIL Engine ────────────────────────────────────────────────────────────
+
 // Inicia as conexões e migrações em segundo plano para não travar o boot da Vercel
 initPool().then(() => {
   ensureLeadsColumns();
   setTimeout(ensureMessageBuffer, 3000);
   setTimeout(ensureRevenueOSColumns, 5000); // Revenue OS: ensure intent_label, last_ia_briefing, assigned_to
   setTimeout(ensureCoachingTables, 7000); // Revenue OS Coaching: insights table
+  setTimeout(ensureConversationIntelligenceTables, 9000); // CIL: Conversation Intelligence tables
 }).catch(e => log("Startup error: " + e.message));
 
 app.use(cors({ origin: true, credentials: true }));
@@ -4645,6 +4898,28 @@ VALUES($1, $2, $3, $4, $5, $6) RETURNING id`,
 
       // Process all buffered messages together in one AI call
       await processAIResponse(agent, remoteJid, instanceName, inputMessages);
+
+      // ── CIL: Fire-and-forget intelligence analysis ──
+      // Build combined text from the batch, ignoring audio-only messages
+      const batchText = inputMessages.map(m => m.content).filter(Boolean).join(' | ');
+      if (batchText && orgId) {
+        // Find the lead ID for this conversation (phone matches remoteJid)
+        const phone = remoteJid.split('@')[0];
+        pool.query(
+          `SELECT id FROM leads WHERE organization_id = $1 AND (phone LIKE $2 OR phone = $2) LIMIT 1`,
+          [orgId, `%${phone}%`]
+        ).then(leadRes => {
+          const leadId = leadRes.rows[0]?.id || null;
+          processConversationIntelligence(batchText, {
+            orgId,
+            leadId,
+            agentId: agent.id,
+            conversationId: remoteJid,
+            messageId: `${remoteJid}_${Date.now()}`
+          }).catch(e => log(`[CIL] Background error: ${e.message}`));
+        }).catch(e => log(`[CIL] Lead lookup error: ${e.message}`));
+      }
+      // ── END CIL ──
 
       return res.json({ success: true });
       // --- END DB-BACKED MESSAGE BUFFER ---
@@ -10775,6 +11050,219 @@ app.patch("/api/agendamentos/:id", verifyJWT, async (req, res) => {
     res.status(500).json({ error: "Internal error" });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONVERSATION INTELLIGENCE LAYER — API ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ADMIN: Summary counts (total conversations, messages, events)
+app.get("/api/admin/conversation-intelligence/summary", verifyJWT, verifyAdmin, async (req, res) => {
+  try {
+    const [convRes, msgRes, evtRes] = await Promise.all([
+      pool.query(`SELECT COUNT(DISTINCT conversation_id) AS total FROM conversation_intelligence`),
+      pool.query(`SELECT COUNT(*) AS total FROM conversation_intelligence`),
+      pool.query(`SELECT COUNT(*) AS total FROM conversation_events`)
+    ]);
+    res.json({
+      total_conversations: parseInt(convRes.rows[0]?.total || 0),
+      total_messages: parseInt(msgRes.rows[0]?.total || 0),
+      total_events: parseInt(evtRes.rows[0]?.total || 0)
+    });
+  } catch (err) {
+    log(`[CIL] GET /api/admin/conversation-intelligence/summary error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ADMIN: Intent distribution
+app.get("/api/admin/conversation-intelligence/intents", verifyJWT, verifyAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT intent, COUNT(*) AS count
+      FROM conversation_intelligence
+      WHERE intent IS NOT NULL
+      GROUP BY intent
+      ORDER BY count DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    log(`[CIL] GET /api/admin/conversation-intelligence/intents error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ADMIN: Top objections
+app.get("/api/admin/conversation-intelligence/objections", verifyJWT, verifyAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT unnest(objections) AS objection, COUNT(*) AS count
+      FROM conversation_intelligence
+      WHERE objections IS NOT NULL AND array_length(objections, 1) > 0
+      GROUP BY objection
+      ORDER BY count DESC
+      LIMIT 20
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    log(`[CIL] GET /api/admin/conversation-intelligence/objections error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ADMIN: Funnel stage heatmap
+app.get("/api/admin/conversation-intelligence/stages", verifyJWT, verifyAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT stage, COUNT(*) AS count
+      FROM conversation_intelligence
+      WHERE stage IS NOT NULL
+      GROUP BY stage
+      ORDER BY count DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    log(`[CIL] GET /api/admin/conversation-intelligence/stages error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ADMIN: Top segments, products, cities
+app.get("/api/admin/conversation-intelligence/top-segments", verifyJWT, verifyAdmin, async (req, res) => {
+  try {
+    const [products, segments, cities] = await Promise.all([
+      pool.query(`
+        SELECT product_interest AS name, COUNT(*) AS count
+        FROM conversation_intelligence
+        WHERE product_interest IS NOT NULL
+        GROUP BY product_interest ORDER BY count DESC LIMIT 10
+      `),
+      pool.query(`
+        SELECT segment AS name, COUNT(*) AS count
+        FROM conversation_intelligence
+        WHERE segment IS NOT NULL
+        GROUP BY segment ORDER BY count DESC LIMIT 10
+      `),
+      pool.query(`
+        SELECT city AS name, COUNT(*) AS count
+        FROM conversation_intelligence
+        WHERE city IS NOT NULL
+        GROUP BY city ORDER BY count DESC LIMIT 10
+      `)
+    ]);
+    res.json({
+      top_products: products.rows,
+      top_segments: segments.rows,
+      top_cities: cities.rows
+    });
+  } catch (err) {
+    log(`[CIL] GET /api/admin/conversation-intelligence/top-segments error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ADMIN: Average metrics
+app.get("/api/admin/conversation-intelligence/avg-metrics", verifyJWT, verifyAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        ROUND(AVG(purchase_probability)::numeric, 3) AS avg_purchase_probability,
+        ROUND(AVG(sbg.time_to_decision)::numeric, 0) AS avg_time_to_decision_seconds
+      FROM conversation_intelligence ci
+      LEFT JOIN sales_behavior_graph sbg ON ci.conversation_id = sbg.conversation_id
+    `);
+    res.json(result.rows[0] || { avg_purchase_probability: null, avg_time_to_decision_seconds: null });
+  } catch (err) {
+    log(`[CIL] GET /api/admin/conversation-intelligence/avg-metrics error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// TENANT: Lead intelligence for a specific lead (scoped to org)
+app.get("/api/leads/:leadId/intelligence", verifyJWT, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { leadId } = req.params;
+
+    const userRes = await pool.query("SELECT organization_id FROM users WHERE id = $1", [userId]);
+    const orgId = userRes.rows[0]?.organization_id;
+    if (!orgId) return res.status(400).json({ error: "No organization" });
+
+    // Verify the lead belongs to this org
+    const leadCheck = await pool.query(
+      "SELECT id FROM leads WHERE id = $1 AND organization_id = $2",
+      [leadId, orgId]
+    );
+    if (leadCheck.rows.length === 0) return res.status(404).json({ error: "Lead not found" });
+
+    const result = await pool.query(`
+      SELECT intent, product_interest, stage, urgency, sentiment, objections,
+             purchase_probability, estimated_ticket, decision_maker, created_at
+      FROM conversation_intelligence
+      WHERE lead_id = $1 AND organization_id = $2
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [leadId, orgId]);
+
+    if (result.rows.length === 0) {
+      return res.json({ hasIntelligence: false });
+    }
+
+    const row = result.rows[0];
+    const score = Math.round((row.purchase_probability || 0) * 100);
+    const temperature = score >= 70 ? 'quente' : score >= 40 ? 'morno' : 'frio';
+
+    res.json({
+      hasIntelligence: true,
+      leadScore: score,
+      temperature,
+      intent: row.intent,
+      stage: row.stage,
+      urgency: row.urgency,
+      sentiment: row.sentiment,
+      objections: row.objections || [],
+      productInterest: row.product_interest,
+      decisionMaker: row.decision_maker,
+      estimatedTicket: row.estimated_ticket,
+      updatedAt: row.created_at
+    });
+  } catch (err) {
+    log(`[CIL] GET /api/leads/:leadId/intelligence error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// TENANT: Stalled high-urgency leads alert
+app.get("/api/leads/intelligence/alerts", verifyJWT, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const userRes = await pool.query("SELECT organization_id FROM users WHERE id = $1", [userId]);
+    const orgId = userRes.rows[0]?.organization_id;
+    if (!orgId) return res.status(400).json({ error: "No organization" });
+
+    const result = await pool.query(`
+      SELECT ci.lead_id, ci.intent, ci.stage, ci.urgency, ci.purchase_probability,
+             ci.objections, ci.product_interest, ci.created_at,
+             l.name AS lead_name, l.phone AS lead_phone
+      FROM conversation_intelligence ci
+      LEFT JOIN leads l ON l.id = ci.lead_id::uuid
+      WHERE ci.organization_id = $1
+        AND ci.urgency = 'alta'
+        AND ci.created_at < NOW() - INTERVAL '2 hours'
+        AND ci.created_at > NOW() - INTERVAL '48 hours'
+      ORDER BY ci.purchase_probability DESC, ci.created_at DESC
+      LIMIT 20
+    `, [orgId]);
+
+    res.json(result.rows);
+  } catch (err) {
+    log(`[CIL] GET /api/leads/intelligence/alerts error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// END CONVERSATION INTELLIGENCE LAYER
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Temporary Migration Route to execute schema changes against the live database pool
 app.get("/api/run-migration-temp", async (req, res) => {

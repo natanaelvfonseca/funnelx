@@ -83,6 +83,11 @@ function App() {
                                         <AdminProducts />
                                     </AdminRoute>
                                 } />
+                                <Route path="admin/conversation-intelligence" element={
+                                    <AdminRoute>
+                                        <AdminDashboard />
+                                    </AdminRoute>
+                                } />
 
                                 <Route path="checkout" element={<Checkout />} />
                                 <Route path="checkout/success" element={<CheckoutSuccess />} />

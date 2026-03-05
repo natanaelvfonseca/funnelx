@@ -13,6 +13,7 @@ import { useAuth } from '../../context/AuthContext';
 import { OverviewTab } from './dashboard/OverviewTab';
 import { ProductsTab } from './dashboard/ProductsTab';
 import { AdsTab } from './dashboard/AdsTab';
+import { ConversationIntelligenceTab } from './dashboard/ConversationIntelligenceTab';
 
 
 
@@ -32,7 +33,7 @@ interface AdminUser {
 
 export function AdminDashboard() {
     const { token } = useAuth();
-    const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'ads' | 'users'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'ads' | 'users' | 'intelligence'>('overview');
     const [period, setPeriod] = useState<string>('30d');
     const [strategicData, setStrategicData] = useState<any>(null);
     const [users, setUsers] = useState<AdminUser[]>([]);
@@ -194,7 +195,7 @@ export function AdminDashboard() {
 
                     {/* Navigation Tabs */}
                     <div className="flex bg-background border border-purple-500/20 rounded-lg p-1 overflow-x-auto custom-scrollbar shadow-inner">
-                        {(['overview', 'products', 'ads', 'users'] as const).map((tab) => (
+                        {(['overview', 'products', 'ads', 'users', 'intelligence'] as const).map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
@@ -205,7 +206,8 @@ export function AdminDashboard() {
                             >
                                 {tab === 'overview' ? 'Visão Geral' :
                                     tab === 'products' ? 'Produtos & Consumo' :
-                                        tab === 'ads' ? 'Aquisição (Ads)' : 'Gestão de Clientes'}
+                                        tab === 'ads' ? 'Aquisição (Ads)' :
+                                            tab === 'intelligence' ? '🧠 Conversation Intel' : 'Gestão de Clientes'}
                             </button>
                         ))}
                     </div>
@@ -221,6 +223,7 @@ export function AdminDashboard() {
                     {activeTab === 'overview' && <OverviewTab data={strategicData} />}
                     {activeTab === 'products' && <ProductsTab data={strategicData} />}
                     {activeTab === 'ads' && <AdsTab data={strategicData} />}
+                    {activeTab === 'intelligence' && <ConversationIntelligenceTab />}
 
                     {activeTab === 'users' && (
                         <div className="bg-card border border-purple-500/20 rounded-xl overflow-hidden shadow-xl animate-in slide-in-from-bottom-4 duration-500">

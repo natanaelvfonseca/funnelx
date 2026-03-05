@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { MoreHorizontal, Calendar, DollarSign, Trash2, Phone, Mail, Globe, UserCheck, User } from 'lucide-react';
+import { MoreHorizontal, Calendar, DollarSign, Trash2, Phone, Mail, Globe, UserCheck, User, Brain } from 'lucide-react';
 import { Lead } from '../types';
+
+const apiBase = import.meta.env.VITE_API_BASE_URL || '';
 
 const INTENT_CONFIG = {
     HOT: { label: 'QUENTE', color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/25', ring: '#fb923c', cardBorder: 'border-orange-500/35' },
@@ -18,13 +20,26 @@ interface KanbanCardProps {
     onMarkAsClient?: (leadId: string) => void;
     onAssignVendedor?: (leadId: string, vendedorId: string | null) => void;
     vendedores?: Vendedor[];
+    token?: string;
 }
 
-export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient, onAssignVendedor, vendedores = [] }: KanbanCardProps) {
+export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient, onAssignVendedor, vendedores = [], token }: KanbanCardProps) {
     if (!lead) return null;
 
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const [intelligence, setIntelligence] = useState<any>(null);
+
+    // Fetch AI intelligence for this lead (non-blocking)
+    useEffect(() => {
+        if (!token || !lead.id) return;
+        fetch(`${apiBase}/api/leads/${lead.id}/intelligence`, {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => { if (data?.hasIntelligence) setIntelligence(data); })
+            .catch(() => { });
+    }, [lead.id, token]);
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
@@ -86,6 +101,17 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient
                                     {intentCfg.label} {score}
                                 </span>
                             )}
+                            {/* AI Lead Score badge from Conversation Intelligence */}
+                            {intelligence && !intentCfg && (
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 tracking-wide flex items-center gap-0.5
+                                    ${intelligence.temperature === 'quente' ? 'bg-orange-500/10 text-orange-400 border border-orange-500/25' :
+                                        intelligence.temperature === 'morno' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/25' :
+                                            'bg-blue-500/10 text-blue-400 border border-blue-500/25'}`}
+                                >
+                                    <Brain size={8} />
+                                    {intelligence.temperature === 'quente' ? '🔥' : intelligence.temperature === 'morno' ? '🌡️' : '❄️'} {intelligence.leadScore}
+                                </span>
+                            )}
                         </div>
                         {lead.phone && (
                             <p className="text-xs text-text-secondary flex items-center gap-1 mt-0.5"><Phone size={10} />{lead.phone}</p>
@@ -99,7 +125,22 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient
                         {lead.briefing && (
                             <p className="text-[10px] text-text-muted italic mt-1 leading-snug line-clamp-2" title={lead.briefing}>{lead.briefing}</p>
                         )}
-                        {!intentCfg && lead.temperature && (
+                        {/* AI Intelligence: detected intent + top objection */}
+                        {intelligence && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                                {intelligence.intent && (
+                                    <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                        {intelligence.intent}
+                                    </span>
+                                )}
+                                {intelligence.objections?.slice(0, 1).map((obj: string) => (
+                                    <span key={obj} className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                        ⚠️ {obj}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                        {!intentCfg && lead.temperature && !intelligence && (
                             <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold mt-1.5 border ${lead.temperature.includes('Quente') ? 'bg-red-500/10 text-red-500 border-red-500/20' : lead.temperature.includes('Morno') ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}>
                                 <span>{lead.temperature}</span>
                             </div>
