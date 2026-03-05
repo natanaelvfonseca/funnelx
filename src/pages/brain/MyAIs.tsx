@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Plus, Bot, MoreVertical, Cpu, X, Loader2, Smartphone, Play, Pause, Building2, Wand2, ChevronLeft } from 'lucide-react';
+import { Plus, Bot, MoreVertical, Cpu, X, Loader2, Smartphone, Play, Pause, Building2, Wand2, ChevronLeft, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import AgentEditModal from '../../components/agents/AgentEditModal';
 import { agentTemplates } from '../../data/agentTemplates';
+import { getProfileBySlug } from '../../data/industryProfiles';
 
 interface Agent {
     id: string;
@@ -53,12 +54,21 @@ export function MyAIs() {
     const [isLoadingCompanyData, setIsLoadingCompanyData] = useState(false);
     const [hasCompanyData, setHasCompanyData] = useState<boolean | null>(null);
 
+    // Industry Accelerator state
+    const [industrySlug, setIndustrySlug] = useState<string | null>(null);
+    const [installingAgentId, setInstallingAgentId] = useState<string | null>(null);
+
     // Initial Fetch
     useEffect(() => {
         if (user) {
             fetchAgents();
+            // Fetch industry profile silently
+            fetch('/api/industry/my-profile', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(r => r.ok ? r.json() : null)
+                .then(data => { if (data?.industry_slug && data.industry_slug !== 'generico') setIndustrySlug(data.industry_slug); })
+                .catch(() => { });
         }
-    }, [user]); // Re-fetch if user changes
+    }, [user]);
 
     const fetchAgents = async () => {
         try {
@@ -134,6 +144,25 @@ export function MyAIs() {
         }
     };
 
+    const handleInstallIndustryAgent = async (agent: { id: string; name: string; role: string; systemPrompt?: string }) => {
+        setInstallingAgentId(agent.id);
+        try {
+            const res = await fetch('/api/agents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    name: agent.name,
+                    type: agent.role?.toLowerCase() || 'atendente',
+                    system_prompt: agent.systemPrompt || `Você é ${agent.name}.`,
+                    model_config: {}
+                })
+            });
+            if (res.ok) { await fetchAgents(); }
+        } catch (e) { console.error(e); } finally {
+            setInstallingAgentId(null);
+        }
+    };
+
     const handleCreateAgent = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsCreating(true);
@@ -200,6 +229,45 @@ export function MyAIs() {
                     Criar Nova IA
                 </button>
             </div>
+
+            {/* Industry Agent Suggestions */}
+            {industrySlug && (() => {
+                const profile = getProfileBySlug(industrySlug);
+                if (!profile || profile.recommendedAgents.length === 0) return null;
+                const existing = new Set(agents.map(a => a.name.toLowerCase()));
+                const toInstall = profile.recommendedAgents.filter(a => !existing.has(a.name.toLowerCase()));
+                if (toInstall.length === 0) return null;
+                return (
+                    <div className="mb-8 bg-gradient-to-r from-primary/5 to-orange-500/5 border border-primary/20 rounded-2xl p-5">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Sparkles size={18} className="text-primary" />
+                            <span className="text-sm font-bold text-foreground">
+                                {profile.icon} Agentes Recomendados para {profile.name}
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {toInstall.map(agent => (
+                                <div key={agent.id} className="bg-background border border-border rounded-xl p-4 flex items-start gap-3">
+                                    <span className="text-2xl shrink-0">{agent.icon}</span>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-semibold text-foreground leading-tight">{agent.name}</p>
+                                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{agent.description}</p>
+                                        <button
+                                            onClick={() => handleInstallIndustryAgent(agent)}
+                                            disabled={installingAgentId === agent.id}
+                                            className="mt-2 text-xs font-bold text-primary hover:text-primary/80 flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        >
+                                            {installingAgentId === agent.id
+                                                ? <><Loader2 size={12} className="animate-spin" /> Instalando...</>
+                                                : <><Plus size={12} /> Instalar com 1 clique</>}
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* List Content */}
             {isLoading ? (

@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { FileUpload } from '../../components/onboarding/FileUpload';
 import { agentTemplates, type AgentTemplate } from '../../data/agentTemplates';
+import { IndustryPicker } from '../../components/onboarding/IndustryPicker';
 import confetti from 'canvas-confetti';
 import { DebugModal, DebugLog } from '../../components/DebugModal';
 
@@ -108,8 +109,9 @@ export function Onboarding() {
     const { fetchNotifications, showToast } = useNotifications();
     const navigate = useNavigate();
 
-    // Steps: 0=Intro, 1=Template, 2=Business (substeps), 3=Files, 4=WhatsApp
+    // Steps: 0=Intro, 1=Template, 1.5=Industry (optional), 2=Business (substeps), 3=Files, 4=WhatsApp
     const [step, setStep] = useState(0);
+    const [showIndustryStep, setShowIndustryStep] = useState(false);
     const [subStep, setSubStep] = useState(0);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -118,6 +120,9 @@ export function Onboarding() {
 
     // Template State (Step 1)
     const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null);
+
+    // Industry Profile State (Step 1.5)
+    const [selectedIndustrySlug, setSelectedIndustrySlug] = useState<string | null>(null);
 
     // Business Form State
     const [formData, setFormData] = useState({
@@ -211,11 +216,30 @@ export function Onboarding() {
         }
         playSound('level-up');
         setError(null);
+        // Show the industry step before business identity
         showLoadingScreen(() => {
-            setStep(2);
-            setSubStep(0);
+            setStep(1);
+            setShowIndustryStep(true);
             setPotential(30);
         });
+    };
+
+    const handleIndustrySelect = async (proceedSlug?: string) => {
+        const slug = proceedSlug ?? selectedIndustrySlug ?? 'generico';
+        setShowIndustryStep(false);
+        setStep(2);
+        setSubStep(0);
+        setPotential(35);
+        // Fire-and-forget — doesn't block onboarding
+        if (slug && slug !== 'generico') {
+            try {
+                await fetch(`/api/industry/select`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ industry_slug: slug })
+                });
+            } catch (_) { /* non-blocking */ }
+        }
     };
 
     // STEP 2 SUB-STEP HANDLERS
@@ -633,6 +657,34 @@ export function Onboarding() {
                                 >
                                     Confirmar Seleção
                                 </button>
+                            </div>
+                        )}
+
+                        {/* STEP 1.5: INDUSTRY PICKER (optional) */}
+                        {step === 1 && showIndustryStep && (
+                            <div className="space-y-6 animate-fade-in">
+                                <IndustryPicker
+                                    selected={selectedIndustrySlug}
+                                    onSelect={(slug) => setSelectedIndustrySlug(slug)}
+                                />
+
+                                <button
+                                    onClick={() => handleIndustrySelect(selectedIndustrySlug ?? 'generico')}
+                                    className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-xl shadow-lg shadow-primary/20 transition-all active:scale-95 text-lg"
+                                >
+                                    {selectedIndustrySlug && selectedIndustrySlug !== 'generico'
+                                        ? 'Ativar Perfil e Continuar'
+                                        : 'Continuar com Configuração Genérica'}
+                                </button>
+                                <p className="text-center">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleIndustrySelect('generico')}
+                                        className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline transition-colors"
+                                    >
+                                        Pular etapa
+                                    </button>
+                                </p>
                             </div>
                         )}
 

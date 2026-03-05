@@ -1394,6 +1394,7 @@ initPool().then(() => {
   setTimeout(ensureConversationIntelligenceTables, 9000); // CIL: Conversation Intelligence tables
   setTimeout(ensureOpportunityScoresTable, 10000); // OSE: Opportunity Scores table
   setTimeout(ensureFollowupEngineTables, 12000); // AI Follow-up Engine tables
+  setTimeout(ensureIndustryProfileTables, 14000); // Industry Accelerator Layer tables
 
   // Start Follow-up Engine cron jobs (fire after tables are ready)
   setTimeout(() => {
@@ -13207,7 +13208,261 @@ app.get('/api/cron/process-queue', async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// INDUSTRY ACCELERATOR LAYER
+// ══════════════════════════════════════════════════════════════════════════════
+
+const INDUSTRY_PROFILES_SEED = [
+  {
+    slug: 'educacao', name: 'Educação', icon: '🎓',
+    description: 'Matrícula de alunos, cursos, faculdades, escolas e treinamentos.',
+    default_pipeline: JSON.stringify(['Novo Lead', 'Interesse no Curso', 'Qualificação', 'Agendamento', 'Comparecimento', 'Matrícula', 'Perdido']),
+    default_intents: JSON.stringify(['interesse_curso', 'preco_curso', 'horario_aula', 'duracao_curso', 'certificado', 'formas_pagamento', 'agendar_visita', 'bolsa_desconto']),
+    default_objections: JSON.stringify(['preco_alto', 'falta_tempo', 'distancia', 'duvida_certificado', 'precisa_falar_com_pais']),
+    recommended_ai_agents: JSON.stringify([
+      { id: 'edu_sdr', name: 'AI SDR – Captação de Alunos', icon: '📚', role: 'SDR', description: 'Qualifica interessados e agenda visitas ou matrículas.' },
+      { id: 'edu_followup', name: 'AI Follow-up de Interessados', icon: '🔔', role: 'Follow-up', description: 'Reativa alunos que pediram informações e não retornaram.' }
+    ]),
+    recommended_followup_sequences: JSON.stringify([
+      { trigger: 'lead_pediu_preco', delay_minutes: 30, message_hint: 'Retome o contato com condições de pagamento e bolsa disponível.' },
+      { trigger: 'lead_pediu_informacoes', delay_minutes: 120, message_hint: 'Envie o calendário de turmas e reforce o diferencial.' },
+      { trigger: 'lead_interessado', delay_minutes: 1440, message_hint: 'Lembre da data de início da próxima turma.' }
+    ])
+  },
+  {
+    slug: 'imobiliario', name: 'Imobiliário', icon: '🏠',
+    description: 'Venda e locação de imóveis, loteamentos e construtoras.',
+    default_pipeline: JSON.stringify(['Novo Lead', 'Qualificação', 'Visita Agendada', 'Proposta', 'Aprovação de Crédito', 'Contrato', 'Perdido']),
+    default_intents: JSON.stringify(['interesse_imovel', 'preco_imovel', 'localizacao', 'financiamento', 'agendar_visita', 'planta_baixa', 'condicoes_pagamento']),
+    default_objections: JSON.stringify(['preco_alto', 'nao_aprovado_credito', 'precisa_vender_atual', 'localizacao_longe', 'nao_decidiu']),
+    recommended_ai_agents: JSON.stringify([
+      { id: 'imob_sdr', name: 'AI SDR – Qualificação Imobiliária', icon: '🏡', role: 'SDR', description: 'Qualifica perfil de compra e agenda visitas ao imóvel.' },
+      { id: 'imob_vendedor', name: 'AI Corretora Digital', icon: '🔑', role: 'Vendedor', description: 'Apresenta imóveis, trata objeções e conduz ao fechamento.' }
+    ]),
+    recommended_followup_sequences: JSON.stringify([
+      { trigger: 'lead_pediu_preco', delay_minutes: 60, message_hint: 'Envie simulação de financiamento personalizada.' },
+      { trigger: 'lead_agendou_visita', delay_minutes: 60, message_hint: 'Confirme a visita e envie o endereço com link do mapa.' }
+    ])
+  },
+  {
+    slug: 'seguros', name: 'Seguros', icon: '🛡️',
+    description: 'Seguros de vida, auto, residencial, empresarial e saúde.',
+    default_pipeline: JSON.stringify(['Novo Lead', 'Cotação Solicitada', 'Proposta Enviada', 'Análise do Cliente', 'Fechamento', 'Perdido']),
+    default_intents: JSON.stringify(['cotar_seguro', 'comparar_planos', 'preco_seguro', 'coberturas', 'sinistro', 'renovacao']),
+    default_objections: JSON.stringify(['preco_alto', 'ja_tem_seguro', 'nao_ve_necessidade', 'nao_confia_seguradora']),
+    recommended_ai_agents: JSON.stringify([
+      { id: 'seg_corretor', name: 'AI Corretor de Seguros', icon: '🛡️', role: 'Vendedor', description: 'Cotação interativa, comparação de coberturas e fechamento.' }
+    ]),
+    recommended_followup_sequences: JSON.stringify([
+      { trigger: 'lead_pediu_cotacao', delay_minutes: 30, message_hint: 'Envie a cotação e destaque a principal cobertura diferencial.' },
+      { trigger: 'lead_nao_respondeu', delay_minutes: 1440, message_hint: 'Pergunte se teve alguma dúvida sobre a proposta.' }
+    ])
+  },
+  {
+    slug: 'clinicas', name: 'Clínicas', icon: '🏥',
+    description: 'Clínicas médicas, odontológicas, estética e bem-estar.',
+    default_pipeline: JSON.stringify(['Novo Lead', 'Interesse', 'Consulta Agendada', 'Comparecimento', 'Tratamento', 'Fidelização', 'Perdido']),
+    default_intents: JSON.stringify(['agendar_consulta', 'preco_procedimento', 'convenio', 'duvida_tratamento', 'resultado_esperado', 'disponibilidade']),
+    default_objections: JSON.stringify(['preco_alto', 'sem_convenio', 'medo_procedimento', 'indisponibilidade_horario', 'nao_urgente']),
+    recommended_ai_agents: JSON.stringify([
+      { id: 'clinica_atendente', name: 'AI Atendente de Clínica', icon: '👩‍⚕️', role: 'Atendente', description: 'Agenda consultas, informa procedimentos e convênios aceitos.' },
+      { id: 'clinica_reativacao', name: 'AI Reativação de Pacientes', icon: '💊', role: 'Follow-up', description: 'Reativa pacientes inativos e lembra de consultas de retorno.' }
+    ]),
+    recommended_followup_sequences: JSON.stringify([
+      { trigger: 'lead_pediu_informacoes', delay_minutes: 60, message_hint: 'Confirme a disponibilidade de horários e incentive o agendamento.' },
+      { trigger: 'consulta_agendada', delay_minutes: 1440, message_hint: 'Lembre da consulta de amanhã e envie o endereço.' }
+    ])
+  },
+  {
+    slug: 'varejo', name: 'Varejo', icon: '🛒',
+    description: 'Lojas físicas e e-commerce de produtos físicos.',
+    default_pipeline: JSON.stringify(['Novo Lead', 'Interesse', 'Carrinho', 'Checkout', 'Pedido Realizado', 'Entregue', 'Perdido']),
+    default_intents: JSON.stringify(['interesse_produto', 'preco', 'disponibilidade', 'frete', 'prazo_entrega', 'troca_devolucao', 'promocao']),
+    default_objections: JSON.stringify(['preco_alto', 'frete_caro', 'prazo_longo', 'desconfia_loja', 'ja_comprou_outro']),
+    recommended_ai_agents: JSON.stringify([
+      { id: 'varejo_vendedor', name: 'AI Consultora de Vendas', icon: '🛍️', role: 'Vendedor', description: 'Apresenta produtos, informa estoque e conduz ao pedido.' }
+    ]),
+    recommended_followup_sequences: JSON.stringify([
+      { trigger: 'carrinho_abandonado', delay_minutes: 30, message_hint: 'Lembre do produto no carrinho e ofereça um cupom de desconto.' },
+      { trigger: 'pedido_entregue', delay_minutes: 2880, message_hint: 'Peça avaliação e sugira produto complementar.' }
+    ])
+  },
+  {
+    slug: 'servicos', name: 'Serviços', icon: '⚙️',
+    description: 'Prestadores de serviços B2B e B2C: manutenção, consultoria, agências.',
+    default_pipeline: JSON.stringify(['Novo Lead', 'Briefing', 'Proposta', 'Negociação', 'Contrato', 'Execução', 'Perdido']),
+    default_intents: JSON.stringify(['solicitar_orcamento', 'prazo_execucao', 'portfolio', 'formas_pagamento', 'garantia', 'disponibilidade']),
+    default_objections: JSON.stringify(['preco_alto', 'precisa_comparar', 'nao_urgente', 'ja_tem_fornecedor', 'sem_orcamento_agora']),
+    recommended_ai_agents: JSON.stringify([
+      { id: 'servicos_sdr', name: 'AI SDR Comercial', icon: '💼', role: 'SDR', description: 'Qualifica a necessidade, coleta briefing e agenda reunião.' }
+    ]),
+    recommended_followup_sequences: JSON.stringify([
+      { trigger: 'orcamento_enviado', delay_minutes: 120, message_hint: 'Pergunte se teve alguma dúvida sobre a proposta enviada.' },
+      { trigger: 'lead_nao_respondeu', delay_minutes: 1440, message_hint: 'Retome o contato perguntando se ainda tem interesse.' }
+    ])
+  },
+  {
+    slug: 'generico', name: 'Genérico', icon: '⚡',
+    description: 'Configuração padrão sem perfil específico. Ideal para negócios únicos.',
+    default_pipeline: JSON.stringify([]),
+    default_intents: JSON.stringify([]),
+    default_objections: JSON.stringify([]),
+    recommended_ai_agents: JSON.stringify([]),
+    recommended_followup_sequences: JSON.stringify([])
+  }
+];
+
+const ensureIndustryProfileTables = async () => {
+  try {
+    log('[IAL] Ensuring Industry Accelerator Layer tables...');
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS industry_profiles (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT NOT NULL,
+        slug TEXT UNIQUE NOT NULL,
+        description TEXT,
+        icon TEXT,
+        default_pipeline JSONB DEFAULT '[]',
+        default_intents JSONB DEFAULT '[]',
+        default_objections JSONB DEFAULT '[]',
+        recommended_ai_agents JSONB DEFAULT '[]',
+        recommended_followup_sequences JSONB DEFAULT '[]',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS company_industry_profile (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id TEXT UNIQUE NOT NULL,
+        industry_slug TEXT NOT NULL DEFAULT 'generico',
+        activated_at TIMESTAMPTZ DEFAULT NOW(),
+        pipeline_accepted BOOLEAN DEFAULT FALSE
+      )
+    `);
+
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_cip_org ON company_industry_profile(organization_id)`);
+
+    // Seed the 7 profiles
+    for (const profile of INDUSTRY_PROFILES_SEED) {
+      await pool.query(`
+        INSERT INTO industry_profiles (name, slug, description, icon, default_pipeline, default_intents, default_objections, recommended_ai_agents, recommended_followup_sequences)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ON CONFLICT (slug) DO NOTHING
+      `, [profile.name, profile.slug, profile.description, profile.icon, profile.default_pipeline, profile.default_intents, profile.default_objections, profile.recommended_ai_agents, profile.recommended_followup_sequences]);
+    }
+
+    log('[IAL] Industry Accelerator Layer tables verified and seeded.');
+  } catch (err) {
+    log('[ERROR] ensureIndustryProfileTables failed: ' + err.message);
+  }
+};
+
+// ── Industry Accelerator Layer API Routes ─────────────────────────────────────
+
+// GET /api/industry/profiles — List all profiles (no auth required — used in onboarding)
+app.get('/api/industry/profiles', async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT slug, name, icon, description, default_pipeline, default_intents, default_objections, recommended_ai_agents FROM industry_profiles ORDER BY name`);
+    res.json(result.rows);
+  } catch (err) {
+    log('GET /api/industry/profiles error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/industry/my-profile — Get current org's industry profile (JWT)
+app.get('/api/industry/my-profile', verifyJWT, async (req, res) => {
+  try {
+    const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
+    const orgId = orgRes.rows[0]?.organization_id;
+    if (!orgId) return res.json({ industry_slug: 'generico', has_profile: false });
+
+    const result = await pool.query(`
+      SELECT cip.industry_slug, cip.pipeline_accepted, cip.activated_at,
+             ip.name, ip.icon, ip.description, ip.recommended_ai_agents,
+             ip.default_pipeline, ip.default_intents, ip.default_objections
+      FROM company_industry_profile cip
+      LEFT JOIN industry_profiles ip ON ip.slug = cip.industry_slug
+      WHERE cip.organization_id = $1
+    `, [orgId]);
+
+    if (result.rows.length === 0) return res.json({ industry_slug: 'generico', has_profile: false });
+    res.json({ ...result.rows[0], has_profile: true });
+  } catch (err) {
+    log('GET /api/industry/my-profile error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/industry/select — Save org's industry profile selection (JWT)
+app.post('/api/industry/select', verifyJWT, async (req, res) => {
+  try {
+    const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
+    const orgId = orgRes.rows[0]?.organization_id;
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+
+    const { industry_slug, accept_pipeline } = req.body;
+    if (!industry_slug) return res.status(400).json({ error: 'industry_slug is required' });
+
+    // Upsert the choice
+    await pool.query(`
+      INSERT INTO company_industry_profile (organization_id, industry_slug, pipeline_accepted)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (organization_id) DO UPDATE
+        SET industry_slug = EXCLUDED.industry_slug,
+            pipeline_accepted = EXCLUDED.pipeline_accepted,
+            activated_at = NOW()
+    `, [orgId, industry_slug, accept_pipeline || false]);
+
+    log(`[IAL] Org ${orgId} selected industry: ${industry_slug}`);
+    res.json({ success: true, industry_slug });
+  } catch (err) {
+    log('POST /api/industry/select error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/industry/agents/:slug — Get recommended agents for a profile (JWT)
+app.get('/api/industry/agents/:slug', verifyJWT, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT recommended_ai_agents FROM industry_profiles WHERE slug = $1`,
+      [req.params.slug]
+    );
+    if (result.rows.length === 0) return res.json([]);
+    res.json(result.rows[0].recommended_ai_agents || []);
+  } catch (err) {
+    log('GET /api/industry/agents error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/industry/intents/:slug — Get intents + objections for a profile (JWT)
+app.get('/api/industry/intents/:slug', verifyJWT, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT default_intents, default_objections, recommended_followup_sequences FROM industry_profiles WHERE slug = $1`,
+      [req.params.slug]
+    );
+    if (result.rows.length === 0) return res.json({ intents: [], objections: [], followup_sequences: [] });
+    const row = result.rows[0];
+    res.json({
+      intents: row.default_intents || [],
+      objections: row.default_objections || [],
+      followup_sequences: row.recommended_followup_sequences || []
+    });
+  } catch (err) {
+    log('GET /api/industry/intents error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── END Industry Accelerator Layer ────────────────────────────────────────────
+
 // ─────────────────────────────────────────────────────────────────────────────
+
 
 // Start Server only if NOT running on Vercel
 
