@@ -3,7 +3,7 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
 import { Analytics } from '@vercel/analytics/react';
 import { Login } from './pages/auth/Login';
 import { Register } from './pages/auth/Register';
-import { Dashboard } from './pages/dashboard/Dashboard';
+import { RevenueMetrics } from './pages/dashboard/RevenueMetrics';
 import { Onboarding } from './pages/onboarding/Onboarding';
 import { AppShell } from './components/layout/AppShell';
 import { ThemeProvider } from './components/theme/ThemeProvider';
@@ -29,7 +29,7 @@ import { Clients } from './pages/clients/Clients';
 import { Checkout } from './pages/checkout/Checkout';
 import { CheckoutSuccess } from './pages/checkout/CheckoutSuccess';
 import { FollowupManager } from './pages/recovery/FollowupManager';
-import { RevenueIntelligence } from './pages/intelligence/RevenueIntelligence';
+
 import { AdminIntelligence } from './pages/admin/AdminIntelligence';
 
 import { ReferralRedirect } from './pages/partners/ReferralRedirect';
@@ -55,8 +55,9 @@ function App() {
                                     </OnboardingGuard>
                                 </ProtectedRoute>
                             }>
-                                <Route index element={<Navigate to="/dashboard" replace />} />
-                                <Route path="dashboard" element={<Dashboard />} />
+                                <Route index element={<Navigate to="/dashboard/revenue-metrics" replace />} />
+                                <Route path="dashboard" element={<Navigate to="/dashboard/revenue-metrics" replace />} />
+                                <Route path="dashboard/revenue-metrics" element={<RevenueMetrics />} />
                                 <Route path="whatsapp" element={<WhatsAppConnection />} />
                                 <Route path="crm" element={<CRM />} />
                                 <Route path="clients" element={<Clients />} />
@@ -67,7 +68,7 @@ function App() {
                                 <Route path="agenda" element={<Agenda />} />
                                 <Route path="vendedores" element={<Vendedores />} />
                                 <Route path="recovery" element={<FollowupManager />} />
-                                <Route path="intelligence" element={<RevenueIntelligence />} />
+
                                 <Route path="partners" element={<PartnerDashboard />} />
 
                                 {/* Admin Routes */}

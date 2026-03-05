@@ -1,5 +1,4 @@
 import {
-    LayoutDashboard,
     MessageSquare,
     BrainCircuit,
     MessagesSquare,
@@ -15,21 +14,20 @@ import {
     Shield,
     Package,
     RotateCcw,
-    TrendingUp
+    BarChart2
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 
 const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
+    { icon: BarChart2, label: 'Métricas de Receita', path: '/dashboard/revenue-metrics' },
     { icon: Users, label: 'Funil de Vendas', path: '/crm' },
     { icon: BrainCircuit, label: 'Agentes de IA', path: '/brain' },
     { icon: MessageSquare, label: 'Canais de Comunicação', path: '/whatsapp' },
     { icon: MessagesSquare, label: 'Live Chat', path: '/live-chat' },
     { icon: UserCheck, label: 'Clientes', path: '/clients' },
     { icon: RotateCcw, label: 'Recuperação', path: '/recovery' },
-    { icon: TrendingUp, label: 'Revenue Intelligence', path: '/intelligence' },
     { icon: CalendarDays, label: 'Agenda', path: '/agenda' },
     { icon: UserCog, label: 'Vendedores', path: '/vendedores' },
     { icon: Zap, label: 'Ativar Koins', path: '/billing' },
