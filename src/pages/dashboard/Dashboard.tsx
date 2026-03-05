@@ -1,7 +1,7 @@
 import {
     Clock, MessageSquare, Calendar, DollarSign, CheckCircle, Users,
     Flame, ArrowRight, AlertTriangle, Target, Zap, Timer, BrainCircuit,
-    TrendingUp, Activity, BarChart3
+    TrendingUp, BarChart3
 } from 'lucide-react';
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
