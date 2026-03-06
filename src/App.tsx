@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { Analytics } from '@vercel/analytics/react';
 import { Login } from './pages/auth/Login';
-import { Register } from './pages/auth/Register';
 import { RevenueMetrics } from './pages/dashboard/RevenueMetrics';
 import { Onboarding } from './pages/onboarding/Onboarding';
 import { OnboardingV2 } from './pages/onboarding/OnboardingV2';
@@ -46,7 +45,7 @@ function App() {
                         <Routes>
                             <Route path="/p/:code" element={<ReferralRedirect />} />
                             <Route path="/login" element={<Login />} />
-                            <Route path="/register" element={<Register />} />
+                            <Route path="/register" element={<OnboardingV2 />} />
                             <Route path="/onboarding" element={<Onboarding />} />
                             <Route path="/start" element={<OnboardingV2 />} />
                             <Route path="/partners/register" element={<PartnerRegister />} />

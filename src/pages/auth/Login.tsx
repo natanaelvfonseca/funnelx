@@ -91,9 +91,9 @@ export function Login() {
                         </button>
                     </form>
 
-                    <div className="mt-8 text-center">
+                    <div className="mt-8 text-center space-y-4">
                         <p className="text-sm text-text-secondary">
-                            Ainda não tem conta? <Link to="/register" className="text-primary font-bold hover:text-primary-light transition-colors">Criar conta</Link>
+                            Ainda não tem conta? <Link to="/register" className="text-primary font-bold hover:text-primary-light transition-colors">Começar Ativação Grátis</Link>
                         </p>
                     </div>
                 </div>
