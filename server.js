@@ -1433,6 +1433,25 @@ const ensureConversationStateTables = async () => {
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_lm_org_lead ON lead_memory(organization_id, lead_id)`);
 
+    // Extend lead_memory with structured + semantic memory fields (safe to re-run)
+    const alterColumns = [
+      // Structured identity fields
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS company TEXT`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS business_type TEXT`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS lead_interest TEXT`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS purchase_moment TEXT`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS decision_role TEXT`,
+      // Semantic insight signals
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS lead_interested BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS lead_price_sensitive BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS lead_comparing_options BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS lead_not_ready BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS lead_urgent BOOLEAN DEFAULT FALSE`,
+    ];
+    for (const sql of alterColumns) {
+      await pool.query(sql).catch(e => log(`[CSE] ALTER warning: ${e.message}`));
+    }
+
     log('[CSE] Conversation State tables verified.');
   } catch (err) {
     log('[CSE] ensureConversationStateTables error: ' + err.message);
@@ -1578,18 +1597,37 @@ function determineStageTransition(currentStage, intent, memory) {
 function buildCSEStageDirective(stage, goal, memory) {
   let directive = `\n\n[ESTADO DA CONVERSA]\nEstágio atual: ${stage.toUpperCase()}\nObjetivo deste turno: ${goal}\n`;
 
-  // Inject known memory to prevent repeated questions
+  // ── Layer 2: Structured identity + behavioral memory ───────────────────────
   const known = [];
+  if (memory.name) known.push(`Nome do lead: "${memory.name}"`);
+  if (memory.company) known.push(`Empresa: "${memory.company}"`);
+  if (memory.business_type) known.push(`Setor/negócio: "${memory.business_type}"`);
+  if (memory.lead_interest) known.push(`Interesse identificado: "${memory.lead_interest}"`);
   if (memory.pain_point) known.push(`Dor identificada: "${memory.pain_point}"`);
-  if (memory.product_interest) known.push(`Interesse em: "${memory.product_interest}"`);
+  if (memory.product_interest) known.push(`Produto de interesse: "${memory.product_interest}"`);
   if (memory.budget_range) known.push(`Orçamento informado: "${memory.budget_range}"`);
+  if (memory.purchase_moment) known.push(`Momento de compra: "${memory.purchase_moment}"`);
   if (memory.decision_timeline) known.push(`Prazo de decisão: "${memory.decision_timeline}"`);
+  if (memory.decision_role) known.push(`Papel na decisão: "${memory.decision_role}"`);
   if (memory.main_objection) known.push(`Objeção principal: "${memory.main_objection}"`);
-  if (memory.asked_price) known.push('Lead já pediu preço — não repita a pergunta de qualificação de valor.');
+  if (memory.asked_price) known.push('Lead já perguntou o preço — não repita a qualificação de valor.');
   if (memory.showed_buying_intent) known.push('Lead demonstrou intenção de compra anteriormente.');
+  if (memory.accepted_meeting) known.push('Lead aceitou agendar — priorize confirmar data/horário.');
 
   if (known.length > 0) {
-    directive += `\n[O QUE VOCÊ JÁ SABE SOBRE ESTE LEAD — NÃO PERGUNTE NOVAMENTE]\n${known.join('\n')}\n`;
+    directive += `\n[MEMÓRIA ESTRUTURADA DO LEAD — NÃO PERGUNTE O QUE JÁ SABE]\n${known.join('\n')}\n`;
+  }
+
+  // ── Layer 3: Semantic insight signals ─────────────────────────────────────
+  const signals = [];
+  if (memory.lead_interested) signals.push('✓ Interessado no produto');
+  if (memory.lead_price_sensitive) signals.push('✓ Sensível a preço — use ROI, não desconto');
+  if (memory.lead_comparing_options) signals.push('✓ Comparando opções — destaque diferenciais');
+  if (memory.lead_not_ready) signals.push('⚠ Não está pronto — foque em educar e manter engajamento');
+  if (memory.lead_urgent) signals.push('✓ Urgente — acesse decisão agora, minimize fricção');
+
+  if (signals.length > 0) {
+    directive += `\n[SINAIS SEMÂNTICOS DETECTADOS]\n${signals.join('\n')}\n`;
   }
 
   const answeredKeys = Object.keys(memory.answered_questions || {});
@@ -1626,43 +1664,132 @@ async function updateConversationState(stateId, intent, newStage, goal, nextExpe
   }
 }
 
-// ─── CSE: Update lead memory flags ───────────────────────────────────────────
-async function updateLeadMemory(orgId, leadId, intent, analysisResult) {
+// ─── MEMORY: Extract structured memory from conversation (lightweight LLM call) ──
+/**
+ * Reads the last 3 messages + new user message and extracts structured lead memory.
+ * Returns a partial object — only fields that could be extracted are present.
+ * Runs async/non-blocking after AI response.
+ */
+async function extractConversationMemory(last3Messages, userMessage) {
   try {
-    const patch = {
+    const conversationText = [
+      ...last3Messages.map(m => `${m.role === 'user' ? 'Lead' : 'IA'}: ${m.content || ''}`),
+      `Lead: ${userMessage}`
+    ].join('\n').substring(0, 1500);
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{
+        role: 'system',
+        content: `Você é um extrator de dados de CRM. Leia a conversa abaixo e extraia as informações do lead.
+Retorne APENAS um JSON válido com os campos a seguir. Para campos desconhecidos use null. Não invente dados.
+
+Campos obrigatórios no JSON:
+{
+  "name": string | null,
+  "company": string | null,
+  "business_type": string | null,
+  "lead_interest": string | null,
+  "budget_range": string | null,
+  "purchase_moment": string | null,
+  "decision_role": "decisor" | "influenciador" | "usuario_final" | null,
+  "main_objection": string | null,
+  "pain_point": string | null,
+  "lead_interested": boolean,
+  "lead_price_sensitive": boolean,
+  "lead_comparing_options": boolean,
+  "lead_not_ready": boolean,
+  "lead_urgent": boolean
+}`
+      }, {
+        role: 'user',
+        content: conversationText
+      }],
+      max_tokens: 250,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+    });
+
+    const raw = completion.choices[0]?.message?.content;
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (err) {
+    log(`[MEMORY] extractConversationMemory error: ${err.message}`);
+    return null;
+  }
+}
+
+// ─── MEMORY: Upsert all extracted fields into lead_memory ────────────────────
+async function updateLeadMemory(orgId, leadId, intent, extractedMemory) {
+  try {
+    // Boolean flags from intent classification
+    const intentFlags = {
       asked_price: intent === 'asked_price' ? true : undefined,
       showed_buying_intent: intent === 'buying_intent' ? true : undefined,
       accepted_meeting: intent === 'accepted_meeting' ? true : undefined,
     };
 
-    if (analysisResult) {
-      if (analysisResult.product_interest && analysisResult.product_interest !== 'N/A') {
-        patch.product_interest = analysisResult.product_interest;
-      }
-      if (analysisResult.objections && analysisResult.objections.length > 0) {
-        patch.main_objection = analysisResult.objections[0];
-      }
-    }
-
-    // Build SET clause dynamically — only fields with defined values
+    // Build dynamic SET clause — only apply non-null values
     const setClauses = [];
     const values = [orgId, leadId];
     let idx = 3;
 
-    if (patch.asked_price !== undefined) { setClauses.push(`asked_price = asked_price OR $${idx++}`); values.push(patch.asked_price); }
-    if (patch.showed_buying_intent !== undefined) { setClauses.push(`showed_buying_intent = showed_buying_intent OR $${idx++}`); values.push(patch.showed_buying_intent); }
-    if (patch.accepted_meeting !== undefined) { setClauses.push(`accepted_meeting = accepted_meeting OR $${idx++}`); values.push(patch.accepted_meeting); }
-    if (patch.product_interest) { setClauses.push(`product_interest = COALESCE(product_interest, $${idx++})`); values.push(patch.product_interest); }
-    if (patch.main_objection) { setClauses.push(`main_objection = COALESCE(main_objection, $${idx++})`); values.push(patch.main_objection); }
+    // Helper: COALESCE update (don't overwrite existing data)
+    const coalesce = (col, val) => {
+      if (val !== null && val !== undefined && val !== '') {
+        setClauses.push(`${col} = COALESCE(${col}, $${idx++})`);
+        values.push(val);
+      }
+    };
+    // Helper: OR update for booleans (once true, stays true)
+    const orFlag = (col, val) => {
+      if (val === true) {
+        setClauses.push(`${col} = ${col} OR $${idx++}`);
+        values.push(true);
+      }
+    };
+    // Helper: overwrite for semantic signals (can flip back to false)
+    const setSignal = (col, val) => {
+      if (typeof val === 'boolean') {
+        setClauses.push(`${col} = $${idx++}`);
+        values.push(val);
+      }
+    };
 
+    // --- Intent flags ---
+    if (intentFlags.asked_price !== undefined) orFlag('asked_price', intentFlags.asked_price);
+    if (intentFlags.showed_buying_intent !== undefined) orFlag('showed_buying_intent', intentFlags.showed_buying_intent);
+    if (intentFlags.accepted_meeting !== undefined) orFlag('accepted_meeting', intentFlags.accepted_meeting);
+
+    // --- Structured extracted memory ---
+    if (extractedMemory) {
+      coalesce('name', extractedMemory.name);
+      coalesce('company', extractedMemory.company);
+      coalesce('business_type', extractedMemory.business_type);
+      coalesce('lead_interest', extractedMemory.lead_interest);
+      coalesce('budget_range', extractedMemory.budget_range);
+      coalesce('purchase_moment', extractedMemory.purchase_moment);
+      coalesce('decision_role', extractedMemory.decision_role);
+      coalesce('main_objection', extractedMemory.main_objection);
+      coalesce('pain_point', extractedMemory.pain_point);
+      // Semantic signals — overwrite each turn (reflects current state)
+      setSignal('lead_interested', extractedMemory.lead_interested);
+      setSignal('lead_price_sensitive', extractedMemory.lead_price_sensitive);
+      setSignal('lead_comparing_options', extractedMemory.lead_comparing_options);
+      setSignal('lead_not_ready', extractedMemory.lead_not_ready);
+      setSignal('lead_urgent', extractedMemory.lead_urgent);
+    }
+
+    if (setClauses.length === 0) return; // Nothing to update
     setClauses.push('updated_at = NOW()');
 
     await pool.query(
       `UPDATE lead_memory SET ${setClauses.join(', ')} WHERE organization_id = $1 AND lead_id = $2`,
       values
     );
+    log(`[MEMORY] Updated lead_memory for ${leadId}: ${setClauses.length - 1} fields`);
   } catch (err) {
-    log(`[CSE] updateLeadMemory error: ${err.message}`);
+    log(`[MEMORY] updateLeadMemory error: ${err.message}`);
   }
 }
 
@@ -5256,7 +5383,73 @@ app.get("/api/chats/status/:agentId/:remoteJid", async (req, res) => {
   }
 });
 
-// PATCH /api/vendedores/:id/toggle-ativo — activate or deactivate a vendedor
+// ── MEMORY: GET /api/leads/:leadId/memory ─────────────────────────────────────
+// Returns the full 3-layer memory for a given lead (WhatsApp remoteJid).
+app.get('/api/leads/:leadId/memory', verifyJWT, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const leadId = decodeURIComponent(req.params.leadId);
+
+    const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [userId]);
+    const orgId = orgRes.rows[0]?.organization_id;
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+
+    const memRes = await pool.query(
+      `SELECT * FROM lead_memory WHERE organization_id = $1 AND lead_id = $2`,
+      [orgId, leadId]
+    );
+    const memory = memRes.rows[0] || null;
+
+    const stateRes = await pool.query(
+      `SELECT lead_stage, conversation_goal, last_user_intent, last_ai_action,
+              next_expected_action, stage_entered_at, updated_at
+       FROM conversation_state
+       WHERE organization_id = $1 AND lead_id = $2
+       ORDER BY updated_at DESC LIMIT 1`,
+      [orgId, leadId]
+    );
+    const state = stateRes.rows[0] || null;
+
+    res.json({ memory, state });
+  } catch (err) {
+    log(`[MEMORY] GET /api/leads/:leadId/memory error: ${err.message}`);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── MEMORY: GET /api/crm/memory-overview ──────────────────────────────────────
+// Returns memory summary for all leads in the org (for CRM list view).
+app.get('/api/crm/memory-overview', verifyJWT, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [userId]);
+    const orgId = orgRes.rows[0]?.organization_id;
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+
+    const result = await pool.query(`
+      SELECT
+        lm.lead_id, lm.name, lm.company, lm.business_type,
+        lm.lead_interest, lm.main_objection, lm.decision_role,
+        lm.lead_interested, lm.lead_price_sensitive,
+        lm.lead_urgent, lm.lead_not_ready, lm.lead_comparing_options,
+        lm.updated_at AS memory_updated_at,
+        cs.lead_stage, cs.last_user_intent
+      FROM lead_memory lm
+      LEFT JOIN conversation_state cs
+        ON cs.lead_id = lm.lead_id AND cs.organization_id = lm.organization_id
+      WHERE lm.organization_id = $1
+      ORDER BY lm.updated_at DESC
+      LIMIT 100
+    `, [orgId]);
+
+    res.json(result.rows);
+  } catch (err) {
+    log(`[MEMORY] GET /api/crm/memory-overview error: ${err.message}`);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
 app.patch("/api/vendedores/:id/toggle-ativo", verifyJWT, async (req, res) => {
   const { id } = req.params;
   try {
@@ -11687,12 +11880,20 @@ Se o cliente apresentar uma objeção, NUNCA discuta, NUNCA diminua o problema e
         .catch(err => log(`[FOLLOWUP SCHEDULE] Error: ${err.message}`));
     }
 
-    // 5. CSE: Persist state and lead memory (async, non-blocking)
+    // 5. CSE + MEMORY: Persist state and extract structured memory (async, non-blocking)
     if (cseState && cseOrgId) {
       updateConversationState(cseState.id, userIntent, cseStage, cseGoal, cseNextExpected, aiResponse)
         .catch(err => log(`[CSE] updateConversationState error: ${err.message}`));
-      updateLeadMemory(cseOrgId, remoteJid, userIntent, null)
-        .catch(err => log(`[CSE] updateLeadMemory error: ${err.message}`));
+
+      // Extract full structured + semantic memory from last 3 msgs + current user message
+      const memoryLast3 = coalescedHistory
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .filter(m => typeof m.content === 'string')
+        .slice(-3);
+
+      extractConversationMemory(memoryLast3, userText)
+        .then(extracted => updateLeadMemory(cseOrgId, remoteJid, userIntent, extracted))
+        .catch(err => log(`[MEMORY] pipeline error: ${err.message}`));
     }
 
   } catch (error) {
