@@ -248,6 +248,11 @@ const ensureConversationIntelligenceTables = async () => {
     await pool.query(`ALTER TABLE conversation_intelligence ADD COLUMN IF NOT EXISTS processed_by_cie BOOLEAN DEFAULT FALSE`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ci_processed ON conversation_intelligence(organization_id, processed_by_cie)`);
 
+    // ── New extraction fields (Kogna Intelligence Panel) ──────────────────────
+    await pool.query(`ALTER TABLE conversation_intelligence ADD COLUMN IF NOT EXISTS lead_interest_category TEXT`);
+    await pool.query(`ALTER TABLE conversation_intelligence ADD COLUMN IF NOT EXISTS industry_segment TEXT`);
+
+
     // ── CIE: Conversation Intelligence Engine tables ──────────────────────────
 
     // Periodic aggregated snapshots per org
@@ -14049,6 +14054,172 @@ app.get('/api/intelligence/admin/products', verifyJWT, async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// POST /api/intelligence/run — frontend calls POST, existing engine uses GET
+app.post('/api/intelligence/run', verifyJWT, async (req, res) => {
+  try {
+    const admin = await isSuperAdmin(req.userId);
+    if (!admin) return res.status(403).json({ error: 'Requires super_admin' });
+    runConversationIntelligenceEngine().catch(e => log(`[CIE] manual run error: ${e.message}`));
+    res.json({ success: true, message: 'CIE engine triggered asynchronously' });
+  } catch (err) {
+    log('POST /api/intelligence/run error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// KOGNA INTELLIGENCE PANEL — 5 cross-org anonymized metric endpoints
+// ══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/intelligence/panel/language-patterns
+// Returns sales_patterns ranked by conversion_impact_score
+app.get('/api/intelligence/panel/language-patterns', verifyJWT, async (req, res) => {
+  try {
+    const admin = await isSuperAdmin(req.userId);
+    if (!admin) return res.status(403).json({ error: 'Requires super_admin' });
+    const days = parseInt(req.query.days || '30');
+
+    const result = await pool.query(`
+      SELECT
+        pattern_type,
+        phrase_detected,
+        context_intent,
+        ROUND(CAST(AVG(conversion_impact_score) AS numeric), 3) AS avg_impact_score,
+        SUM(detected_count) AS total_detected
+      FROM sales_patterns
+      WHERE updated_at >= NOW() - INTERVAL '${days} days'
+      GROUP BY pattern_type, phrase_detected, context_intent
+      ORDER BY avg_impact_score DESC
+      LIMIT 30
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    log('GET /api/intelligence/panel/language-patterns error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/intelligence/panel/conversion-time
+// Returns avg days_to_close by segment (anonymized)
+app.get('/api/intelligence/panel/conversion-time', verifyJWT, async (req, res) => {
+  try {
+    const admin = await isSuperAdmin(req.userId);
+    if (!admin) return res.status(403).json({ error: 'Requires super_admin' });
+    const days = parseInt(req.query.days || '30');
+
+    const result = await pool.query(`
+      SELECT
+        COALESCE(industry_segment, segment, 'Geral') AS segment,
+        ROUND(CAST(AVG(days_to_close) AS numeric), 1) AS avg_days_to_close,
+        COUNT(*) FILTER (WHERE closed_won = TRUE) AS total_won,
+        COUNT(*) AS total_analyzed
+      FROM conversation_intelligence
+      WHERE created_at >= NOW() - INTERVAL '${days} days'
+        AND days_to_close IS NOT NULL AND days_to_close > 0
+      GROUP BY COALESCE(industry_segment, segment, 'Geral')
+      ORDER BY avg_days_to_close ASC
+      LIMIT 20
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    log('GET /api/intelligence/panel/conversion-time error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/intelligence/panel/top-questions
+// Returns top closing phrases from sales_patterns (sorted by impact score)
+app.get('/api/intelligence/panel/top-questions', verifyJWT, async (req, res) => {
+  try {
+    const admin = await isSuperAdmin(req.userId);
+    if (!admin) return res.status(403).json({ error: 'Requires super_admin' });
+    const days = parseInt(req.query.days || '30');
+
+    const result = await pool.query(`
+      SELECT
+        phrase_detected,
+        context_intent,
+        ROUND(CAST(AVG(conversion_impact_score) AS numeric), 3) AS avg_impact_score,
+        SUM(detected_count) AS total_detected,
+        pattern_type
+      FROM sales_patterns
+      WHERE pattern_type = 'closing_phrase'
+        AND updated_at >= NOW() - INTERVAL '${days} days'
+      GROUP BY phrase_detected, context_intent, pattern_type
+      ORDER BY avg_impact_score DESC
+      LIMIT 15
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    log('GET /api/intelligence/panel/top-questions error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/intelligence/panel/intent-distribution
+// Returns cross-org intent counts (anonymized: no org_id exposed)
+app.get('/api/intelligence/panel/intent-distribution', verifyJWT, async (req, res) => {
+  try {
+    const admin = await isSuperAdmin(req.userId);
+    if (!admin) return res.status(403).json({ error: 'Requires super_admin' });
+    const days = parseInt(req.query.days || '30');
+
+    const result = await pool.query(`
+      SELECT
+        COALESCE(intent, 'desconhecido') AS intent,
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE closed_won = TRUE) AS won,
+        ROUND(CAST(AVG(purchase_probability) AS numeric), 2) AS avg_prob
+      FROM conversation_intelligence
+      WHERE created_at >= NOW() - INTERVAL '${days} days'
+        AND intent IS NOT NULL
+      GROUP BY COALESCE(intent, 'desconhecido')
+      ORDER BY total DESC
+      LIMIT 20
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    log('GET /api/intelligence/panel/intent-distribution error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/intelligence/panel/objection-detail
+// Returns objection type + avg ticket + conversion rate (anonymized)
+app.get('/api/intelligence/panel/objection-detail', verifyJWT, async (req, res) => {
+  try {
+    const admin = await isSuperAdmin(req.userId);
+    if (!admin) return res.status(403).json({ error: 'Requires super_admin' });
+    const days = parseInt(req.query.days || '30');
+
+    const result = await pool.query(`
+      SELECT
+        unnest(objections) AS objection,
+        COUNT(*) AS count,
+        COUNT(*) FILTER (WHERE closed_won = TRUE) AS won,
+        ROUND(CAST(AVG(estimated_ticket) AS numeric), 0) AS avg_ticket,
+        ROUND(CAST(AVG(purchase_probability) AS numeric), 2) AS avg_prob
+      FROM conversation_intelligence
+      WHERE created_at >= NOW() - INTERVAL '${days} days'
+        AND objections IS NOT NULL AND array_length(objections, 1) > 0
+      GROUP BY unnest(objections)
+      ORDER BY count DESC
+      LIMIT 20
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    log('GET /api/intelligence/panel/objection-detail error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── END Kogna Intelligence Panel API Routes ───────────────────────────────────
 
 // ── END Conversation Intelligence Engine API Routes ───────────────────────────
 

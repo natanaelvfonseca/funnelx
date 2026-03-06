@@ -31,6 +31,7 @@ import { CheckoutSuccess } from './pages/checkout/CheckoutSuccess';
 import { FollowupManager } from './pages/recovery/FollowupManager';
 
 import { AdminIntelligence } from './pages/admin/AdminIntelligence';
+import { KognaIntelligencePanel } from './pages/admin/KognaIntelligencePanel';
 
 import { ReferralRedirect } from './pages/partners/ReferralRedirect';
 
@@ -90,6 +91,11 @@ function App() {
                                 <Route path="admin/conversation-intelligence" element={
                                     <AdminRoute>
                                         <AdminIntelligence />
+                                    </AdminRoute>
+                                } />
+                                <Route path="admin/intelligence-panel" element={
+                                    <AdminRoute>
+                                        <KognaIntelligencePanel />
                                     </AdminRoute>
                                 } />
 
