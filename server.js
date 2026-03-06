@@ -1383,7 +1383,290 @@ async function runConversationIntelligenceEngine() {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// CONVERSATION STATE ENGINE (CSE)
+// Backend-controlled conversation stage machine.
+// The LLM receives a slim payload; stage transitions are decided here, not by the AI.
+// ══════════════════════════════════════════════════════════════════════════════
 
+const ensureConversationStateTables = async () => {
+  try {
+    log('[CSE] Ensuring Conversation State tables...');
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS conversation_state (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id TEXT NOT NULL,
+        agent_id UUID,
+        lead_id TEXT NOT NULL,
+        lead_stage TEXT NOT NULL DEFAULT 'novo',
+        conversation_goal TEXT,
+        last_user_intent TEXT,
+        last_ai_action TEXT,
+        next_expected_action TEXT,
+        stage_entered_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(agent_id, lead_id)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_cse_agent_lead ON conversation_state(agent_id, lead_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_cse_org ON conversation_state(organization_id)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS lead_memory (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id TEXT NOT NULL,
+        lead_id TEXT NOT NULL,
+        name TEXT,
+        pain_point TEXT,
+        product_interest TEXT,
+        budget_range TEXT,
+        decision_timeline TEXT,
+        main_objection TEXT,
+        asked_price BOOLEAN DEFAULT FALSE,
+        showed_buying_intent BOOLEAN DEFAULT FALSE,
+        accepted_meeting BOOLEAN DEFAULT FALSE,
+        answered_questions JSONB DEFAULT '{}',
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(organization_id, lead_id)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_lm_org_lead ON lead_memory(organization_id, lead_id)`);
+
+    log('[CSE] Conversation State tables verified.');
+  } catch (err) {
+    log('[CSE] ensureConversationStateTables error: ' + err.message);
+  }
+};
+
+// ─── CSE: Load or create conversation state ───────────────────────────────────
+async function loadConversationState(orgId, agentId, leadId) {
+  try {
+    // Ensure state row exists
+    await pool.query(`
+      INSERT INTO conversation_state (organization_id, agent_id, lead_id, lead_stage, conversation_goal)
+      VALUES ($1, $2, $3, 'novo', 'Qualificar o lead e entender sua necessidade principal.')
+      ON CONFLICT (agent_id, lead_id) DO NOTHING
+    `, [orgId, agentId, leadId]);
+
+    const stateRes = await pool.query(
+      `SELECT * FROM conversation_state WHERE agent_id = $1 AND lead_id = $2`,
+      [agentId, leadId]
+    );
+    const state = stateRes.rows[0] || null;
+
+    // Ensure lead memory row exists
+    await pool.query(`
+      INSERT INTO lead_memory (organization_id, lead_id)
+      VALUES ($1, $2)
+      ON CONFLICT (organization_id, lead_id) DO NOTHING
+    `, [orgId, leadId]);
+
+    const memRes = await pool.query(
+      `SELECT * FROM lead_memory WHERE organization_id = $1 AND lead_id = $2`,
+      [orgId, leadId]
+    );
+    const memory = memRes.rows[0] || {};
+
+    return { state, memory };
+  } catch (err) {
+    log(`[CSE] loadConversationState error: ${err.message}`);
+    return { state: null, memory: {} };
+  }
+}
+
+// ─── CSE: Extract user intent (lightweight LLM call) ─────────────────────────
+async function extractUserIntent(messageContent) {
+  try {
+    if (!messageContent || !messageContent.trim()) return 'neutral';
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{
+        role: 'system',
+        content: `Classifique a intenção da mensagem do lead em EXATAMENTE uma das opções abaixo. Responda apenas com a palavra-chave.
+
+Opções:
+- buying_intent     (demonstra interesse real em comprar, fechar, contratar)
+- asked_price       (perguntou preço, valor, investimento, custo, parcela)
+- accepted_meeting  (aceitou agendar, marcar reunião, demonstração, horário)
+- gave_objection    (expressou resistência, objeção, dúvida impeditiva)
+- asked_info        (pediu mais informações, detalhes, explicação sobre produto/serviço)
+- not_interested    (disse que não tem interesse, está satisfeito, dispensa)
+- neutral           (qualquer outra coisa)`
+      }, {
+        role: 'user',
+        content: messageContent.substring(0, 400)
+      }],
+      max_tokens: 12,
+      temperature: 0,
+    });
+
+    const raw = (completion.choices[0]?.message?.content || 'neutral').trim().toLowerCase();
+    const valid = ['buying_intent', 'asked_price', 'accepted_meeting', 'gave_objection', 'asked_info', 'not_interested', 'neutral'];
+    return valid.includes(raw) ? raw : 'neutral';
+  } catch (err) {
+    log(`[CSE] extractUserIntent error: ${err.message}`);
+    return 'neutral';
+  }
+}
+
+// ─── CSE: Stage transition rules (pure backend, no LLM) ──────────────────────
+const STAGE_GOALS = {
+  novo: 'Saudar o lead e iniciar qualificação. Fazer apenas UMA pergunta de qualificação.',
+  qualificacao: 'Identificar a necessidade principal, aplicação e contexto do lead.',
+  diagnostico: 'Aprofundar o problema. Entender dor, urgência e decisão de compra.',
+  apresentacao: 'Apresentar a solução conectando diretamente ao problema do lead.',
+  proposta: 'Apresentar valor e ROI. Não dar desconto. Fortalecer justificativa de preço.',
+  agendamento: 'Usar as ferramentas de agendamento para marcar uma reunião ou demonstração.',
+  followup: 'Retomar o contexto anterior e reengajar o lead com uma pergunta direcionadora.',
+};
+
+function determineStageTransition(currentStage, intent, memory) {
+  let newStage = currentStage;
+
+  switch (currentStage) {
+    case 'novo':
+      newStage = 'qualificacao';
+      break;
+    case 'qualificacao':
+      if (intent === 'asked_price') newStage = 'proposta';
+      else if (intent === 'buying_intent') newStage = 'diagnostico';
+      else if (intent === 'asked_info' || intent === 'gave_objection') newStage = 'diagnostico';
+      break;
+    case 'diagnostico':
+      if (intent === 'asked_price') newStage = 'proposta';
+      else if (intent === 'buying_intent') newStage = 'apresentacao';
+      else if (intent === 'accepted_meeting') newStage = 'agendamento';
+      break;
+    case 'apresentacao':
+      if (intent === 'asked_price') newStage = 'proposta';
+      else if (intent === 'accepted_meeting') newStage = 'agendamento';
+      break;
+    case 'proposta':
+      if (intent === 'accepted_meeting') newStage = 'agendamento';
+      break;
+    case 'followup':
+      // Re-engage: react to what user said
+      if (intent === 'asked_price') newStage = 'proposta';
+      else if (intent === 'buying_intent') newStage = 'apresentacao';
+      else if (intent === 'accepted_meeting') newStage = 'agendamento';
+      else newStage = 'qualificacao';
+      break;
+    default:
+      break;
+  }
+
+  const stageChanged = newStage !== currentStage;
+  const goal = STAGE_GOALS[newStage] || STAGE_GOALS['qualificacao'];
+
+  // Determine next expected action hint for this stage
+  const nextExpected = {
+    novo: 'lead_reply_to_greeting',
+    qualificacao: 'lead_share_context',
+    diagnostico: 'lead_confirm_pain',
+    apresentacao: 'lead_react_to_presentation',
+    proposta: 'lead_react_to_price',
+    agendamento: 'lead_confirm_slot',
+    followup: 'lead_reengage',
+  }[newStage] || 'lead_reply';
+
+  return { newStage, goal, stageChanged, nextExpected };
+}
+
+// ─── CSE: Build slim LLM payload ─────────────────────────────────────────────
+function buildCSEStageDirective(stage, goal, memory) {
+  let directive = `\n\n[ESTADO DA CONVERSA]\nEstágio atual: ${stage.toUpperCase()}\nObjetivo deste turno: ${goal}\n`;
+
+  // Inject known memory to prevent repeated questions
+  const known = [];
+  if (memory.pain_point) known.push(`Dor identificada: "${memory.pain_point}"`);
+  if (memory.product_interest) known.push(`Interesse em: "${memory.product_interest}"`);
+  if (memory.budget_range) known.push(`Orçamento informado: "${memory.budget_range}"`);
+  if (memory.decision_timeline) known.push(`Prazo de decisão: "${memory.decision_timeline}"`);
+  if (memory.main_objection) known.push(`Objeção principal: "${memory.main_objection}"`);
+  if (memory.asked_price) known.push('Lead já pediu preço — não repita a pergunta de qualificação de valor.');
+  if (memory.showed_buying_intent) known.push('Lead demonstrou intenção de compra anteriormente.');
+
+  if (known.length > 0) {
+    directive += `\n[O QUE VOCÊ JÁ SABE SOBRE ESTE LEAD — NÃO PERGUNTE NOVAMENTE]\n${known.join('\n')}\n`;
+  }
+
+  const answeredKeys = Object.keys(memory.answered_questions || {});
+  if (answeredKeys.length > 0) {
+    directive += `\n[PERGUNTAS JÁ FEITAS — NÃO REPITA]\n${answeredKeys.join(', ')}\n`;
+  }
+
+  return directive;
+}
+
+// ─── CSE: Update state after AI response ─────────────────────────────────────
+async function updateConversationState(stateId, intent, newStage, goal, nextExpected, aiResponseSnippet) {
+  try {
+    await pool.query(`
+      UPDATE conversation_state SET
+        lead_stage = $1,
+        conversation_goal = $2,
+        last_user_intent = $3,
+        last_ai_action = $4,
+        next_expected_action = $5,
+        stage_entered_at = CASE WHEN lead_stage != $1 THEN NOW() ELSE stage_entered_at END,
+        updated_at = NOW()
+      WHERE id = $6
+    `, [
+      newStage,
+      goal,
+      intent,
+      aiResponseSnippet ? aiResponseSnippet.substring(0, 200) : null,
+      nextExpected,
+      stateId
+    ]);
+  } catch (err) {
+    log(`[CSE] updateConversationState error: ${err.message}`);
+  }
+}
+
+// ─── CSE: Update lead memory flags ───────────────────────────────────────────
+async function updateLeadMemory(orgId, leadId, intent, analysisResult) {
+  try {
+    const patch = {
+      asked_price: intent === 'asked_price' ? true : undefined,
+      showed_buying_intent: intent === 'buying_intent' ? true : undefined,
+      accepted_meeting: intent === 'accepted_meeting' ? true : undefined,
+    };
+
+    if (analysisResult) {
+      if (analysisResult.product_interest && analysisResult.product_interest !== 'N/A') {
+        patch.product_interest = analysisResult.product_interest;
+      }
+      if (analysisResult.objections && analysisResult.objections.length > 0) {
+        patch.main_objection = analysisResult.objections[0];
+      }
+    }
+
+    // Build SET clause dynamically — only fields with defined values
+    const setClauses = [];
+    const values = [orgId, leadId];
+    let idx = 3;
+
+    if (patch.asked_price !== undefined) { setClauses.push(`asked_price = asked_price OR $${idx++}`); values.push(patch.asked_price); }
+    if (patch.showed_buying_intent !== undefined) { setClauses.push(`showed_buying_intent = showed_buying_intent OR $${idx++}`); values.push(patch.showed_buying_intent); }
+    if (patch.accepted_meeting !== undefined) { setClauses.push(`accepted_meeting = accepted_meeting OR $${idx++}`); values.push(patch.accepted_meeting); }
+    if (patch.product_interest) { setClauses.push(`product_interest = COALESCE(product_interest, $${idx++})`); values.push(patch.product_interest); }
+    if (patch.main_objection) { setClauses.push(`main_objection = COALESCE(main_objection, $${idx++})`); values.push(patch.main_objection); }
+
+    setClauses.push('updated_at = NOW()');
+
+    await pool.query(
+      `UPDATE lead_memory SET ${setClauses.join(', ')} WHERE organization_id = $1 AND lead_id = $2`,
+      values
+    );
+  } catch (err) {
+    log(`[CSE] updateLeadMemory error: ${err.message}`);
+  }
+}
+
+// ─── END Conversation State Engine ───────────────────────────────────────────
 
 // Inicia as conexões e migrações em segundo plano para não travar o boot da Vercel
 initPool().then(() => {
@@ -1395,6 +1678,7 @@ initPool().then(() => {
   setTimeout(ensureOpportunityScoresTable, 10000); // OSE: Opportunity Scores table
   setTimeout(ensureFollowupEngineTables, 12000); // AI Follow-up Engine tables
   setTimeout(ensureIndustryProfileTables, 14000); // Industry Accelerator Layer tables
+  setTimeout(ensureConversationStateTables, 16000); // CSE: Conversation State Engine tables
 
   // Start Follow-up Engine cron jobs (fire after tables are ready)
   setTimeout(() => {
@@ -10643,6 +10927,12 @@ async function processAIResponse(
     const currentDate = now.toLocaleString("pt-BR", dateOptions);
     const currentTime = now.toLocaleString("pt-BR", timeOptions);
 
+    // ── CSE: Extract intent early (only needs message text) ─────────────────────
+    const userText = inputMessages.map(m => m.content || m.text || '').join(' ');
+    const userIntent = await extractUserIntent(userText);
+    log(`[CSE] lead=${remoteJid} intent=${userIntent}`);
+    // ── END CSE early intent ─────────────────────────────────────────────────────
+
     // --- Compose the unified system prompt ---
     let systemPrompt = `Você é uma Inteligência Artificial de alta performance operando exclusivamente via WhatsApp.
 A sua identidade, tom de voz, missão principal e informações da empresa estão definidas no [TEMPLATE DE IDENTIDADE] abaixo.
@@ -10750,15 +11040,20 @@ Se o cliente apresentar uma objeção, NUNCA discuta, NUNCA diminua o problema e
       return; // Stop processing
     }
 
-    // 1.7 Fetch Chat History for this contact
-    // We fetch history, but we need to EXCLUDE the messages we just buffered (inputMessages),
-    // because we want to construct the latest message manually with Multimodal support (images).
-    // The webhook already inserted them into DB as text.
-    // So we fetch history, remove the last N items (where N = inputMessages.length), and append our rich version.
+    // ── CSE: Load state (now user/org is available) ─────────────────────────────
+    const cseOrgId = user.organization_id;
+    const { state: cseState, memory: cseMemory } = await loadConversationState(cseOrgId, agent.id, remoteJid);
+    const { newStage: cseStage, goal: cseGoal, nextExpected: cseNextExpected } = cseState
+      ? determineStageTransition(cseState.lead_stage, userIntent, cseMemory)
+      : { newStage: 'qualificacao', goal: STAGE_GOALS['qualificacao'], nextExpected: 'lead_share_context' };
+    log(`[CSE] stage=${cseStage} for lead=${remoteJid}`);
+    systemPrompt += buildCSEStageDirective(cseStage, cseGoal, cseMemory);
+    // ── END CSE state load ───────────────────────────────────────────────────────
 
-    // 1. Fetch History from DB
+    // 1.7 Fetch Last 3 Messages (CSE slim context — not full history)
+    // CSE replaces fat history with structured state + 3 recent messages only.
     const historyResult = await pool.query(
-      "SELECT role, content FROM chat_messages WHERE agent_id = $1 AND remote_jid = $2 ORDER BY created_at DESC LIMIT 20", // Limit 20 interactions
+      "SELECT role, content FROM chat_messages WHERE agent_id = $1 AND remote_jid = $2 ORDER BY created_at DESC LIMIT 6",
       [agent.id, remoteJid],
     );
 
@@ -11390,6 +11685,14 @@ Se o cliente apresentar uma objeção, NUNCA discuta, NUNCA diminua o problema e
 
       scheduleFollowupEvent(user.organization_id, remoteJid, instanceName)
         .catch(err => log(`[FOLLOWUP SCHEDULE] Error: ${err.message}`));
+    }
+
+    // 5. CSE: Persist state and lead memory (async, non-blocking)
+    if (cseState && cseOrgId) {
+      updateConversationState(cseState.id, userIntent, cseStage, cseGoal, cseNextExpected, aiResponse)
+        .catch(err => log(`[CSE] updateConversationState error: ${err.message}`));
+      updateLeadMemory(cseOrgId, remoteJid, userIntent, null)
+        .catch(err => log(`[CSE] updateLeadMemory error: ${err.message}`));
     }
 
   } catch (error) {
