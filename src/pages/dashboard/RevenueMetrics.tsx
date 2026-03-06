@@ -168,7 +168,7 @@ export function RevenueMetrics() {
     }));
     const tempTotal = tempData.reduce((a, b) => a + b.value, 0);
 
-    const maxVelocityHours = velocity ? Math.max(...velocity.map(s => s.avg_hours_idle), 1) : 1;
+
 
     const recommendations = (() => {
         const items: Array<{ id: string; title: string; desc: string; type: 'warning' | 'info' | 'success' }> = [];
@@ -233,7 +233,7 @@ export function RevenueMetrics() {
                 <section>
                     <SectionHeader
                         icon={DollarSign}
-                        title="Revenue Overview"
+                        title="Visão Geral da Receita"
                         subtitle="Potencial financeiro do seu pipeline em tempo real"
                         color="text-orange-400"
                     />
@@ -269,7 +269,7 @@ export function RevenueMetrics() {
                 <section>
                     <SectionHeader
                         icon={BarChart3}
-                        title="Pipeline Health"
+                        title="Saúde do Funil de Vendas"
                         subtitle="Qualidade e distribuição das oportunidades por temperatura e score"
                         color="text-indigo-400"
                     />
@@ -431,14 +431,14 @@ export function RevenueMetrics() {
                 <section>
                     <SectionHeader
                         icon={Activity}
-                        title="Sales Performance"
+                        title="Desempenho de Vendas"
                         subtitle="Eficiência operacional do processo de vendas"
                         color="text-emerald-400"
                     />
                     <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
 
-                        {/* AI Volume Chart — spans 3 cols */}
-                        <div className="xl:col-span-3 bg-background border border-border rounded-2xl p-5">
+                        {/* AI Volume Chart — spans all cols */}
+                        <div className="xl:col-span-5 bg-background border border-border rounded-2xl p-5">
                             <div className="flex items-center justify-between mb-5">
                                 <div className="flex items-center gap-2">
                                     <MessageSquare size={15} className="text-emerald-400" />
@@ -468,47 +468,18 @@ export function RevenueMetrics() {
                             {!metricsLoading && (
                                 <div className="mt-4 grid grid-cols-3 gap-3 pt-4 border-t border-border/40">
                                     {[
-                                        { label: 'Total Mensagens', value: metrics?.ai.total_messages || 0 },
-                                        { label: 'Chats Ativos', value: metrics?.ai.active_chats || 0 },
-                                        { label: 'Horas Economizadas', value: `${metrics?.ai.saved_hours || 0}h` },
-                                    ].map(({ label, value }) => (
+                                        { label: 'Total Mensagens', value: metrics?.ai.total_messages || 0, icon: MessageSquare },
+                                        { label: 'Chats Ativos', value: metrics?.ai.active_chats || 0, icon: Activity },
+                                        { label: 'Horas Economizadas', value: `${metrics?.ai.saved_hours || 0}h`, icon: Clock },
+                                    ].map(({ label, value, icon: Ic }) => (
                                         <div key={label} className="text-center">
+                                            <div className="flex justify-center mb-1">
+                                                <Ic size={14} className="text-muted-foreground/60" />
+                                            </div>
                                             <p className="text-base font-bold text-foreground">{value}</p>
                                             <p className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">{label}</p>
                                         </div>
                                     ))}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Velocity Score — spans 2 cols */}
-                        <div className="xl:col-span-2 bg-background border border-border rounded-2xl p-5">
-                            <div className="flex items-center gap-2 mb-5">
-                                <Clock size={15} className="text-purple-400" />
-                                <span className="text-sm font-semibold text-foreground">Velocity Score por Etapa</span>
-                            </div>
-                            {velocityLoading ? <Skeleton className="h-48" /> : !velocity?.length ? (
-                                <div className="h-48 flex items-center justify-center text-xs text-muted-foreground">Sem dados ainda</div>
-                            ) : (
-                                <div className="space-y-3">
-                                    {velocity.slice(0, 6).map(s => {
-                                        const w = Math.round((s.avg_hours_idle / maxVelocityHours) * 100);
-                                        const isSlowed = s.avg_hours_idle > 48;
-                                        const color = isSlowed ? '#ef4444' : s.avg_hours_idle > 24 ? '#f59e0b' : '#10b981';
-                                        return (
-                                            <div key={s.stage}>
-                                                <div className="flex justify-between text-xs mb-1">
-                                                    <span className="text-muted-foreground truncate max-w-[120px]" title={s.stage}>{s.stage}</span>
-                                                    <span className="font-bold" style={{ color }}>
-                                                        {fmtHours(s.avg_hours_idle)} · {s.count}
-                                                    </span>
-                                                </div>
-                                                <div className="h-1.5 bg-muted/30 rounded-full overflow-hidden">
-                                                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${w}%`, backgroundColor: color }} />
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
                                 </div>
                             )}
                         </div>
@@ -519,7 +490,7 @@ export function RevenueMetrics() {
                 <section>
                     <SectionHeader
                         icon={BrainCircuit}
-                        title="Actionable Intelligence"
+                        title="Inteligência Do Negócio"
                         subtitle="Leads que precisam de ação agora e insights gerados pela IA"
                         color="text-orange-400"
                     />
@@ -530,7 +501,7 @@ export function RevenueMetrics() {
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
                                     <Flame size={15} className="text-orange-400" />
-                                    <span className="text-sm font-semibold text-foreground">Lead Heat Map — Ação Necessária</span>
+                                    <span className="text-sm font-semibold text-foreground">Ações Necessárias</span>
                                 </div>
                             </div>
 
