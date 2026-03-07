@@ -283,7 +283,8 @@ export function OnboardingV2() {
                 }),
             });
             const data = await res.json();
-            setChatMessages(m => [...m, { role: 'ai', text: data.reply }]);
+            if (!res.ok) throw new Error(data.error || 'Erro ao processar mensagem.');
+            setChatMessages(m => [...m, { role: 'ai', text: data.reply || '...' }]);
             setMsgsUsed(data.messagesUsed || msgsUsed + 1);
         } catch { setChatMessages(m => [...m, { role: 'ai', text: 'Erro ao processar. Tente novamente.' }]); }
         finally { setChatLoading(false); }

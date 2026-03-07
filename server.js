@@ -3097,9 +3097,13 @@ app.post('/api/onboarding/preview-ai', onboardingPreviewLimiter, async (req, res
     const { session_id, message, onboarding_context } = req.body;
     if (!session_id || !message) return res.status(400).json({ error: 'session_id e message são obrigatórios.' });
 
-    // Count prior messages in this session
-    const countRes = await pool.query('SELECT COUNT(*) FROM onboarding_test_sessions WHERE session_id = $1', [session_id]);
-    const count = parseInt(countRes.rows[0].count || '0');
+    // Count prior messages — fail-safe if table doesn't exist yet
+    let count = 0;
+    try {
+      const countRes = await pool.query('SELECT COUNT(*) FROM onboarding_test_sessions WHERE session_id = $1', [session_id]);
+      count = parseInt(countRes.rows[0].count || '0');
+    } catch (_) { /* table may not exist on cold start — allow through */ }
+
     if (count >= 5) return res.status(429).json({ error: 'Limite de 5 interações de teste atingido.', limitReached: true });
 
     const ctx = onboarding_context || {};
@@ -3129,17 +3133,17 @@ Seja natural, fluido, em português brasileiro. Máximo 3 parágrafos por respos
 
     const reply = completion.choices[0]?.message?.content || 'Não consegui responder, tente novamente.';
 
-    // Save to dataset for CIL
-    await pool.query(
+    // Save to dataset for CIL — best-effort, does not block the reply
+    pool.query(
       `INSERT INTO onboarding_test_sessions (session_id, user_message, ai_reply, onboarding_context)
        VALUES ($1, $2, $3, $4)`,
       [session_id, message, reply, JSON.stringify(ctx)]
-    );
+    ).catch(() => { });
 
     res.json({ reply, messagesUsed: count + 1, messagesLeft: Math.max(0, 5 - (count + 1)) });
   } catch (err) {
     log('[ONBOARDING-PREVIEW] Error: ' + err.message);
-    res.status(500).json({ error: 'Erro ao processar mensagem.' });
+    res.status(500).json({ error: 'Erro ao processar mensagem: ' + err.message });
   }
 });
 
