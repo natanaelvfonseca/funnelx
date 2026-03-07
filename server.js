@@ -3187,26 +3187,13 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    let user;
-    await client.query('SAVEPOINT sp_user');
-    try {
-      const r = await client.query(
-        `INSERT INTO users (name, email, phone, password, organization_id, role, koins_balance)
-         VALUES ($1, $2, $3, $4, $5, 'user', 100) RETURNING *`,
-        [name, email.toLowerCase(), phone || null, hashedPassword, org.id]
-      );
-      user = r.rows[0];
-    } catch (e) {
-      await client.query('ROLLBACK TO SAVEPOINT sp_user');
-      // Retry without koins_balance column (may not exist in all environments)
-      const r = await client.query(
-        `INSERT INTO users (name, email, phone, password, organization_id, role)
-         VALUES ($1, $2, $3, $4, $5, 'user') RETURNING *`,
-        [name, email.toLowerCase(), phone || null, hashedPassword, org.id]
-      );
-      user = r.rows[0];
-    }
-    await client.query('RELEASE SAVEPOINT sp_user');
+    // Insert with guaranteed columns. koins_balance confirmed to exist.
+    const userRes = await client.query(
+      `INSERT INTO users (name, email, password, organization_id, role, koins_balance)
+       VALUES ($1, $2, $3, $4, 'user', 100) RETURNING *`,
+      [name, email.toLowerCase(), hashedPassword, org.id]
+    );
+    const user = userRes.rows[0];
 
     await client.query('UPDATE organizations SET owner_id = $1 WHERE id = $2', [user.id, org.id]);
 
@@ -3214,6 +3201,9 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
     await client.query(`UPDATE users SET onboarding_completed = true WHERE id = $1`, [user.id]).catch(() => { });
 
     await client.query('COMMIT');
+
+    // Best-effort: save whatsapp number if the column exists
+    if (phone) pool.query(`UPDATE users SET whatsapp=$1 WHERE id=$2`, [phone, user.id]).catch(() => { });
 
     // ── Optional: save AI config (best-effort) ────────────────────────────────
     const agentObjectiveText =
