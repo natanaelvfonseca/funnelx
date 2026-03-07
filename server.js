@@ -3165,45 +3165,48 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
     // ── Mandatory transaction: org + user ─────────────────────────────────────
     await client.query('BEGIN');
 
-    // Try with plan_type first, fall back without it
+    // Use SAVEPOINT so we can recover from a failed INSERT without aborting the whole transaction
     let org;
+    await client.query('SAVEPOINT sp_org');
     try {
-      const orgRes = await client.query(
+      const r = await client.query(
         `INSERT INTO organizations (name, plan_type) VALUES ($1, 'basic') RETURNING *`,
         [companyName || name + "'s Organization"]
       );
-      org = orgRes.rows[0];
+      org = r.rows[0];
     } catch (e) {
-      if (e.message.includes('plan_type') || e.message.includes('column')) {
-        const orgRes = await client.query(
-          `INSERT INTO organizations (name) VALUES ($1) RETURNING *`,
-          [companyName || name + "'s Organization"]
-        );
-        org = orgRes.rows[0];
-      } else { throw e; }
+      await client.query('ROLLBACK TO SAVEPOINT sp_org');
+      // Retry without plan_type column (may not exist in all environments)
+      const r = await client.query(
+        `INSERT INTO organizations (name) VALUES ($1) RETURNING *`,
+        [companyName || name + "'s Organization"]
+      );
+      org = r.rows[0];
     }
+    await client.query('RELEASE SAVEPOINT sp_org');
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Try with koins_balance, fall back without it
     let user;
+    await client.query('SAVEPOINT sp_user');
     try {
-      const userRes = await client.query(
+      const r = await client.query(
         `INSERT INTO users (name, email, phone, password, organization_id, role, koins_balance)
          VALUES ($1, $2, $3, $4, $5, 'user', 100) RETURNING *`,
         [name, email.toLowerCase(), phone || null, hashedPassword, org.id]
       );
-      user = userRes.rows[0];
+      user = r.rows[0];
     } catch (e) {
-      if (e.message.includes('koins_balance') || e.message.includes('column')) {
-        const userRes = await client.query(
-          `INSERT INTO users (name, email, phone, password, organization_id, role)
-           VALUES ($1, $2, $3, $4, $5, 'user') RETURNING *`,
-          [name, email.toLowerCase(), phone || null, hashedPassword, org.id]
-        );
-        user = userRes.rows[0];
-      } else { throw e; }
+      await client.query('ROLLBACK TO SAVEPOINT sp_user');
+      // Retry without koins_balance column (may not exist in all environments)
+      const r = await client.query(
+        `INSERT INTO users (name, email, phone, password, organization_id, role)
+         VALUES ($1, $2, $3, $4, $5, 'user') RETURNING *`,
+        [name, email.toLowerCase(), phone || null, hashedPassword, org.id]
+      );
+      user = r.rows[0];
     }
+    await client.query('RELEASE SAVEPOINT sp_user');
 
     await client.query('UPDATE organizations SET owner_id = $1 WHERE id = $2', [user.id, org.id]);
 
