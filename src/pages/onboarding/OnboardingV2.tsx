@@ -51,15 +51,15 @@ function ChoiceCard({ label, desc, selected, onClick }: {
     return (
         <button type="button" onClick={onClick}
             className={`w-full text-left px-4 py-4 rounded-xl border transition-all duration-200 relative group ${selected
-                ? 'border-[#FF4C00] bg-[#FF4C00]/10 shadow-lg shadow-[#FF4C00]/10'
-                : 'border-white/10 hover:border-white/25 bg-white/3 hover:bg-white/5'}`}>
+                ? 'border-[#FF4C00] bg-[#FF4C00]/8 shadow-lg shadow-[#FF4C00]/10'
+                : 'border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50'}`}>
             {selected && (
                 <span className="absolute top-3 right-3 w-5 h-5 bg-[#FF4C00] rounded-full flex items-center justify-center">
                     <Check className="w-3 h-3 text-white" />
                 </span>
             )}
-            <p className={`text-sm font-semibold ${selected ? 'text-[#FF9070]' : 'text-white/85'}`}>{label}</p>
-            {desc && <p className="text-xs text-white/45 mt-0.5">{desc}</p>}
+            <p className={`text-sm font-semibold ${selected ? 'text-[#FF4C00]' : 'text-gray-800'}`}>{label}</p>
+            {desc && <p className="text-xs text-gray-400 mt-0.5">{desc}</p>}
         </button>
     );
 }
@@ -68,8 +68,8 @@ function MultiChip({ label, selected, onClick }: { label: string; selected: bool
     return (
         <button type="button" onClick={onClick}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 border ${selected
-                ? 'border-[#FF4C00] bg-[#FF4C00]/15 text-[#FF9070]'
-                : 'border-white/10 text-white/55 hover:border-white/25 hover:text-white/80'}`}>
+                ? 'border-[#FF4C00] bg-[#FF4C00]/10 text-[#FF4C00]'
+                : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}>
             {selected && <Check className="w-3 h-3 inline mr-1" />}{label}
         </button>
     );
@@ -78,7 +78,7 @@ function MultiChip({ label, selected, onClick }: { label: string; selected: bool
 function FieldLabel({ children, counter }: { children: React.ReactNode; counter?: React.ReactNode }) {
     return (
         <div className="flex items-end justify-between mb-2">
-            <label className="text-xs font-semibold text-white/50 uppercase tracking-widest">{children}</label>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-widest">{children}</label>
             {counter && <span className="text-[10px] font-mono">{counter}</span>}
         </div>
     );
@@ -87,7 +87,7 @@ function FieldLabel({ children, counter }: { children: React.ReactNode; counter?
 function Input({ ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
     return (
         <input {...props}
-            className={`w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/25 text-sm focus:outline-none focus:border-[#FF4C00]/60 focus:bg-white/8 transition-all ${props.className || ''}`}
+            className={`w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-[#FF4C00]/60 focus:bg-white transition-all ${props.className || ''}`}
         />
     );
 }
@@ -95,7 +95,7 @@ function Input({ ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
 function Textarea({ ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
     return (
         <textarea {...props}
-            className={`w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/25 text-sm focus:outline-none focus:border-[#FF4C00]/60 focus:bg-white/8 transition-all resize-none ${props.className || ''}`}
+            className={`w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:border-[#FF4C00]/60 transition-all resize-none ${props.className || ''}`}
         />
     );
 }
@@ -132,7 +132,7 @@ function ProgressSidebar({ step }: { step: number }) {
                 <div className="w-7 h-7 bg-gradient-to-br from-[#FF4C00] to-[#FF6A30] rounded-lg flex items-center justify-center shadow-glow">
                     <Zap className="w-4 h-4 text-white fill-white" />
                 </div>
-                <span className="font-bold text-white text-lg">Kogna</span>
+                <span className="font-bold text-gray-900 text-lg">Kogna</span>
             </div>
             <div className="space-y-0.5">
                 {STEP_LABELS.map((label, i) => {
@@ -141,10 +141,10 @@ function ProgressSidebar({ step }: { step: number }) {
                     const active = s === step;
                     return (
                         <div key={s} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg">
-                            <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all ${done ? 'bg-[#FF4C00]' : active ? 'bg-[#FF4C00] ring-2 ring-[#FF7A50]/40 ring-offset-1 ring-offset-[#09090F]' : 'bg-white/8 border border-white/12'}`}>
-                                {done ? <Check className="w-3 h-3 text-white" /> : <span className="text-[9px] font-bold text-white/50">{s}</span>}
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all ${done ? 'bg-[#FF4C00]' : active ? 'bg-[#FF4C00] ring-2 ring-[#FF7A50]/40 ring-offset-1 ring-offset-white' : 'bg-gray-100 border border-gray-200'}`}>
+                                {done ? <Check className="w-3 h-3 text-white" /> : <span className={`text-[9px] font-bold ${active ? 'text-white' : 'text-gray-400'}`}>{s}</span>}
                             </div>
-                            <span className={`text-xs font-medium transition-colors ${active ? 'text-white' : done ? 'text-white/40' : 'text-white/28'}`}>{label}</span>
+                            <span className={`text-xs font-medium transition-colors ${active ? 'text-gray-900 font-semibold' : done ? 'text-gray-400' : 'text-gray-300'}`}>{label}</span>
                         </div>
                     );
                 })}
@@ -156,11 +156,11 @@ function ProgressSidebar({ step }: { step: number }) {
 function MobileProgress({ step }: { step: number }) {
     return (
         <div className="lg:hidden mb-6">
-            <div className="flex items-center justify-between text-xs text-white/40 mb-2">
+            <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
                 <span className="font-mono">Passo {step} de {TOTAL_STEPS}</span>
-                <span className="text-[#FF7A50] font-semibold">{STEP_LABELS[step - 1]}</span>
+                <span className="text-[#FF4C00] font-semibold">{STEP_LABELS[step - 1]}</span>
             </div>
-            <div className="h-1 bg-white/8 rounded-full overflow-hidden">
+            <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
                 <div className="h-full bg-gradient-to-r from-[#FF4C00] to-[#FF6A30] rounded-full transition-all duration-500"
                     style={{ width: `${(step / TOTAL_STEPS) * 100}%` }} />
             </div>
@@ -366,11 +366,11 @@ export function OnboardingV2() {
 
     // ── Layout ────────────────────────────────────────────────────────────────
     return (
-        <div className="min-h-screen bg-[#09090F] text-white flex">
-            {/* Glow BG */}
+        <div className="min-h-screen bg-gray-50 text-gray-900 flex">
+            {/* Subtle warm glow */}
             <div className="fixed inset-0 pointer-events-none">
-                <div className="absolute top-[-20%] left-[30%] w-[500px] h-[500px] bg-[#FF4C00]/6 rounded-full blur-[120px]" />
-                <div className="absolute bottom-[-10%] right-[10%] w-[400px] h-[400px] bg-[#FF4C00]/4 rounded-full blur-[100px]" />
+                <div className="absolute top-[-20%] left-[30%] w-[500px] h-[500px] bg-[#FF4C00]/4 rounded-full blur-[140px]" />
+                <div className="absolute bottom-[-10%] right-[10%] w-[400px] h-[400px] bg-[#FF4C00]/3 rounded-full blur-[120px]" />
             </div>
 
             {/* Sidebar */}
@@ -386,7 +386,7 @@ export function OnboardingV2() {
                         <div className="w-8 h-8 bg-gradient-to-br from-[#FF4C00] to-[#FF6A30] rounded-lg flex items-center justify-center shadow-lg">
                             <Zap className="w-4 h-4 text-white fill-white" />
                         </div>
-                        <span className="font-bold text-white text-xl">Kogna</span>
+                        <span className="font-bold text-gray-900 text-xl">Kogna</span>
                     </div>
                     <MobileProgress step={step} />
                     {error && <ErrorBanner msg={error} />}
@@ -440,8 +440,8 @@ function StepContent({ step, form, set, toggleArr, next, loading, go, files, set
             </div>
             <div>
                 <p className="text-xs font-bold text-[#FF7A50] uppercase tracking-widest mb-3">Revenue Operating System</p>
-                <h1 className="text-4xl font-bold text-white leading-tight">Bem-vindo à Nova Era<br />das Vendas no WhatsApp</h1>
-                <p className="text-white/45 mt-4 text-lg leading-relaxed max-w-sm mx-auto">
+                <h1 className="text-4xl font-bold text-gray-900 leading-tight">Bem-vindo à Nova Era<br />das Vendas no WhatsApp</h1>
+                <p className="text-gray-500 mt-4 text-lg leading-relaxed max-w-sm mx-auto">
                     Você está a poucos passos de transformar seu WhatsApp em um sistema inteligente de vendas que atende, qualifica e recupera clientes automaticamente.
                 </p>
             </div>
@@ -451,7 +451,7 @@ function StepContent({ step, form, set, toggleArr, next, loading, go, files, set
                     { icon: GitBranch, t: 'Monte um pipeline automático de oportunidades' },
                     { icon: MessageSquare, t: 'Conecte ao WhatsApp e comece a vender' },
                 ].map(({ icon: Icon, t }) => (
-                    <div key={t} className="flex items-center gap-3 text-sm text-white/55">
+                    <div key={t} className="flex items-center gap-3 text-sm text-gray-600">
                         <div className="w-7 h-7 rounded-lg bg-[#FF4C00]/15 border border-[#FF4C00]/20 flex items-center justify-center shrink-0">
                             <Icon className="w-3.5 h-3.5 text-[#FF7A50]" />
                         </div>
@@ -460,7 +460,7 @@ function StepContent({ step, form, set, toggleArr, next, loading, go, files, set
                 ))}
             </div>
             <NextBtn onClick={next} label="Iniciar Ativação" />
-            <p className="text-xs text-white/20">Sem cartão de crédito · Grátis para começar</p>
+            <p className="text-xs text-gray-400">Sem cartão de crédito · Grátis para começar</p>
         </div>
     );
 
@@ -468,8 +468,8 @@ function StepContent({ step, form, set, toggleArr, next, loading, go, files, set
         <div className="space-y-5 animate-fade-in">
             <div>
                 <p className="text-xs text-[#FF7A50] font-bold uppercase tracking-widest mb-1">Passo 2 — Agente</p>
-                <h2 className="text-2xl font-bold text-white">Crie seu primeiro Agente de Vendas</h2>
-                <p className="text-white/45 text-sm mt-2">Esse será o primeiro agente da sua empresa responsável por conduzir oportunidades no WhatsApp.</p>
+                <h2 className="text-2xl font-bold text-gray-900">Crie seu primeiro Agente de Vendas</h2>
+                <p className="text-gray-500 text-sm mt-2">Esse será o primeiro agente da sua empresa responsável por conduzir oportunidades no WhatsApp.</p>
             </div>
             <FieldLabel>Qual o objetivo principal desse agente?</FieldLabel>
             <div className="space-y-3">
