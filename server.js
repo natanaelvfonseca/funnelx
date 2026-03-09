@@ -15263,6 +15263,68 @@ app.get('/api/intelligence/panel/objection-detail', verifyJWT, async (req, res) 
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ADMIN PRODUCTS (Koins Plans) — global products without org filter
+// ══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/admin/products — list all system products (Koins plans)
+app.get('/api/admin/products', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM products WHERE organization_id IS NULL ORDER BY created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    log('GET /api/admin/products error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/admin/products — create a system product
+app.post('/api/admin/products', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const { name, description, price, koins_bonus, connections_bonus, type } = req.body;
+    if (!name || !price) return res.status(400).json({ error: 'name e price são obrigatórios.' });
+    const result = await pool.query(
+      `INSERT INTO products (name, description, price, koins_bonus, connections_bonus, type, active)
+       VALUES ($1,$2,$3,$4,$5,$6,true) RETURNING *`,
+      [name, description || '', price, koins_bonus || 0, connections_bonus || 0, type || 'KOINS']
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    log('POST /api/admin/products error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/admin/products/:id — update a system product
+app.put('/api/admin/products/:id', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const { name, description, price, koins_bonus, connections_bonus, type } = req.body;
+    const result = await pool.query(
+      `UPDATE products SET name=$1, description=$2, price=$3, koins_bonus=$4, connections_bonus=$5, type=$6
+       WHERE id=$7 AND organization_id IS NULL RETURNING *`,
+      [name, description || '', price, koins_bonus || 0, connections_bonus || 0, type || 'KOINS', req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Produto não encontrado.' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    log('PUT /api/admin/products error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/admin/products/:id — delete a system product
+app.delete('/api/admin/products/:id', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM products WHERE id=$1 AND organization_id IS NULL`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    log('DELETE /api/admin/products error: ' + err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
 // PRODUCT & DYNAMIC OFFER ENGINE — CRUD API
 // ══════════════════════════════════════════════════════════════════════════════
 

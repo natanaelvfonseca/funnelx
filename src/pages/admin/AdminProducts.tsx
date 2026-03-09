@@ -50,7 +50,7 @@ export function AdminProducts() {
     const fetchProducts = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${apiBase}/api/products`, {
+            const res = await fetch(`${apiBase}/api/admin/products`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -82,8 +82,8 @@ export function AdminProducts() {
         setFormLoading(true);
         try {
             const url = editingProduct
-                ? `${apiBase}/api/products/${editingProduct.id}`
-                : `${apiBase}/api/products`;
+                ? `${apiBase}/api/admin/products/${editingProduct.id}`
+                : `${apiBase}/api/admin/products`;
 
             const method = editingProduct ? 'PUT' : 'POST';
 
@@ -157,7 +157,7 @@ export function AdminProducts() {
         if (!confirm(`Tem certeza que deseja excluir "${name}"?`)) return;
 
         try {
-            const res = await fetch(`${apiBase}/api/products/${id}`, {
+            const res = await fetch(`${apiBase}/api/admin/products/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
