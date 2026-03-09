@@ -3459,6 +3459,311 @@ app.get('/api/industry/my-profile', verifyJWT, async (req, res) => {
 
 // ── END AGENTS CRUD ───────────────────────────────────────────────────────────
 
+// ── AUTOMATIONS & NOTIFICATIONS SYSTEM ────────────────────────────────────────
+
+// Lazy-load nodemailer so the module doesn't crash if not installed
+let nodemailer;
+try { nodemailer = (await import('nodemailer')).default; } catch (_) { log('[SMTP] nodemailer not available'); }
+
+function createSmtpTransporter() {
+  if (!nodemailer) return null;
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+    port: parseInt(process.env.SMTP_PORT || '465'),
+    secure: true, // SSL
+    auth: {
+      user: process.env.SMTP_USER || 'news@kogna.co',
+      pass: process.env.SMTP_PASS || 'Louiseemel@123',
+    },
+  });
+}
+
+async function sendEmail(to, subject, html) {
+  const transporter = createSmtpTransporter();
+  if (!transporter) { log('[SMTP] Skipped – nodemailer not available'); return; }
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || '"Kogna" <news@kogna.co>',
+    to, subject, html,
+  });
+  log(`[SMTP] Sent to ${to}: ${subject}`);
+}
+
+async function sendWhatsAppMsg(instanceName, phone, message) {
+  const EVO_URL = process.env.EVOLUTION_API_URL;
+  const EVO_KEY = process.env.EVOLUTION_API_KEY;
+  if (!EVO_URL || !EVO_KEY) { log('[WA] EVOLUTION env vars missing'); return; }
+  const cleaned = phone.replace(/\D/g, '');
+  await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY },
+    body: JSON.stringify({ number: cleaned, text: message }),
+  });
+}
+
+async function sendInternalNotification(userId, message) {
+  try {
+    await pool.query(
+      `INSERT INTO notifications (user_id, message, is_read, created_at)
+       VALUES ($1, $2, false, NOW())
+       ON CONFLICT DO NOTHING`,
+      [userId, message]
+    );
+  } catch (e) { log('[INTERNAL_NOTIF] ' + e.message); }
+}
+
+function interpolateTemplate(template, vars) {
+  return template.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
+}
+
+function requireAdmin(req, res, next) {
+  if (req.userRole !== 'admin') return res.status(403).json({ error: 'Acesso negado.' });
+  next();
+}
+
+// ── GET /api/admin/automations ────────────────────────────────────────────────
+app.get('/api/admin/automations', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT * FROM automation_rules ORDER BY created_at DESC'
+    );
+    res.json(r.rows);
+  } catch (e) {
+    log('[AUTO] GET error: ' + e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── POST /api/admin/automations ───────────────────────────────────────────────
+app.post('/api/admin/automations', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const { name, trigger_event, trigger_rule, audience_type, audience_filter, channels, message_template } = req.body;
+    if (!name || !trigger_event || !message_template) {
+      return res.status(400).json({ error: 'name, trigger_event e message_template são obrigatórios.' });
+    }
+    const r = await pool.query(
+      `INSERT INTO automation_rules (name, trigger_event, trigger_rule, audience_type, audience_filter, channels, message_template)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [name, trigger_event, JSON.stringify(trigger_rule || {}), audience_type || 'all',
+        JSON.stringify(audience_filter || {}), channels || [], message_template]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    log('[AUTO] POST error: ' + e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── PATCH /api/admin/automations/:id ─────────────────────────────────────────
+app.patch('/api/admin/automations/:id', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const { name, trigger_event, trigger_rule, audience_type, audience_filter, channels, message_template, is_active } = req.body;
+    const r = await pool.query(
+      `UPDATE automation_rules
+       SET name=COALESCE($1,name), trigger_event=COALESCE($2,trigger_event),
+           trigger_rule=COALESCE($3,trigger_rule), audience_type=COALESCE($4,audience_type),
+           audience_filter=COALESCE($5,audience_filter), channels=COALESCE($6,channels),
+           message_template=COALESCE($7,message_template),
+           is_active=COALESCE($8,is_active)
+       WHERE id=$9 RETURNING *`,
+      [name, trigger_event, trigger_rule ? JSON.stringify(trigger_rule) : null,
+        audience_type, audience_filter ? JSON.stringify(audience_filter) : null,
+        channels, message_template, is_active, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Automação não encontrada.' });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── DELETE /api/admin/automations/:id ────────────────────────────────────────
+app.delete('/api/admin/automations/:id', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM automation_rules WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/admin/automations/:id/trigger ───────────────────────────────────
+// Manually trigger an automation, sending to its audience right now
+app.post('/api/admin/automations/:id/trigger', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const autoRes = await pool.query('SELECT * FROM automation_rules WHERE id=$1', [req.params.id]);
+    if (!autoRes.rows.length) return res.status(404).json({ error: 'Automação não encontrada.' });
+    const auto = autoRes.rows[0];
+
+    // Fetch audience
+    let usersQ = 'SELECT u.id, u.name, u.email, u.whatsapp, oc.company_name FROM users u LEFT JOIN ia_configs oc ON oc.user_id=u.id WHERE u.role=\'user\'';
+    const filter = auto.audience_filter || {};
+    const params = [];
+    if (auto.audience_type === 'filtered' && filter.tags?.length) {
+      usersQ = `SELECT DISTINCT u.id, u.name, u.email, u.whatsapp, oc.company_name FROM users u
+        LEFT JOIN ia_configs oc ON oc.user_id=u.id
+        INNER JOIN user_tags ut ON ut.user_id=u.id AND ut.tag=ANY($1)
+        WHERE u.role='user'`;
+      params.push(filter.tags);
+    }
+    const usersRes = await pool.query(usersQ, params);
+    const recipients = usersRes.rows;
+
+    const channels = auto.channels || [];
+    let sent = 0;
+    let logError = null;
+
+    for (const u of recipients) {
+      const vars = {
+        nome: u.name, empresa: u.company_name || '', email: u.email,
+        link_dashboard: 'https://ia.kogna.co', link_pagamento: 'https://ia.kogna.co/billing'
+      };
+      const msg = interpolateTemplate(auto.message_template, vars);
+      try {
+        if (channels.includes('email') && u.email) {
+          await sendEmail(u.email, auto.name, `<p>${msg.replace(/\n/g, '<br>')}</p>`);
+        }
+        if (channels.includes('internal')) {
+          await sendInternalNotification(u.id, msg);
+        }
+        sent++;
+      } catch (e) { logError = e.message; }
+    }
+
+    // Log it
+    await pool.query(
+      `INSERT INTO automation_logs (automation_id, automation_name, recipients_count, channel, status, error)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [auto.id, auto.name, sent, channels.join(','), logError ? 'error' : 'sent', logError]
+    ).catch(() => { });
+
+    res.json({ sent, total: recipients.length, error: logError });
+  } catch (e) {
+    log('[AUTO TRIGGER] ' + e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── POST /api/admin/notifications/send — Manual send ─────────────────────────
+app.post('/api/admin/notifications/send', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const { message, subject, channels, audience_type, user_ids, filter_tags } = req.body;
+    if (!message) return res.status(400).json({ error: 'message é obrigatório.' });
+
+    let recipients = [];
+    if (audience_type === 'specific' && user_ids?.length) {
+      const r = await pool.query(
+        'SELECT id, name, email, whatsapp FROM users WHERE id=ANY($1)', [user_ids]
+      );
+      recipients = r.rows;
+    } else if (audience_type === 'filtered' && filter_tags?.length) {
+      const r = await pool.query(
+        `SELECT DISTINCT u.id, u.name, u.email, u.whatsapp FROM users u
+         INNER JOIN user_tags ut ON ut.user_id=u.id AND ut.tag=ANY($1)
+         WHERE u.role='user'`, [filter_tags]
+      );
+      recipients = r.rows;
+    } else {
+      const r = await pool.query("SELECT id, name, email, whatsapp FROM users WHERE role='user'");
+      recipients = r.rows;
+    }
+
+    let sent = 0;
+    const chs = Array.isArray(channels) ? channels : ['internal'];
+    for (const u of recipients) {
+      const vars = { nome: u.name, email: u.email, link_dashboard: 'https://ia.kogna.co' };
+      const msg = interpolateTemplate(message, vars);
+      if (chs.includes('email') && u.email) {
+        await sendEmail(u.email, subject || 'Mensagem da Kogna', `<p>${msg.replace(/\n/g, '<br>')}</p>`).catch(() => { });
+      }
+      if (chs.includes('internal')) {
+        await sendInternalNotification(u.id, msg);
+      }
+      sent++;
+    }
+
+    // Log
+    await pool.query(
+      `INSERT INTO automation_logs (automation_name, recipients_count, channel, status)
+       VALUES ($1, $2, $3, 'sent')`,
+      ['Envio Manual', sent, chs.join(',')]
+    ).catch(() => { });
+
+    res.json({ sent, total: recipients.length });
+  } catch (e) {
+    log('[MANUAL NOTIF] ' + e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── GET /api/admin/automation-logs ────────────────────────────────────────────
+app.get('/api/admin/automation-logs', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT * FROM automation_logs ORDER BY sent_at DESC LIMIT 200'
+    );
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/admin/user-tags — list all tags (distinct) ──────────────────────
+app.get('/api/admin/user-tags', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT DISTINCT tag FROM user_tags ORDER BY tag');
+    res.json(r.rows.map(r => r.tag));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/admin/user-tags/:userId — tags for a specific user ───────────────
+app.get('/api/admin/user-tags/:userId', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT tag FROM user_tags WHERE user_id=$1', [req.params.userId]);
+    res.json(r.rows.map(r => r.tag));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/admin/user-tags — add a tag ────────────────────────────────────
+app.post('/api/admin/user-tags', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const { user_id, tag } = req.body;
+    if (!user_id || !tag) return res.status(400).json({ error: 'user_id e tag obrigatórios.' });
+    await pool.query(
+      'INSERT INTO user_tags (user_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [user_id, tag.trim().toLowerCase()]
+    );
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── DELETE /api/admin/user-tags — remove a tag ───────────────────────────────
+app.delete('/api/admin/user-tags', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const { user_id, tag } = req.body;
+    await pool.query('DELETE FROM user_tags WHERE user_id=$1 AND tag=$2', [user_id, tag]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/admin/users-filtered ─────────────────────────────────────────────
+app.get('/api/admin/users-filtered', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const { tag, koins_max, no_agent, no_whatsapp } = req.query;
+    let q = `SELECT u.id, u.name, u.email, u.koins_balance, u.created_at,
+                    oc.company_name,
+                    COALESCE(JSON_AGG(DISTINCT ut.tag) FILTER (WHERE ut.tag IS NOT NULL), '[]') AS tags
+             FROM users u
+             LEFT JOIN ia_configs oc ON oc.user_id=u.id
+             LEFT JOIN user_tags ut ON ut.user_id=u.id
+             WHERE u.role='user'`;
+    const params = [];
+    if (tag) { params.push(tag); q += ` AND EXISTS (SELECT 1 FROM user_tags t2 WHERE t2.user_id=u.id AND t2.tag=$${params.length})`; }
+    if (koins_max !== undefined) { params.push(parseInt(koins_max)); q += ` AND u.koins_balance<=$${params.length}`; }
+    if (no_agent === 'true') { q += ` AND NOT EXISTS (SELECT 1 FROM agents a WHERE a.organization_id=u.organization_id)`; }
+    q += ' GROUP BY u.id, oc.company_name ORDER BY u.created_at DESC';
+    const r = await pool.query(q, params);
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── END AUTOMATIONS SYSTEM ────────────────────────────────────────────────────
+
 /**
  * @swagger
  * /api/me:

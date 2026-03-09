@@ -33,6 +33,7 @@ import { Products } from './pages/products/Products';
 
 import { AdminIntelligence } from './pages/admin/AdminIntelligence';
 import { KognaIntelligencePanel } from './pages/admin/KognaIntelligencePanel';
+import { AdminAutomations } from './pages/admin/AdminAutomations';
 
 import { ReferralRedirect } from './pages/partners/ReferralRedirect';
 
@@ -99,6 +100,11 @@ function App() {
                                 <Route path="admin/intelligence-panel" element={
                                     <AdminRoute>
                                         <KognaIntelligencePanel />
+                                    </AdminRoute>
+                                } />
+                                <Route path="admin/automations" element={
+                                    <AdminRoute>
+                                        <AdminAutomations />
                                     </AdminRoute>
                                 } />
 
