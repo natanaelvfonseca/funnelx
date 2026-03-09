@@ -3593,11 +3593,11 @@ app.post('/api/admin/automations/:id/trigger', verifyJWT, requireAdmin, async (r
     const auto = autoRes.rows[0];
 
     // Fetch audience
-    let usersQ = 'SELECT u.id, u.name, u.email, u.whatsapp, oc.company_name FROM users u LEFT JOIN ia_configs oc ON oc.user_id=u.id WHERE u.role=\'user\'';
+    let usersQ = "SELECT u.id, u.name, u.email, oc.company_name FROM users u LEFT JOIN ia_configs oc ON oc.user_id=u.id WHERE u.role='user'";
     const filter = auto.audience_filter || {};
     const params = [];
     if (auto.audience_type === 'filtered' && filter.tags?.length) {
-      usersQ = `SELECT DISTINCT u.id, u.name, u.email, u.whatsapp, oc.company_name FROM users u
+      usersQ = `SELECT DISTINCT u.id, u.name, u.email, oc.company_name FROM users u
         LEFT JOIN ia_configs oc ON oc.user_id=u.id
         INNER JOIN user_tags ut ON ut.user_id=u.id AND ut.tag=ANY($1)
         WHERE u.role='user'`;
@@ -3644,29 +3644,46 @@ app.post('/api/admin/automations/:id/trigger', verifyJWT, requireAdmin, async (r
 // ── POST /api/admin/notifications/send — Manual send ─────────────────────────
 app.post('/api/admin/notifications/send', verifyJWT, requireAdmin, async (req, res) => {
   try {
-    const { message, subject, channels, audience_type, user_ids, filter_tags } = req.body;
+    const { message, subject, channels, audience_type, user_ids, filter_tags, wa_instance } = req.body;
     if (!message) return res.status(400).json({ error: 'message é obrigatório.' });
 
     let recipients = [];
     if (audience_type === 'specific' && user_ids?.length) {
       const r = await pool.query(
-        'SELECT id, name, email, whatsapp FROM users WHERE id=ANY($1)', [user_ids]
+        'SELECT id, name, email FROM users WHERE id=ANY($1)', [user_ids]
       );
       recipients = r.rows;
     } else if (audience_type === 'filtered' && filter_tags?.length) {
       const r = await pool.query(
-        `SELECT DISTINCT u.id, u.name, u.email, u.whatsapp FROM users u
+        `SELECT DISTINCT u.id, u.name, u.email FROM users u
          INNER JOIN user_tags ut ON ut.user_id=u.id AND ut.tag=ANY($1)
          WHERE u.role='user'`, [filter_tags]
       );
       recipients = r.rows;
     } else {
-      const r = await pool.query("SELECT id, name, email, whatsapp FROM users WHERE role='user'");
+      const r = await pool.query("SELECT id, name, email FROM users WHERE role='user'");
       recipients = r.rows;
     }
 
     let sent = 0;
     const chs = Array.isArray(channels) ? channels : ['internal'];
+
+    // If WhatsApp selected, fetch users with their org agent phone numbers
+    let userPhones = {};
+    if (chs.includes('whatsapp') && wa_instance) {
+      // Get user->phone mapping from whatsapp_instances (users who own agents connected to WA)
+      const phoneRes = await pool.query(
+        `SELECT DISTINCT u.id, wi.phone_number
+         FROM users u
+         INNER JOIN organizations o ON o.id=u.organization_id
+         INNER JOIN whatsapp_instances wi ON wi.organization_id=o.id
+         WHERE wi.instance_name IS NOT NULL AND wi.phone_number IS NOT NULL`
+      ).catch(() => ({ rows: [] }));
+      for (const row of phoneRes.rows) {
+        userPhones[row.id] = row.phone_number;
+      }
+    }
+
     for (const u of recipients) {
       const vars = { nome: u.name, email: u.email, link_dashboard: 'https://ia.kogna.co' };
       const msg = interpolateTemplate(message, vars);
@@ -3675,6 +3692,9 @@ app.post('/api/admin/notifications/send', verifyJWT, requireAdmin, async (req, r
       }
       if (chs.includes('internal')) {
         await sendInternalNotification(u.id, msg);
+      }
+      if (chs.includes('whatsapp') && wa_instance && userPhones[u.id]) {
+        await sendWhatsAppMsg(wa_instance, userPhones[u.id], msg).catch(() => { });
       }
       sent++;
     }
@@ -3691,6 +3711,21 @@ app.post('/api/admin/notifications/send', verifyJWT, requireAdmin, async (req, r
     log('[MANUAL NOTIF] ' + e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// ── GET /api/admin/whatsapp-instances — list admin's WA instances ─────────────
+app.get('/api/admin/whatsapp-instances', verifyJWT, requireAdmin, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT wi.instance_name, wi.phone_number, wi.status,
+              u.name AS owner_name, u.email AS owner_email
+       FROM whatsapp_instances wi
+       LEFT JOIN organizations o ON o.id=wi.organization_id
+       LEFT JOIN users u ON u.organization_id=o.id AND u.role='admin'
+       ORDER BY wi.created_at DESC LIMIT 50`
+    );
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── GET /api/admin/automation-logs ────────────────────────────────────────────

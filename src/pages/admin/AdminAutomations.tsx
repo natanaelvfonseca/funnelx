@@ -3,11 +3,16 @@ import {
     Bell, Plus, Play, Trash2, Send,
     CheckCircle, XCircle, X, Loader2, Mail,
     MessageSquare, Monitor, Zap, History, Settings2,
-    ToggleLeft, ToggleRight, Tag
+    ToggleLeft, ToggleRight, Tag, Smartphone
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+interface WaInstance {
+    instance_name: string;
+    phone_number: string | null;
+    status: string;
+}
 interface Automation {
     id: string;
     name: string;
@@ -590,6 +595,15 @@ function ManualSendPanel({
     const [sending, setSending] = useState(false);
     const [result, setResult] = useState<{ sent: number; total: number } | null>(null);
     const [error, setError] = useState('');
+    const [waInstances, setWaInstances] = useState<WaInstance[]>([]);
+    const [waInstance, setWaInstance] = useState('');
+
+    useEffect(() => {
+        fetch('/api/admin/whatsapp-instances', { headers: apiHeaders() })
+            .then(r => r.ok ? r.json() : [])
+            .then(setWaInstances)
+            .catch(() => { });
+    }, [apiHeaders]);
 
     const toggleCh = (ch: string) =>
         setChannels(cur => cur.includes(ch) ? cur.filter(c => c !== ch) : [...cur, ch]);
@@ -600,12 +614,18 @@ function ManualSendPanel({
         setError(''); setResult(null);
         if (!message.trim()) { setError('A mensagem não pode estar vazia.'); return; }
         if (!channels.length) { setError('Selecione pelo menos um canal.'); return; }
+        if (channels.includes('whatsapp') && !waInstance) {
+            setError('Selecione qual número WhatsApp usar para o envio.'); return;
+        }
         const target = audienceType === 'all' ? 'todos os usuários' : `usuários com tag "${tagFilter}"`;
         if (!confirm(`Confirmar envio para ${target}?`)) return;
         setSending(true);
         const body: Record<string, unknown> = { message, subject, channels, audience_type: audienceType };
         if (audienceType === 'filtered' && tagFilter.trim()) {
             body.filter_tags = tagFilter.split(',').map(t => t.trim()).filter(Boolean);
+        }
+        if (channels.includes('whatsapp') && waInstance) {
+            body.wa_instance = waInstance;
         }
         const r = await fetch('/api/admin/notifications/send', {
             method: 'POST',
@@ -688,6 +708,34 @@ function ManualSendPanel({
                         ))}
                     </div>
                 </div>
+
+                {/* WhatsApp instance selector */}
+                {channels.includes('whatsapp') && (
+                    <div>
+                        <label className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
+                            <Smartphone className="w-3.5 h-3.5" />
+                            Número WhatsApp para envio *
+                        </label>
+                        {waInstances.length === 0 ? (
+                            <p className="text-sm text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-2.5">
+                                Nenhum número WhatsApp conectado encontrado. Conecte um número em <strong>/whatsapp</strong>.
+                            </p>
+                        ) : (
+                            <select
+                                value={waInstance}
+                                onChange={e => setWaInstance(e.target.value)}
+                                className="w-full bg-background border border-purple-500/20 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500/40 outline-none"
+                            >
+                                <option value="">Selecione um número...</option>
+                                {waInstances.map(wi => (
+                                    <option key={wi.instance_name} value={wi.instance_name}>
+                                        {wi.phone_number ? `${wi.phone_number} — ` : ''}{wi.instance_name} ({wi.status})
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                    </div>
+                )}
 
                 {/* Subject (email only) */}
                 {channels.includes('email') && (
