@@ -179,21 +179,21 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
                             )}
                         </Link>
                         <Link
-                            to="/products"
+                            to="/admin/products"
                             className={`flex items-center gap-3.5 px-3.5 py-3 rounded-xl transition-all duration-300 group relative mt-1
-                                ${location.pathname === '/products'
+                                ${location.pathname === '/admin/products'
                                     ? 'bg-purple-500/10 text-amber-500 font-semibold shadow-inner shadow-purple-500/5'
                                     : 'text-purple-400 hover:bg-purple-500/10 hover:text-amber-500 font-medium'
                                 }
                             `}
                         >
-                            {location.pathname === '/products' && (
+                            {location.pathname === '/admin/products' && (
                                 <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-amber-500 rounded-r-full shadow-[0_0_15px_rgba(212,175,55,0.5)]"></div>
                             )}
                             <Package
                                 size={20}
-                                className={`transition-all duration-300 ${location.pathname === '/products' ? 'text-amber-500 shadow-glow' : 'group-hover:text-amber-500'}`}
-                                strokeWidth={location.pathname === '/products' ? 2.5 : 2}
+                                className={`transition-all duration-300 ${location.pathname === '/admin/products' ? 'text-amber-500 shadow-glow' : 'group-hover:text-amber-500'}`}
+                                strokeWidth={location.pathname === '/admin/products' ? 2.5 : 2}
                             />
                             {!collapsed && <span className="text-sm tracking-wide">Gestão Produtos</span>}
                             {collapsed && (
