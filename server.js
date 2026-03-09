@@ -3676,16 +3676,17 @@ app.post('/api/admin/notifications/send', verifyJWT, requireAdmin, async (req, r
     // If WhatsApp selected, fetch users with their org agent phone numbers
     let userPhones = {};
     if (chs.includes('whatsapp') && wa_instance) {
-      // Get user->phone mapping from whatsapp_instances (users who own agents connected to WA)
+      // Fetch user phones from their registration data (personal_phone column)
       const phoneRes = await pool.query(
-        `SELECT DISTINCT u.id, wi.phone_number
-         FROM users u
-         INNER JOIN organizations o ON o.id=u.organization_id
-         INNER JOIN whatsapp_instances wi ON wi.organization_id=o.id
-         WHERE wi.instance_name IS NOT NULL AND wi.phone_number IS NOT NULL`
+        `SELECT id, personal_phone FROM users WHERE role='user' AND personal_phone IS NOT NULL AND personal_phone <> ''`
       ).catch(() => ({ rows: [] }));
       for (const row of phoneRes.rows) {
-        userPhones[row.id] = row.phone_number;
+        // Strip all non-digits, then ensure 55 prefix (Brazil)
+        const digits = row.personal_phone.replace(/\D/g, '');
+        if (digits.length >= 8) {
+          // Prepend 55 only if not already starting with 55
+          userPhones[row.id] = digits.startsWith('55') ? digits : `55${digits}`;
+        }
       }
     }
 
@@ -3721,13 +3722,18 @@ app.post('/api/admin/notifications/send', verifyJWT, requireAdmin, async (req, r
 // ── GET /api/admin/whatsapp-instances — list all WA instances ───────────────────
 app.get('/api/admin/whatsapp-instances', verifyJWT, requireAdmin, async (req, res) => {
   try {
+    // Get admin's own organization
+    const adminRes = await pool.query('SELECT organization_id FROM users WHERE id=$1', [req.userId]);
+    const orgId = adminRes.rows[0]?.organization_id;
+    if (!orgId) return res.json([]);
+
     const r = await pool.query(
-      `SELECT wi.instance_name, wi.status, wi.organization_id,
-              a.name AS agent_name
+      `SELECT wi.instance_name, wi.status, a.name AS agent_name
        FROM whatsapp_instances wi
        LEFT JOIN agents a ON a.whatsapp_instance_id = wi.id
-       ORDER BY wi.created_at DESC
-       LIMIT 100`
+       WHERE wi.organization_id = $1
+       ORDER BY wi.created_at DESC`,
+      [orgId]
     );
     res.json(r.rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
