@@ -9348,7 +9348,7 @@ app.post("/api/evolution/webhook", async (req, res) => {
     // However, the `instanceName` from webhook might match the `instance_name` column in `whatsapp_instances`.
 
     const instanceRes = await pool.query(
-      "SELECT id, user_id FROM whatsapp_instances WHERE instance_name = $1",
+      "SELECT id, user_id, organization_id FROM whatsapp_instances WHERE instance_name = $1",
       [instanceName],
     );
     if (instanceRes.rows.length === 0) {
@@ -9358,6 +9358,33 @@ app.post("/api/evolution/webhook", async (req, res) => {
 
     const instanceId = instanceRes.rows[0].id;
     const userId = instanceRes.rows[0].user_id;
+    const instanceOrgId = instanceRes.rows[0].organization_id;
+
+    // ── Auto-create lead in CRM (BEFORE agent check) ──────────────────────────
+    // This runs even if no agent is linked to the instance yet
+    if (instanceOrgId && remoteJid && !remoteJid.includes('g.us')) {
+      try {
+        const phoneRaw = remoteJid.split('@')[0];
+
+        // Check if lead already exists for this number
+        const existingLead = await pool.query(
+          `SELECT id FROM leads WHERE organization_id = $1 AND (phone LIKE $2 OR mobile_phone LIKE $2) LIMIT 1`,
+          [instanceOrgId, `%${phoneRaw}%`]
+        );
+
+        if (existingLead.rows.length === 0) {
+          const leadName = pushName && pushName !== 'Unknown' ? pushName : `WhatsApp ${phoneRaw}`;
+          await pool.query(
+            `INSERT INTO leads (organization_id, name, mobile_phone, source, pipeline_stage, status, created_at)
+             VALUES ($1, $2, $3, 'WhatsApp', 'Novo Lead', 'new', NOW())`,
+            [instanceOrgId, leadName, phoneRaw]
+          );
+          log(`[WEBHOOK] Auto-created lead '${leadName}' (${phoneRaw}) for org ${instanceOrgId}`);
+        }
+      } catch (leadErr) {
+        log(`[WEBHOOK] Auto-lead error: ${leadErr.message}`);
+      }
+    }
 
     // Find Active Agent for this instance
     const agentRes = await pool.query(
@@ -9397,37 +9424,6 @@ app.post("/api/evolution/webhook", async (req, res) => {
 
     // Event-driven: Cancel follow-up since user replied
     await cancelFollowupOnReply(agent.organization_id, remoteJid);
-
-    // ── Auto-create lead in CRM if not already existing ──────────────────────
-    let leadId = null;
-    try {
-      // Extract phone number from JID (format: 5511999999999@s.whatsapp.net)
-      const phoneRaw = remoteJid.split('@')[0];
-      const orgId = agent.organization_id;
-
-      // Check if this phone already has a lead
-      const existingLead = await pool.query(
-        `SELECT id FROM leads WHERE organization_id = $1 AND (phone LIKE $2 OR mobile_phone LIKE $2) LIMIT 1`,
-        [orgId, `%${phoneRaw}%`]
-      );
-
-      if (existingLead.rows.length > 0) {
-        leadId = existingLead.rows[0].id;
-      } else {
-        // Create new lead - use pushName as name or whatsapp number
-        const leadName = pushName && pushName !== 'Unknown' ? pushName : `WhatsApp ${phoneRaw}`;
-        const newLead = await pool.query(
-          `INSERT INTO leads (organization_id, name, mobile_phone, source, pipeline_stage, status, created_at)
-           VALUES ($1, $2, $3, 'WhatsApp', 'Novo Lead', 'new', NOW())
-           RETURNING id`,
-          [orgId, leadName, phoneRaw]
-        );
-        leadId = newLead.rows[0]?.id;
-        log(`[WEBHOOK] Auto-created lead ${leadId} (${leadName}) for org ${orgId}`);
-      }
-    } catch (leadErr) {
-      log(`[WEBHOOK] Auto-lead creation error: ${leadErr.message}`);
-    }
 
     // 5. Trigger AI Processing
     await processAIResponse(agent, remoteJid, instanceName, [inputMessage]);
