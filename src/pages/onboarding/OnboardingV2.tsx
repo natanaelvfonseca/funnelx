@@ -269,7 +269,8 @@ export function OnboardingV2() {
         const msg = chatInput.trim();
         if (!msg || chatLoading || msgsUsed >= 5) return;
         setChatInput('');
-        setChatMessages(m => [...m, { role: 'user', text: msg }]);
+        const currentMessages = [...chatMessages, { role: 'user' as const, text: msg }];
+        setChatMessages(currentMessages);
         setChatLoading(true);
         try {
             const res = await fetch('/api/onboarding/preview-ai', {
@@ -278,6 +279,8 @@ export function OnboardingV2() {
                 body: JSON.stringify({
                     session_id: sessionId,
                     message: msg,
+                    // Pass full conversation history so AI has memory
+                    history: chatMessages, // messages BEFORE the current one
                     onboarding_context: {
                         aiName: form.aiName, companyName: form.companyName,
                         agentObjective: form.agentObjective, mainProduct: form.mainProduct,
@@ -287,12 +290,16 @@ export function OnboardingV2() {
                 }),
             });
             const data = await res.json();
+            if (data.limitReached && !data.reply) {
+                setMsgsUsed(5);
+                return;
+            }
             if (!res.ok) throw new Error(data.error || 'Erro ao processar mensagem.');
             setChatMessages(m => [...m, { role: 'ai', text: data.reply || '...' }]);
-            setMsgsUsed(data.messagesUsed || msgsUsed + 1);
+            setMsgsUsed(data.messagesUsed ?? msgsUsed + 1);
         } catch { setChatMessages(m => [...m, { role: 'ai', text: 'Erro ao processar. Tente novamente.' }]); }
         finally { setChatLoading(false); }
-    }, [chatInput, chatLoading, msgsUsed, sessionId, form]);
+    }, [chatInput, chatLoading, msgsUsed, sessionId, form, chatMessages]);
 
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
 
@@ -771,62 +778,88 @@ function StepContent({ step, form, set, toggleArr, next, loading, go, files, set
         </div>
     );
 
-    if (step === 15) return (
-        <div className="space-y-4 animate-fade-in">
-            <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 15 — Teste</p>
-                <h2 className="text-2xl font-bold text-gray-900">Vamos fazer um teste rápido</h2>
-                <p className="text-gray-500 text-sm mt-1">Converse com sua IA como se fosse um cliente. Limite de 5 interações.</p>
-            </div>
-            <div className="bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 bg-gray-50">
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-sm font-semibold text-gray-900">{form.aiName || 'IA'}</span>
-                    <span className="text-xs text-gray-400 ml-auto">{5 - msgsUsed} mensagens restantes</span>
+    if (step === 15) {
+        const isLimitReached = msgsUsed >= 5;
+        return (
+            <div className="space-y-4 animate-fade-in">
+                <div>
+                    <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 15 — Teste</p>
+                    <h2 className="text-2xl font-bold text-gray-900">Vamos fazer um teste rápido</h2>
+                    <p className="text-gray-500 text-sm mt-1">Converse com sua IA como se fosse um cliente. Limite de 5 troca de mensagens.</p>
                 </div>
-                <div className="h-72 overflow-y-auto p-4 space-y-3 flex flex-col">
-                    {chatMessages.map((m: { role: string; text: string }, i: number) => (
-                        <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            {m.role === 'ai' && (
-                                <div className="w-6 h-6 rounded-full bg-[#FF4C00] flex items-center justify-center mr-2 shrink-0 mt-1">
+                <div className="bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 bg-gray-50">
+                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                        <span className="text-sm font-semibold text-gray-900">{form.aiName || 'IA'}</span>
+                        <span className={`text-xs ml-auto font-medium ${isLimitReached ? 'text-red-400' : 'text-gray-400'}`}>
+                            {isLimitReached ? 'Limite atingido' : `${5 - msgsUsed} mensagem${5 - msgsUsed !== 1 ? 's' : ''} restante${5 - msgsUsed !== 1 ? 's' : ''}`}
+                        </span>
+                    </div>
+                    <div className="h-72 overflow-y-auto p-4 space-y-3 flex flex-col">
+                        {chatMessages.map((m: { role: string; text: string }, i: number) => (
+                            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                {m.role === 'ai' && (
+                                    <div className="w-6 h-6 rounded-full bg-[#FF4C00] flex items-center justify-center mr-2 shrink-0 mt-1">
+                                        <Bot className="w-3 h-3 text-white" />
+                                    </div>
+                                )}
+                                <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${m.role === 'user' ? 'bg-[#FF4C00] text-white rounded-br-sm' : 'bg-gray-100 text-gray-800 rounded-bl-sm'}`}>
+                                    {m.text}
+                                </div>
+                            </div>
+                        ))}
+                        {chatLoading && (
+                            <div className="flex justify-start">
+                                <div className="w-6 h-6 rounded-full bg-[#FF4C00] flex items-center justify-center mr-2 shrink-0">
                                     <Bot className="w-3 h-3 text-white" />
                                 </div>
-                            )}
-                            <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${m.role === 'user' ? 'bg-[#FF4C00] text-white rounded-br-sm' : 'bg-gray-100 text-gray-800 rounded-bl-sm'}`}>
-                                {m.text}
+                                <div className="bg-gray-100 px-4 py-3 rounded-2xl rounded-bl-sm flex gap-1.5 items-center">
+                                    {[0, 1, 2].map(d => <div key={d} className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: `${d * 150}ms` }} />)}
+                                </div>
                             </div>
+                        )}
+                        <div ref={chatEndRef} />
+                    </div>
+                    {!isLimitReached ? (
+                        <div className="flex gap-2 p-3 border-t border-gray-200">
+                            <input value={chatInput} onChange={e => setChatInput(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                                placeholder="Escreva como se fosse um cliente..." disabled={chatLoading}
+                                className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-[#FF4C00]/60 transition-all" />
+                            <button onClick={sendChat} disabled={chatLoading || !chatInput.trim()}
+                                className="w-10 h-10 rounded-xl bg-[#FF4C00] hover:bg-[#FF6A30] disabled:opacity-40 flex items-center justify-center transition-colors shrink-0">
+                                <Send className="w-4 h-4 text-white" />
+                            </button>
                         </div>
-                    ))}
-                    {chatLoading && (
-                        <div className="flex justify-start">
-                            <div className="w-6 h-6 rounded-full bg-[#FF4C00] flex items-center justify-center mr-2 shrink-0">
-                                <Bot className="w-3 h-3 text-white" />
-                            </div>
-                            <div className="bg-gray-100 px-4 py-3 rounded-2xl rounded-bl-sm flex gap-1.5 items-center">
-                                {[0, 1, 2].map(d => <div key={d} className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: `${d * 150}ms` }} />)}
-                            </div>
+                    ) : (
+                        <div className="p-4 border-t border-gray-200 bg-amber-50/60">
+                            <p className="text-xs text-gray-500 text-center">Limite de teste atingido.</p>
                         </div>
                     )}
-                    <div ref={chatEndRef} />
                 </div>
-                {msgsUsed < 5 ? (
-                    <div className="flex gap-2 p-3 border-t border-gray-200">
-                        <input value={chatInput} onChange={e => setChatInput(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
-                            placeholder="Escreva como se fosse um cliente..." disabled={chatLoading}
-                            className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-[#FF4C00]/60 transition-all" />
-                        <button onClick={sendChat} disabled={chatLoading || !chatInput.trim()}
-                            className="w-10 h-10 rounded-xl bg-[#FF4C00] hover:bg-[#FF6A30] disabled:opacity-40 flex items-center justify-center transition-colors shrink-0">
-                            <Send className="w-4 h-4 text-white" />
+
+                {isLimitReached ? (
+                    <div className="rounded-2xl border border-[#FF4C00]/20 bg-[#FF4C00]/5 p-5 space-y-3 animate-fade-in">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-[#FF4C00] flex items-center justify-center shrink-0">
+                                <Rocket className="w-5 h-5 text-white" />
+                            </div>
+                            <div>
+                                <p className="font-bold text-gray-900 text-sm">Teste concluído! 🎉</p>
+                                <p className="text-xs text-gray-500">Isso é só o começo — você pode melhorar ainda mais sua IA.</p>
+                            </div>
+                        </div>
+                        <button onClick={() => go(16)}
+                            className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-[#FF4C00] to-[#FF6A30] hover:brightness-110 text-white font-bold rounded-xl transition-all shadow-lg shadow-[#FF4C00]/20">
+                            Melhorar minha IA <ChevronRight className="w-4 h-4" />
                         </button>
                     </div>
                 ) : (
-                    <div className="p-3 text-center text-xs text-gray-400 border-t border-gray-200">Limite de teste atingido.</div>
+                    <NextBtn onClick={() => go(16)} label="Finalizar teste" />
                 )}
             </div>
-            <NextBtn onClick={() => go(16)} label="Finalizar teste" />
-        </div>
-    );
+        );
+    }
 
     if (step === 16) return (
         <div className="space-y-6 animate-fade-in">

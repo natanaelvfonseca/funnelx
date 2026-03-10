@@ -3092,19 +3092,22 @@ const onboardingPreviewLimiter = rateLimit({
   message: { error: 'Limite de mensagens de teste atingido.' }
 });
 
+// In-memory session counter (survives for the duration of the process, good enough for test chats)
+const onboardingSessionCount = new Map();
+
 app.post('/api/onboarding/preview-ai', onboardingPreviewLimiter, async (req, res) => {
   try {
-    const { session_id, message, onboarding_context } = req.body;
+    const { session_id, message, onboarding_context, history } = req.body;
     if (!session_id || !message) return res.status(400).json({ error: 'session_id e message são obrigatórios.' });
 
-    // Count prior messages — fail-safe if table doesn't exist yet
-    let count = 0;
-    try {
-      const countRes = await pool.query('SELECT COUNT(*) FROM onboarding_test_sessions WHERE session_id = $1', [session_id]);
-      count = parseInt(countRes.rows[0].count || '0');
-    } catch (_) { /* table may not exist on cold start — allow through */ }
+    const MAX_MSGS = 5;
 
-    if (count >= 5) return res.status(429).json({ error: 'Limite de 5 interações de teste atingido.', limitReached: true });
+    // Track count in memory (reliable even if DB table doesn't exist)
+    const count = onboardingSessionCount.get(session_id) || 0;
+
+    if (count >= MAX_MSGS) {
+      return res.status(429).json({ error: 'Limite de interações de teste atingido.', limitReached: true, messagesUsed: MAX_MSGS });
+    }
 
     const ctx = onboarding_context || {};
     const systemPrompt = `Você é ${ctx.aiName || 'uma IA de vendas'}, assistente da empresa ${ctx.companyName || 'nossa empresa'}.
@@ -3118,29 +3121,44 @@ Mercado: ${ctx.industry || 'geral'}
 ${ctx.restrictions ? `\nNUNCA diga: ${ctx.restrictions}` : ''}
 
 ---
-IMPORTANTE: Você está sendo testado pelo dono da empresa. Responda como se fosse um lead real, demonstrando o potencial da IA.
-Seja natural, fluido, em português brasileiro. Máximo 3 parágrafos por resposta.`;
+IMPORTANTE: Você está sendo testado pelo dono da empresa. Demonstre o potencial real da IA.
+Seja natural, fluido, em português brasileiro. Lembre-se SEMPRE do contexto anterior da conversa.
+Máximo 3 parágrafos por resposta.`;
+
+    // Build messages with full conversation history for memory
+    const messages = [{ role: 'system', content: systemPrompt }];
+
+    // Add prior turns from history sent by client
+    if (Array.isArray(history)) {
+      for (const h of history) {
+        if (h.role === 'user') messages.push({ role: 'user', content: h.text });
+        else if (h.role === 'ai') messages.push({ role: 'assistant', content: h.text });
+      }
+    }
+    // Add current user message
+    messages.push({ role: 'user', content: message });
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: message }
-      ],
+      messages,
       max_tokens: 300,
       temperature: 0.75
     });
 
     const reply = completion.choices[0]?.message?.content || 'Não consegui responder, tente novamente.';
 
-    // Save to dataset for CIL — best-effort, does not block the reply
+    const newCount = count + 1;
+    onboardingSessionCount.set(session_id, newCount);
+
+    // Save to dataset for CIL — best-effort
     pool.query(
       `INSERT INTO onboarding_test_sessions (session_id, user_message, ai_reply, onboarding_context)
        VALUES ($1, $2, $3, $4)`,
       [session_id, message, reply, JSON.stringify(ctx)]
     ).catch(() => { });
 
-    res.json({ reply, messagesUsed: count + 1, messagesLeft: Math.max(0, 5 - (count + 1)) });
+    const limitReached = newCount >= MAX_MSGS;
+    res.json({ reply, messagesUsed: newCount, messagesLeft: Math.max(0, MAX_MSGS - newCount), limitReached });
   } catch (err) {
     log('[ONBOARDING-PREVIEW] Error: ' + err.message);
     res.status(500).json({ error: 'Erro ao processar mensagem: ' + err.message });
@@ -3259,7 +3277,7 @@ ${restrictions ? 'RESTRIÇÕES: ' + restrictions : ''}
 Seja sempre proativo, orientado a resultados, e conduza o cliente em direção ao fechamento.`;
 
       await pool.query(
-        `INSERT INTO agents (organization_id, name, type, status, system_prompt)
+        `INSERT INTO agents (organization_id, name, role, status, system_prompt)
          VALUES ($1, $2, 'sdr', 'active', $3)`,
         [org.id, aiName || 'Agente IA', systemPrompt]
       );
