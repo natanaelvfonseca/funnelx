@@ -12737,6 +12737,18 @@ async function processAIResponse(
       `[AI] Processing buffered messages for ${remoteJid}. Input count: ${inputMessages.length}`,
     );
 
+    // ── Auto-create lead in CRM funnel (best-effort, runs on every message) ────
+    // Uses organization_id from agent if available, otherwise looks up from instance
+    if (remoteJid && !remoteJid.includes('@g.us') && !remoteJid.includes('@broadcast')) {
+      const orgIdForLead = agent?.organization_id || null;
+      if (orgIdForLead) {
+        const pushNameForLead = inputMessages?.[0]?.metadata?.pushName || inputMessages?.[0]?.metadata?.['pushName'] || null;
+        ensureLeadFromWhatsApp(remoteJid, pushNameForLead, orgIdForLead).catch(e =>
+          log(`[AUTO-LEAD] ensureLeadFromWhatsApp error: ${e.message}`)
+        );
+      }
+    }
+
     // Check if any input was audio OR if user is asking AI to send audio
     const audioTriggerKeywords = ['manda um audio', 'manda audio', 'me manda um audio', 'envia um audio', 'envia audio', 'send audio', 'me manda audio', 'pode mandar um audio', 'fala por audio', 'responde em audio', 'responde por audio'];
     const userTextLower = inputMessages.map(m => (m.text || m.content || '')).join(' ').toLowerCase();
