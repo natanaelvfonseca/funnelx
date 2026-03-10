@@ -3244,8 +3244,9 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
            main_product=EXCLUDED.main_product, desired_revenue=EXCLUDED.desired_revenue,
            agent_objective=EXCLUDED.agent_objective, unknown_behavior=EXCLUDED.unknown_behavior,
            voice_tone=EXCLUDED.voice_tone, restrictions=EXCLUDED.restrictions`,
+        // Store the CODE (fechar_venda, qualificar_agendar, aquecer_lead) not the human text
         [org.id, user.id, companyName, aiName, mainProduct, revenueGoal,
-          agentObjectiveText, unknownBehavior, voiceTone, restrictions || '']
+          agentObjective, unknownBehavior, voiceTone, restrictions || '']
       );
       // Save optional columns (best-effort)
       await pool.query(
@@ -3410,6 +3411,9 @@ app.get('/api/agents', verifyJWT, async (req, res) => {
       `SELECT a.id, a.name,
               COALESCE(a.type, 'sdr') AS type,
               COALESCE(a.status, 'active') AS status,
+              a.system_prompt,
+              a.model_config,
+              a.whatsapp_instance_id,
               a.created_at,
               wi.instance_name AS whatsapp_instance_name,
               wi.status AS whatsapp_instance_status

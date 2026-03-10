@@ -22,18 +22,12 @@ interface CompanyData {
     voiceTone: string;
     unknownBehavior: string;
     restrictions: string;
+    agentName: string;
+    revenueGoal: string;
+    agentObjective: string;
+    productPrice: string;
 }
 
-function buildPromptFromTemplate(templateId: string, data: CompanyData): string {
-    const template = agentTemplates.find(t => t.id === templateId);
-    if (!template) return `You are a ${templateId} agent.`;
-    return template.basePrompt
-        .replace(/\{\{companyProduct\}\}/g, data.companyProduct || '')
-        .replace(/\{\{targetAudience\}\}/g, data.targetAudience || '')
-        .replace(/\{\{voiceTone\}\}/g, data.voiceTone || '')
-        .replace(/\{\{unknownBehavior\}\}/g, data.unknownBehavior || '')
-        .replace(/\{\{restrictions\}\}/g, data.restrictions || '');
-}
 
 export function MyAIs() {
     const { user, token } = useAuth();
@@ -168,10 +162,34 @@ export function MyAIs() {
         setIsCreating(true);
 
         try {
-            // Build system_prompt based on mode
-            let systemPrompt = `You are a ${newType} agent.`;
+            let systemPrompt = '';
+
             if (createMode === 'company' && companyData) {
-                systemPrompt = buildPromptFromTemplate(newType, companyData);
+                // Build a rich dynamic prompt from the CURRENT company profile data
+                const objectiveText =
+                    companyData.agentObjective === 'fechar_venda' ? 'fechar vendas diretamente no WhatsApp' :
+                        companyData.agentObjective === 'qualificar_agendar' ? 'qualificar leads e agendar reuniões' :
+                            'aquecer o lead e transferir para um vendedor humano';
+
+                const unknownText =
+                    companyData.unknownBehavior === 'transferir_humano' ? 'Transfira imediatamente para um humano.' :
+                        companyData.unknownBehavior === 'pedir_contato' ? 'Peça o contato para retorno em breve.' :
+                            companyData.unknownBehavior || 'Informe que vai verificar e retornar.';
+
+                systemPrompt = `Você é ${companyData.agentName || newName}, assistente virtual da empresa ${companyData.companyName}.
+
+OBJETIVO PRINCIPAL: ${objectiveText}.
+
+PRODUTO / SERVIÇO: ${companyData.companyProduct || 'Não informado'}.
+PREÇO MÉDIO: ${companyData.productPrice ? 'R$ ' + companyData.productPrice : 'Não informado'}.
+DOR DO CLIENTE / PÚBLICO-ALVO: ${companyData.targetAudience || 'Não informado'}.
+ESTILO DE COMUNICAÇÃO: ${companyData.voiceTone || 'Consultiva'}.
+QUANDO NÃO SOUBER RESPONDER: ${unknownText}
+${companyData.restrictions ? 'RESTRIÇÕES: ' + companyData.restrictions : ''}
+
+Seja sempre proativo, orientado a resultados, e conduza o cliente em direção ao fechamento.`;
+            } else {
+                systemPrompt = `Você é um agente especializado em ${newType}. Seja útil, claro e orientado ao objetivo do usuário.`;
             }
 
             const res = await fetch('/api/agents', {
