@@ -3234,35 +3234,31 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
           'Aquecer o lead e transferir para vendedor humano';
 
     try {
-      // UPSERT including optional fields in one shot
-      await pool.query(
-        `INSERT INTO ia_configs (organization_id, user_id, company_name, agent_name, main_product, desired_revenue,
-          agent_objective, unknown_behavior, voice_tone, restrictions)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-         ON CONFLICT (organization_id) DO UPDATE SET
-           company_name=EXCLUDED.company_name, agent_name=EXCLUDED.agent_name,
-           main_product=EXCLUDED.main_product, desired_revenue=EXCLUDED.desired_revenue,
-           agent_objective=EXCLUDED.agent_objective, unknown_behavior=EXCLUDED.unknown_behavior,
-           voice_tone=EXCLUDED.voice_tone, restrictions=EXCLUDED.restrictions`,
-        // Store the CODE (fechar_venda, qualificar_agendar, aquecer_lead) not the human text
+      // Try UPDATE first (works whether or not there's a unique constraint)
+      const updateRes = await pool.query(
+        `UPDATE ia_configs SET
+           user_id=$2, company_name=$3, agent_name=$4, main_product=$5, desired_revenue=$6,
+           agent_objective=$7, unknown_behavior=$8, voice_tone=$9, restrictions=$10,
+           customer_pain=$11, product_price=$12
+         WHERE organization_id=$1`,
         [org.id, user.id, companyName, aiName, mainProduct, revenueGoal,
-          agentObjective, unknownBehavior, voiceTone, restrictions || '']
+          agentObjective, unknownBehavior, voiceTone, restrictions || '',
+        customerPain || '', productPrice || '']
       );
-      // Save optional columns (best-effort)
-      await pool.query(
-        `UPDATE ia_configs SET customer_pain=$1, product_price=$2 WHERE organization_id=$3`,
-        [customerPain || '', productPrice || '', org.id]
-      ).catch(() => { });
+      if (updateRes.rowCount === 0) {
+        // No existing row — INSERT
+        await pool.query(
+          `INSERT INTO ia_configs (organization_id, user_id, company_name, agent_name, main_product, desired_revenue,
+            agent_objective, unknown_behavior, voice_tone, restrictions, customer_pain, product_price)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+          [org.id, user.id, companyName, aiName, mainProduct, revenueGoal,
+            agentObjective, unknownBehavior, voiceTone, restrictions || '',
+          customerPain || '', productPrice || '']
+        );
+      }
+      log(`[ONBOARDING-V2] ia_configs saved for org ${org.id}`);
     } catch (iaErr) {
-      log('[ONBOARDING-V2] ia_configs insert failed: ' + iaErr.message);
-      // Fallback: plain INSERT (no unique constraint)
-      await pool.query(
-        `INSERT INTO ia_configs (organization_id, user_id, company_name, agent_name, main_product, desired_revenue,
-          agent_objective, unknown_behavior, voice_tone, restrictions)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [org.id, user.id, companyName, aiName, mainProduct, revenueGoal,
-          agentObjectiveText, unknownBehavior, voiceTone, restrictions || '']
-      ).catch(e2 => log('[ONBOARDING-V2] ia_configs fallback also failed: ' + e2.message));
+      log('[ONBOARDING-V2] ia_configs save failed: ' + iaErr.message);
     }
 
     // ── Optional: create first agent (best-effort) ────────────────────────────
@@ -3321,12 +3317,21 @@ app.get('/api/company-data', verifyJWT, async (req, res) => {
     const orgId = orgRes.rows[0]?.organization_id;
     if (!orgId) return res.status(400).json({ error: 'No organization' });
 
-    const r = await pool.query(
+    let r = await pool.query(
       `SELECT company_name, agent_name, main_product, desired_revenue, agent_objective,
               unknown_behavior, voice_tone, restrictions, customer_pain, product_price
-       FROM ia_configs WHERE organization_id = $1`,
+       FROM ia_configs WHERE organization_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [orgId]
     );
+    // Fallback: some rows may have been saved by user_id only (legacy)
+    if (r.rows.length === 0) {
+      r = await pool.query(
+        `SELECT company_name, agent_name, main_product, desired_revenue, agent_objective,
+                unknown_behavior, voice_tone, restrictions, customer_pain, product_price
+         FROM ia_configs WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [req.userId]
+      );
+    }
     if (r.rows.length === 0) return res.json(null);
     const d = r.rows[0];
     res.json({
@@ -3356,21 +3361,28 @@ app.put('/api/company-profile', verifyJWT, async (req, res) => {
 
     const { companyName, companyProduct, targetAudience, voiceTone, unknownBehavior, restrictions, agentName, revenueGoal, agentObjective, productPrice } = req.body;
 
-    await pool.query(
-      `INSERT INTO ia_configs (organization_id, user_id, company_name, agent_name, main_product,
-         desired_revenue, agent_objective, unknown_behavior, voice_tone, restrictions)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       ON CONFLICT (organization_id) DO UPDATE SET
-         company_name=EXCLUDED.company_name, agent_name=EXCLUDED.agent_name,
-         main_product=EXCLUDED.main_product, desired_revenue=EXCLUDED.desired_revenue,
-         agent_objective=EXCLUDED.agent_objective, unknown_behavior=EXCLUDED.unknown_behavior,
-         voice_tone=EXCLUDED.voice_tone, restrictions=EXCLUDED.restrictions`,
-      [orgId, req.userId, companyName, agentName, companyProduct, revenueGoal, agentObjective, unknownBehavior, voiceTone, restrictions]
+    // UPDATE existing row first, INSERT if not found
+    const updateRes = await pool.query(
+      `UPDATE ia_configs SET
+         user_id=$2, company_name=$3, agent_name=$4, main_product=$5, desired_revenue=$6,
+         agent_objective=$7, unknown_behavior=$8, voice_tone=$9, restrictions=$10,
+         customer_pain=$11, product_price=$12
+       WHERE organization_id=$1`,
+      [orgId, req.userId, companyName, agentName, companyProduct, revenueGoal,
+        agentObjective, unknownBehavior, voiceTone, restrictions,
+        targetAudience, productPrice]
     );
-    // Optional columns
-    await pool.query(`UPDATE ia_configs SET customer_pain=$1, product_price=$2 WHERE organization_id=$3`,
-      [targetAudience, productPrice, orgId]).catch(() => { });
-
+    if (updateRes.rowCount === 0) {
+      await pool.query(
+        `INSERT INTO ia_configs (organization_id, user_id, company_name, agent_name, main_product,
+           desired_revenue, agent_objective, unknown_behavior, voice_tone, restrictions,
+           customer_pain, product_price)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        [orgId, req.userId, companyName, agentName, companyProduct, revenueGoal,
+          agentObjective, unknownBehavior, voiceTone, restrictions,
+          targetAudience, productPrice]
+      );
+    }
     res.json({ success: true });
   } catch (err) {
     log('[COMPANY-PROFILE] PUT error: ' + err.message);
@@ -9386,11 +9398,38 @@ app.post("/api/evolution/webhook", async (req, res) => {
     // Event-driven: Cancel follow-up since user replied
     await cancelFollowupOnReply(agent.organization_id, remoteJid);
 
-    // 5. Trigger AI Processing
-    // We pass the message content directly to `processAIResponse`
-    // Note: `processAIResponse` fetches history, so we just inserted it.
-    // But we should pass it as `inputMessages` argument to let it know what triggered it.
+    // ── Auto-create lead in CRM if not already existing ──────────────────────
+    let leadId = null;
+    try {
+      // Extract phone number from JID (format: 5511999999999@s.whatsapp.net)
+      const phoneRaw = remoteJid.split('@')[0];
+      const orgId = agent.organization_id;
 
+      // Check if this phone already has a lead
+      const existingLead = await pool.query(
+        `SELECT id FROM leads WHERE organization_id = $1 AND (phone LIKE $2 OR mobile_phone LIKE $2) LIMIT 1`,
+        [orgId, `%${phoneRaw}%`]
+      );
+
+      if (existingLead.rows.length > 0) {
+        leadId = existingLead.rows[0].id;
+      } else {
+        // Create new lead - use pushName as name or whatsapp number
+        const leadName = pushName && pushName !== 'Unknown' ? pushName : `WhatsApp ${phoneRaw}`;
+        const newLead = await pool.query(
+          `INSERT INTO leads (organization_id, name, mobile_phone, source, pipeline_stage, status, created_at)
+           VALUES ($1, $2, $3, 'WhatsApp', 'Novo Lead', 'new', NOW())
+           RETURNING id`,
+          [orgId, leadName, phoneRaw]
+        );
+        leadId = newLead.rows[0]?.id;
+        log(`[WEBHOOK] Auto-created lead ${leadId} (${leadName}) for org ${orgId}`);
+      }
+    } catch (leadErr) {
+      log(`[WEBHOOK] Auto-lead creation error: ${leadErr.message}`);
+    }
+
+    // 5. Trigger AI Processing
     await processAIResponse(agent, remoteJid, instanceName, [inputMessage]);
 
     res.status(200).send("OK");
