@@ -108,7 +108,13 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient
                     {/* Info */}
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-semibold text-text-primary text-sm leading-tight group-hover:text-primary transition-colors">{lead.name || 'Sem Nome'}</h4>
+                            <h4
+                                onClick={(e) => { e.stopPropagation(); if (onEdit) onEdit(lead); }}
+                                className="font-semibold text-text-primary text-sm leading-tight hover:text-primary transition-colors cursor-pointer"
+                                title="Editar Negócio"
+                            >
+                                {lead.name || 'Sem Nome'}
+                            </h4>
                             {intentCfg && score > 0 && (
                                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${intentCfg.bg} ${intentCfg.color} border ${intentCfg.border} flex-shrink-0 tracking-wide`}>
                                     {intentCfg.label} {score}
@@ -186,14 +192,15 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient
                 <div className="relative flex-shrink-0 ml-1" ref={menuRef}>
                     <button
                         onClick={(e) => { e.stopPropagation(); setShowMenu(v => !v); }}
-                        className="text-text-muted hover:text-text-primary transition-colors p-1 hover:bg-white/5 rounded"
+                        className="text-text-muted hover:text-text-primary transition-colors p-1 hover:bg-white/5 rounded focus:outline-none"
                         title="Ações"
                     >
                         <MoreHorizontal size={16} />
                     </button>
 
                     {showMenu && (
-                        <div className="absolute right-0 top-10 mt-1 w-56 bg-surface border border-border rounded-lg shadow-xl z-50 py-1 overflow-hidden">
+                        <div className="absolute right-0 top-full mt-1 w-48 bg-surface border border-border rounded-lg shadow-xl z-50 py-1 overflow-hidden transform origin-top-right">
+
                             {/* Option: Edit */}
                             {onEdit && (
                                 <button
@@ -201,31 +208,21 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient
                                     className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 text-text-primary transition-colors"
                                 >
                                     <MoreHorizontal size={14} className="text-text-muted" />
-                                    Editar Lead
-                                </button>
-                            )}
-
-                            {/* Option: Mark as Client */}
-                            {onMarkAsClient && lead.status !== 'Cliente' && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); if (confirm(`Marcar ${lead.name} como Cliente?`)) onMarkAsClient(lead.id); setShowMenu(false); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-green-500/10 text-green-500 transition-colors"
-                                >
-                                    <UserCheck size={14} />
-                                    Fechar Negócio (Cliente)
+                                    Editar Negócio
                                 </button>
                             )}
 
                             {/* Option: Assign Vendor */}
                             {onAssignVendedor && (
-                                <div className="border-t border-border/30 mt-1 pt-1">
-                                    <div className="px-3 py-1.5 text-[10px] font-semibold text-text-muted uppercase tracking-wider">Atribuir Vendedor</div>
+                                <div>
+                                    <div className="border-t border-border/30 mt-1 pt-1 mb-1" />
+                                    <div className="px-3 py-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider">Atribuir Vendedor</div>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); onAssignVendedor(lead.id, null); setShowMenu(false); }}
                                         className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 text-text-secondary transition-colors"
                                     >
                                         <User size={14} className="opacity-0" />
-                                        — Remover atribuição
+                                        — Sem Vendedor
                                     </button>
                                     {vendedores.map(v => (
                                         <button
@@ -240,18 +237,6 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient
                                 </div>
                             )}
 
-                            {/* Option: Delete */}
-                            {onDelete && (
-                                <div className="border-t border-border/30 mt-1 pt-1">
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); if (confirm('Tem certeza que deseja excluir este lead?')) onDelete(lead.id); setShowMenu(false); }}
-                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-red-500/10 text-red-500 transition-colors"
-                                    >
-                                        <Trash2 size={14} />
-                                        Excluir Lead
-                                    </button>
-                                </div>
-                            )}
                         </div>
                     )}
                 </div>
