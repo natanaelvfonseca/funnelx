@@ -72,9 +72,9 @@ export function PipelineFlow({ stages }: PipelineFlowProps) {
     // Removed conversion rates as per user request
 
     return (
-        <div className="w-full relative select-none" style={{ height: HEIGHT + 56 }}>
+        <div className="w-full flex flex-col select-none">
             {/* Labels above */}
-            <div className="absolute top-0 left-0 right-0 flex" style={{ height: 28 }}>
+            <div className="flex" style={{ minHeight: 28 }}>
                 {stages.map((s, i) => (
                     <div key={i} className="flex-1 flex flex-col items-center justify-end pb-1" style={{ minWidth: 0 }}>
                         <span
@@ -93,7 +93,7 @@ export function PipelineFlow({ stages }: PipelineFlowProps) {
                 viewBox={`0 0 ${VW} ${HEIGHT}`}
                 preserveAspectRatio="none"
                 className="w-full"
-                style={{ height: HEIGHT, marginTop: 28 }}
+                style={{ height: HEIGHT, marginTop: 4 }}
             >
                 <defs>
                     {stages.map((_s, i) => (
@@ -209,7 +209,7 @@ export function PipelineFlow({ stages }: PipelineFlowProps) {
             )}
 
             {/* Bottom legend: total */}
-            <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-2 pb-0.5">
+            <div className="flex items-center justify-center gap-2 pt-1 pb-0.5">
                 <span className="text-[10px] text-text-muted">
                     {total} leads no pipeline
                 </span>
