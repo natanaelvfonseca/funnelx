@@ -8092,10 +8092,14 @@ VALUES($1, $2, $3, $4, $5, $6) RETURNING id`,
       const batchText = inputMessages.map(m => m.content).filter(Boolean).join(' | ');
       if (batchText && orgId) {
         // Find the lead ID for this conversation (phone matches remoteJid)
+        // Fix: Use ORDER BY to ensure we get the real, most recently active lead, avoiding hidden ghost leads
         const phone = remoteJid.split('@')[0];
+        const cleanPhone = phone.replace(/\D/g, '');
         pool.query(
-          `SELECT id FROM leads WHERE organization_id = $1 AND (phone LIKE $2 OR phone = $2) LIMIT 1`,
-          [orgId, `%${phone}%`]
+          `SELECT id FROM leads 
+           WHERE organization_id = $1 AND (phone = $2 OR phone LIKE $3) 
+           ORDER BY last_contact DESC NULLS LAST, created_at DESC LIMIT 1`,
+          [orgId, cleanPhone, `%${cleanPhone}%`]
         ).then(leadRes => {
           const leadId = leadRes.rows[0]?.id || null;
           processConversationIntelligence(batchText, {
@@ -8148,6 +8152,18 @@ app.get("/api/debug-connection", async (req, res) => {
     });
   } catch (e) {
     res.json({ error: e.message });
+  }
+});
+
+// TEMPORARY CLEANUP ENDPOINT
+app.get("/api/debug/cleanup-leads", async (req, res) => {
+  try {
+    const q1 = await pool.query("DELETE FROM leads WHERE phone LIKE '%554791935149%' OR phone LIKE '%4791935149%' RETURNING id");
+    const q2 = await pool.query("DELETE FROM message_buffer WHERE remote_jid LIKE '%554791935149%' RETURNING id");
+    const q3 = await pool.query("DELETE FROM chat_messages WHERE remote_jid LIKE '%554791935149%' RETURNING id");
+    res.json({ deletedLeads: q1.rowCount, deletedBuffer: q2.rowCount, deletedMessages: q3.rowCount, success: true });
+  } catch(e) {
+    res.json({ error: e.message, success: false });
   }
 });
 
@@ -12356,12 +12372,15 @@ async function ensureLeadFromWhatsApp(remoteJid, pushName, organizationId) {
     }
 
     // Check if lead already exists (dedup by phone)
+    // Fix: We order by last_contact to find the MOST RECENT active lead, 
+    // in case there are ghost duplicates in the database that confusingly hide the active one.
     const existing = await pool.query(
       `SELECT id FROM leads 
        WHERE organization_id = $1 
-         AND (phone = $2 OR phone = $3)
+         AND (phone = $2 OR phone = $3 OR phone LIKE $4)
+       ORDER BY last_contact DESC NULLS LAST, created_at DESC
        LIMIT 1`,
-      [organizationId, cleanPhone, rawPhone]
+      [organizationId, cleanPhone, rawPhone, `%${cleanPhone}%`]
     );
 
     if (existing.rows.length > 0) {
