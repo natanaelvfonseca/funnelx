@@ -2592,6 +2592,18 @@ const ensureProductEngineTables = async () => {
       )
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_products_org ON products(organization_id)`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS organization_id TEXT`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS nome TEXT`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS categoria TEXT`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS descricao_curta TEXT`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS descricao_detalhada TEXT`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS beneficios TEXT[] DEFAULT '{}'`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS preco_base FLOAT`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS faq JSONB DEFAULT '[]'`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'ativo'`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
 
     // Product media library
     await pool.query(`
@@ -2667,6 +2679,21 @@ const ensureProductEngineTables = async () => {
   }
 };
 
+let productEngineTablesReadyPromise = null;
+async function ensureProductEngineTablesReady() {
+  if (!productEngineTablesReadyPromise) {
+    productEngineTablesReadyPromise = ensureProductEngineTables().catch((err) => {
+      productEngineTablesReadyPromise = null;
+      throw err;
+    });
+  }
+  return productEngineTablesReadyPromise;
+}
+
+ensureProductEngineTablesReady().catch((err) => {
+  log('[PRODUCT ENGINE] bootstrap error: ' + err.message);
+});
+
 // â”€â”€â”€ Stage â†’ Default Trigger Map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const STAGE_DEFAULT_TRIGGER = {
   novo: 'primeiro_contato',
@@ -2707,6 +2734,7 @@ function formatPromotionDate(value) {
  */
 async function selectBestOffer(orgId, leadStage, userIntent = '') {
   try {
+    await ensureProductEngineTablesReady();
     const stageTrigger = STAGE_DEFAULT_TRIGGER[leadStage] || 'primeiro_contato';
     const intentLower = normalizeMatchText(userIntent);
 
@@ -15869,6 +15897,7 @@ app.delete('/api/admin/products/:id', verifyJWT, requireAdmin, async (req, res) 
 // GET /api/products â€” list org products
 app.get('/api/products', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
     const result = await pool.query(
@@ -15890,6 +15919,7 @@ app.get('/api/products', verifyJWT, async (req, res) => {
 // POST /api/products â€” create product
 app.post('/api/products', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
     const { nome, categoria, descricao_curta, descricao_detalhada, beneficios, preco_base, faq, tags, status } = req.body;
@@ -15910,6 +15940,7 @@ app.post('/api/products', verifyJWT, async (req, res) => {
 // GET /api/products/:id â€” get product with images + offers
 app.get('/api/products/:id', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
@@ -15937,6 +15968,7 @@ app.get('/api/products/:id', verifyJWT, async (req, res) => {
 // PUT /api/products/:id â€” update product
 app.put('/api/products/:id', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
     const { nome, categoria, descricao_curta, descricao_detalhada, beneficios, preco_base, faq, tags, status } = req.body;
@@ -15959,6 +15991,7 @@ app.put('/api/products/:id', verifyJWT, async (req, res) => {
 // DELETE /api/products/:id â€” soft-delete (set status=inativo)
 app.delete('/api/products/:id', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
     await pool.query(`UPDATE products SET status='inativo', updated_at=NOW() WHERE id=$1 AND organization_id=$2`,
@@ -15973,6 +16006,7 @@ app.delete('/api/products/:id', verifyJWT, async (req, res) => {
 // POST /api/products/:id/images â€” add image/video/pdf
 app.post('/api/products/:id/images', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
     const { url, tipo, caption, ordem } = req.body;
@@ -15992,6 +16026,7 @@ app.post('/api/products/:id/images', verifyJWT, async (req, res) => {
 // DELETE /api/products/:productId/images/:imgId â€” remove media
 app.delete('/api/products/:productId/images/:imgId', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
     await pool.query(`DELETE FROM product_images WHERE id=$1 AND organization_id=$2`, [req.params.imgId, user.organization_id]);
@@ -16005,6 +16040,7 @@ app.delete('/api/products/:productId/images/:imgId', verifyJWT, async (req, res)
 // POST /api/products/:id/offers â€” create offer for product
 app.post('/api/products/:id/offers', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
     const { nome, preco, descricao, mensagem_sugerida, prioridade, status, starts_at, ends_at, triggers } = req.body;
@@ -16036,6 +16072,7 @@ app.post('/api/products/:id/offers', verifyJWT, async (req, res) => {
 // PUT /api/offers/:id â€” update offer
 app.put('/api/offers/:id', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
     const { nome, preco, descricao, mensagem_sugerida, prioridade, status, starts_at, ends_at, triggers } = req.body;
@@ -16103,6 +16140,7 @@ app.post('/api/offers/:id/triggers', verifyJWT, async (req, res) => {
 // PRODUCT CATALOG API â€” isolated namespace for the org catalog UI
 app.get('/api/catalog/products', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
@@ -16125,6 +16163,7 @@ app.get('/api/catalog/products', verifyJWT, async (req, res) => {
 
 app.post('/api/catalog/products', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
@@ -16171,6 +16210,7 @@ app.post('/api/catalog/products', verifyJWT, async (req, res) => {
 
 app.get('/api/catalog/products/:id', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
@@ -16204,6 +16244,7 @@ app.get('/api/catalog/products/:id', verifyJWT, async (req, res) => {
 
 app.put('/api/catalog/products/:id', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
@@ -16254,6 +16295,7 @@ app.put('/api/catalog/products/:id', verifyJWT, async (req, res) => {
 
 app.delete('/api/catalog/products/:id', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
@@ -16271,6 +16313,7 @@ app.delete('/api/catalog/products/:id', verifyJWT, async (req, res) => {
 
 app.post('/api/catalog/products/:id/images', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
@@ -16301,6 +16344,7 @@ app.post('/api/catalog/products/:id/images', verifyJWT, async (req, res) => {
 
 app.post('/api/catalog/products/:id/images/upload', verifyJWT, upload.single('file'), async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
@@ -16348,6 +16392,7 @@ app.post('/api/catalog/products/:id/images/upload', verifyJWT, upload.single('fi
 
 app.delete('/api/catalog/products/:productId/images/:imgId', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
@@ -16366,6 +16411,7 @@ app.delete('/api/catalog/products/:productId/images/:imgId', verifyJWT, async (r
 
 app.get('/api/catalog/promotions', verifyJWT, async (req, res) => {
   try {
+    await ensureProductEngineTablesReady();
     const user = await getUserById(req.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
