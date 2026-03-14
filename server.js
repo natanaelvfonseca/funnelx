@@ -6810,7 +6810,7 @@ const checkPlanLimits = async (userId) => {
 // Helper: Get full user details including org
 const getUserDetails = async (userId) => {
   const res = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
-  return res.rows[0];
+  return res.rows[0] || null;
 };
 
 const getUserByEmail = async (email) => {
@@ -6929,6 +6929,17 @@ const ensureUserInitialized = async (userId) => {
     log(
       `[INIT ERROR] ensureUserInitialized failed for ${userId}: ${err.message} `,
     );
+  }
+};
+
+// Canonical helper for routes that depend on a valid organization context.
+const getUserById = async (userId) => {
+  try {
+    await ensureUserInitialized(userId);
+    return await getUserDetails(userId);
+  } catch (e) {
+    log("Error getting user by id: " + e.toString());
+    return null;
   }
 };
 
