@@ -476,10 +476,10 @@ export function Products() {
       )}
 
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/60 p-4 pt-6 backdrop-blur-md sm:p-6 sm:pt-10">
-          <div className="relative w-full max-w-5xl overflow-hidden rounded-[30px] border border-black/[0.06] bg-white shadow-[0_28px_90px_rgba(15,23,42,0.24)] dark:border-white/[0.08] dark:bg-[#151515] dark:shadow-[0_28px_100px_rgba(0,0,0,0.55)]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/60 p-3 backdrop-blur-md sm:p-5">
+          <div className="relative flex max-h-[calc(100vh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[30px] border border-black/[0.06] bg-white shadow-[0_28px_90px_rgba(15,23,42,0.24)] dark:border-white/[0.08] dark:bg-[#151515] dark:shadow-[0_28px_100px_rgba(0,0,0,0.55)] sm:max-h-[calc(100vh-2.5rem)]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(245,121,59,0.10),_transparent_28%)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(245,121,59,0.12),_transparent_30%)]" />
-            <div className="relative border-b border-black/[0.06] px-5 py-5 dark:border-white/[0.08] sm:px-6">
+            <div className="relative shrink-0 border-b border-black/[0.06] px-5 py-5 dark:border-white/[0.08] sm:px-6">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex min-w-0 items-start gap-4">
                   <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] bg-gradient-primary text-white shadow-[0_16px_34px_rgba(245,121,59,0.28)]">
@@ -521,7 +521,7 @@ export function Products() {
                 </div>
               </div>
             </div>
-            <div className="relative border-b border-black/[0.06] px-5 dark:border-white/[0.08] sm:px-6">
+            <div className="relative shrink-0 border-b border-black/[0.06] px-5 dark:border-white/[0.08] sm:px-6">
               <div className="flex gap-6 overflow-x-auto">
                 {TABS.map((tab) => (
                   <button
@@ -547,7 +547,7 @@ export function Products() {
                 ))}
               </div>
             </div>
-            <div className="relative max-h-[72vh] overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
+            <div className="relative min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
               {activeTab === "Informações" && (
                 <div className="space-y-5">
                   <ModalSection
@@ -1213,7 +1213,7 @@ export function Products() {
                 </div>
               )}
             </div>
-            <div className="relative flex flex-col gap-3 border-t border-black/[0.06] px-5 py-5 dark:border-white/[0.08] sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div className="relative shrink-0 flex flex-col gap-3 border-t border-black/[0.06] px-5 py-5 dark:border-white/[0.08] sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <button
                 onClick={() => setShowModal(false)}
                 className="inline-flex h-12 items-center justify-center rounded-2xl border border-black/[0.08] px-5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground dark:border-white/[0.08] dark:hover:text-white"
