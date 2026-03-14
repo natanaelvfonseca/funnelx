@@ -9,7 +9,6 @@ import {
     Cpu,
     Loader2,
     MessageCircle,
-    Moon,
     MoreVertical,
     Pause,
     Play,
@@ -18,13 +17,11 @@ import {
     Settings2,
     Smartphone,
     Sparkles,
-    SunMedium,
     Wand2,
     X,
     type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../components/theme/ThemeProvider';
 import { cn } from '../../utils/cn';
 import AgentEditModal from '../../components/agents/AgentEditModal';
 import { agentTemplates } from '../../data/agentTemplates';
@@ -159,22 +156,6 @@ function isWhatsAppConnected(status?: string) {
 
 function getWhatsAppLabel(status?: string) {
     return isWhatsAppConnected(status) ? 'Conectado' : 'Desconectado';
-}
-
-function ThemeToggleButton() {
-    const { theme, toggleTheme } = useTheme();
-
-    return (
-        <button
-            type="button"
-            onClick={toggleTheme}
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-black/[0.07] bg-white/80 px-4 text-sm font-semibold text-text-secondary shadow-[0_8px_24px_rgba(15,23,42,0.05)] backdrop-blur transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:text-text-primary dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-white/80 dark:hover:border-primary/40 dark:hover:text-white"
-            title={theme === 'dark' ? 'Mudar para modo claro' : 'Mudar para modo escuro'}
-        >
-            {theme === 'dark' ? <SunMedium size={16} /> : <Moon size={16} />}
-            <span className="hidden sm:inline">{theme === 'dark' ? 'Modo claro' : 'Modo escuro'}</span>
-        </button>
-    );
 }
 
 function HeaderStat({
@@ -456,17 +437,13 @@ Seja sempre proativo, orientado a resultados, e conduza o cliente em direcao ao 
                                 />
                             </div>
 
-                            <div className="flex items-center gap-3">
-                                <ThemeToggleButton />
-
-                                <button
-                                    onClick={() => setShowCreateModal(true)}
-                                    className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-primary px-5 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(245,121,59,0.34)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_45px_rgba(245,121,59,0.4)] active:translate-y-0"
-                                >
-                                    <Plus size={18} />
-                                    Criar nova IA
-                                </button>
-                            </div>
+                            <button
+                                onClick={() => setShowCreateModal(true)}
+                                className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-primary px-5 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(245,121,59,0.34)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_45px_rgba(245,121,59,0.4)] active:translate-y-0"
+                            >
+                                <Plus size={18} />
+                                Criar nova IA
+                            </button>
                         </div>
 
                         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-text-secondary">
