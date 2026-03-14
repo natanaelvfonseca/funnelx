@@ -7234,6 +7234,7 @@ app.get("/api/chats/status/:agentId/:remoteJid", async (req, res) => {
 // Returns the full 3-layer memory for a given lead (WhatsApp remoteJid).
 app.get('/api/leads/:leadId/memory', verifyJWT, async (req, res) => {
   try {
+    await ensureConversationStateTables();
     const userId = req.userId;
     const leadId = decodeURIComponent(req.params.leadId);
 
@@ -7501,6 +7502,7 @@ async function ensureLeadsColumns() {
 }
 // Run migration on startup
 ensureLeadsColumns();
+ensureConversationStateTables().catch(err => log('[CSE] Startup ensureConversationStateTables error: ' + err.message));
 
 
 // GET /api/leads - List leads for the org
@@ -7513,13 +7515,10 @@ app.get("/api/leads", verifyJWT, async (req, res) => {
 
     const result = await pool.query(
       `SELECT l.*,
-              EXISTS (
-                SELECT 1
-                FROM lead_memory lm
-                WHERE lm.organization_id = l.organization_id
-                  AND lm.lead_id = l.id
-                  AND lm.lead_summary IS NOT NULL
-              ) AS has_ai_summary
+              CASE
+                WHEN COALESCE(NULLIF(TRIM(l.last_ia_briefing), ''), NULL) IS NOT NULL THEN TRUE
+                ELSE FALSE
+              END AS has_ai_summary
        FROM leads l
        WHERE l.organization_id = $1
        ORDER BY l.last_contact DESC`,
@@ -8865,13 +8864,10 @@ app.get("/api/leads", verifyJWT, async (req, res) => {
     // Filter by Organization ID
     const result = await pool.query(
       `SELECT l.*,
-              EXISTS (
-                SELECT 1
-                FROM lead_memory lm
-                WHERE lm.organization_id = l.organization_id
-                  AND lm.lead_id = l.id
-                  AND lm.lead_summary IS NOT NULL
-              ) AS has_ai_summary
+              CASE
+                WHEN COALESCE(NULLIF(TRIM(l.last_ia_briefing), ''), NULL) IS NOT NULL THEN TRUE
+                ELSE FALSE
+              END AS has_ai_summary
        FROM leads l
        WHERE l.organization_id = $1
        ORDER BY l.created_at DESC`,
