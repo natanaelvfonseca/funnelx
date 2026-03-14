@@ -2623,7 +2623,7 @@ const ensureProductEngineTables = async () => {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS product_images (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        product_id TEXT NOT NULL,
         organization_id TEXT NOT NULL,
         url TEXT NOT NULL,
         tipo VARCHAR(20) DEFAULT 'image' CHECK (tipo IN ('image','video','pdf')),
@@ -2632,13 +2632,15 @@ const ensureProductEngineTables = async () => {
         created_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    await pool.query(`ALTER TABLE product_images DROP CONSTRAINT IF EXISTS product_images_product_id_fkey`);
+    await pool.query(`ALTER TABLE product_images ALTER COLUMN product_id TYPE TEXT USING product_id::text`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_product_images_pid ON product_images(product_id)`);
 
     // Dynamic offers per product
     await pool.query(`
       CREATE TABLE IF NOT EXISTS offers (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        product_id TEXT NOT NULL,
         organization_id TEXT NOT NULL,
         nome TEXT NOT NULL,
         preco FLOAT,
@@ -2652,6 +2654,8 @@ const ensureProductEngineTables = async () => {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    await pool.query(`ALTER TABLE offers DROP CONSTRAINT IF EXISTS offers_product_id_fkey`);
+    await pool.query(`ALTER TABLE offers ALTER COLUMN product_id TYPE TEXT USING product_id::text`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_offers_product ON offers(product_id, organization_id)`);
     await pool.query(`ALTER TABLE offers ADD COLUMN IF NOT EXISTS starts_at TIMESTAMPTZ`);
     await pool.query(`ALTER TABLE offers ADD COLUMN IF NOT EXISTS ends_at TIMESTAMPTZ`);
@@ -2678,13 +2682,14 @@ const ensureProductEngineTables = async () => {
         organization_id TEXT NOT NULL,
         conversation_id TEXT,
         lead_id TEXT,
-        product_id UUID,
+        product_id TEXT,
         offer_id UUID,
         lead_stage TEXT,
         resposta_cliente TEXT,
         timestamp TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    await pool.query(`ALTER TABLE offer_events ALTER COLUMN product_id TYPE TEXT USING product_id::text`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_offer_events_org ON offer_events(organization_id, lead_id)`);
 
     log('[PRODUCT ENGINE] All tables verified.');
@@ -2760,7 +2765,7 @@ async function selectBestOffer(orgId, leadStage, userIntent = '') {
              p.id AS product_id_actual,
              ARRAY_AGG(ot.trigger_type) FILTER (WHERE ot.trigger_type IS NOT NULL) AS triggers
       FROM offers o
-      JOIN products p ON p.id = o.product_id
+      JOIN products p ON p.id::text = o.product_id
       LEFT JOIN offer_triggers ot ON ot.offer_id = o.id
       WHERE o.organization_id = $1
         AND o.status = 'ativo'
@@ -15918,8 +15923,8 @@ app.get('/api/products', verifyJWT, async (req, res) => {
     const result = await pool.query(
       `SELECT p.*, COUNT(DISTINCT pi.id) AS image_count, COUNT(DISTINCT o.id) AS offer_count
        FROM products p
-       LEFT JOIN product_images pi ON pi.product_id = p.id
-       LEFT JOIN offers o ON o.product_id = p.id
+       LEFT JOIN product_images pi ON pi.product_id = p.id::text
+       LEFT JOIN offers o ON o.product_id = p.id::text
        WHERE p.organization_id = $1
        GROUP BY p.id ORDER BY p.created_at DESC`,
       [user.organization_id]
@@ -16162,8 +16167,8 @@ app.get('/api/catalog/products', verifyJWT, async (req, res) => {
     const result = await pool.query(
       `SELECT p.*, COUNT(DISTINCT pi.id) AS image_count, COUNT(DISTINCT o.id) AS offer_count
        FROM products p
-       LEFT JOIN product_images pi ON pi.product_id = p.id
-       LEFT JOIN offers o ON o.product_id = p.id
+       LEFT JOIN product_images pi ON pi.product_id = p.id::text
+       LEFT JOIN offers o ON o.product_id = p.id::text
        WHERE p.organization_id = $1
        GROUP BY p.id ORDER BY p.created_at DESC`,
       [user.organization_id]
@@ -16467,7 +16472,7 @@ app.get('/api/catalog/promotions', verifyJWT, async (req, res) => {
          END AS is_currently_active,
          ARRAY_AGG(ot.trigger_type) FILTER (WHERE ot.trigger_type IS NOT NULL) AS triggers
        FROM offers o
-       JOIN products p ON p.id = o.product_id
+       JOIN products p ON p.id::text = o.product_id
        LEFT JOIN offer_triggers ot ON ot.offer_id = o.id
        WHERE o.organization_id = $1
        GROUP BY o.id, p.nome, p.categoria, p.status, p.preco_base, p.descricao_curta
