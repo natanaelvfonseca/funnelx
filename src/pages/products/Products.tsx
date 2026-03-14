@@ -45,22 +45,22 @@ const TRIGGER_TYPES = [
   },
   {
     value: "pergunta_preco",
-    label: "Pergunta de PreÃ§o",
+    label: "Pergunta de Preco",
     color: "bg-yellow-500/15 text-yellow-400",
   },
   {
     value: "comparacao",
-    label: "ComparaÃ§Ã£o",
+    label: "Comparacao",
     color: "bg-purple-500/15 text-purple-400",
   },
   {
     value: "objecao_preco",
-    label: "ObjeÃ§Ã£o de PreÃ§o",
+    label: "Objecao de Preco",
     color: "bg-red-500/15 text-red-400",
   },
   {
     value: "indecisao",
-    label: "IndecisÃ£o",
+    label: "Indecisao",
     color: "bg-orange-500/15 text-orange-400",
   },
   {
@@ -74,7 +74,7 @@ const TRIGGER_TYPES = [
     color: "bg-teal-500/15 text-teal-400",
   },
 ];
-const TABS = ["InformaÃ§Ãµes", "Imagens", "Ofertas", "FAQ"];
+const TABS = ["Informacoes", "Imagens", "Ofertas", "FAQ"];
 
 function StatusPill({ status }: { status: string }) {
   return (
@@ -219,7 +219,7 @@ export function Products() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<any | null>(null);
-  const [activeTab, setActiveTab] = useState("InformaÃ§Ãµes");
+  const [activeTab, setActiveTab] = useState("Informacoes");
   const [showModal, setShowModal] = useState(false);
   const [isNew, setIsNew] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -283,7 +283,7 @@ export function Products() {
     setNewImageType("image");
     setNewImageFile(null);
     setIsNew(false);
-    setActiveTab("InformaÃ§Ãµes");
+    setActiveTab("Informacoes");
     setShowModal(true);
   };
 
@@ -295,7 +295,7 @@ export function Products() {
     setNewImageType("image");
     setNewImageFile(null);
     setIsNew(true);
-    setActiveTab("InformaÃ§Ãµes");
+    setActiveTab("Informacoes");
     setShowModal(true);
   };
 
@@ -368,7 +368,7 @@ export function Products() {
         });
       }
       if (res.ok) {
-        showToast(newImageFile ? "Imagem enviada!" : "MÃ­dia adicionada!");
+        showToast(newImageFile ? "Imagem enviada!" : "Midia adicionada!");
         setNewImageUrl("");
         setNewImageCaption("");
         setNewImageType("image");
@@ -376,7 +376,7 @@ export function Products() {
         openProduct(selected);
       } else {
         const error = await res.json().catch(() => null);
-        showToast(error?.error || "Erro ao adicionar mÃ­dia.", "error");
+        showToast(error?.error || "Erro ao adicionar midia.", "error");
       }
     } finally {
       setUploadingImage(false);
@@ -709,13 +709,13 @@ export function Products() {
                   </div>
                   <div className="min-w-0 pt-1">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
-                      CatÃ¡logo inteligente
+                      Catalogo inteligente
                     </p>
                     <h2 className="mt-2 text-2xl font-display font-bold tracking-tight text-foreground sm:text-[30px]">
                       {isNew ? "Novo Produto" : form.nome || "Produto"}
                     </h2>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                      Cadastre um produto que sua IA poderÃ¡ vender
+                      Cadastre um produto que sua IA podera vender
                       automaticamente.
                     </p>
                     {!isNew && (
@@ -770,12 +770,12 @@ export function Products() {
               </div>
             </div>
             <div className="relative min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
-              {activeTab === "InformaÃ§Ãµes" && (
+              {activeTab === "Informacoes" && (
                 <div className="space-y-5">
                   <ModalSection
                     eyebrow="Bloco 1"
-                    title="InformaÃ§Ãµes bÃ¡sicas"
-                    description="Defina os dados centrais do produto para cadastro e precificaÃ§Ã£o."
+                    title="Informacoes basicas"
+                    description="Defina os dados centrais do produto para cadastro e precificacao."
                   >
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div className="md:col-span-2">
@@ -807,7 +807,7 @@ export function Products() {
                         />
                       </div>
                       <div>
-                        <FieldLabel label="PreÃ§o base (R$)" />
+                        <FieldLabel label="Preco base (R$)" />
                         <div className="relative">
                           <DollarSign className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                           <input
@@ -828,12 +828,12 @@ export function Products() {
                   </ModalSection>
                   <ModalSection
                     eyebrow="Bloco 2"
-                    title="DescriÃ§Ã£o"
+                    title="Descricao"
                     description="Organize o resumo mostrado na interface e o contexto completo usado pela IA."
                   >
                     <div className="grid grid-cols-1 gap-4">
                       <div>
-                        <FieldLabel label="DescriÃ§Ã£o curta" />
+                        <FieldLabel label="Descricao curta" />
                         <input
                           value={form.descricao_curta || ""}
                           onChange={(e) =>
@@ -847,7 +847,7 @@ export function Products() {
                         />
                       </div>
                       <div>
-                        <FieldLabel label="DescriÃ§Ã£o detalhada" />
+                        <FieldLabel label="Descricao detalhada" />
                         <textarea
                           value={form.descricao_detalhada || ""}
                           onChange={(e) =>
@@ -858,7 +858,7 @@ export function Products() {
                           }
                           rows={5}
                           className={textareaClass}
-                          placeholder="DescriÃ§Ã£o completa para contexto da IA"
+                          placeholder="Descricao completa para contexto da IA"
                         />
                       </div>
                     </div>
@@ -866,10 +866,10 @@ export function Products() {
                   <ModalSection
                     eyebrow="Bloco 3"
                     title="Valor percebido"
-                    description="Liste os benefÃ­cios que aumentam a clareza da oferta."
+                    description="Liste os beneficios que aumentam a clareza da oferta."
                   >
                     <div className="space-y-3">
-                      <FieldLabel label="BenefÃ­cios principais" />
+                      <FieldLabel label="Beneficios principais" />
                       {(form.beneficios || [""]).map(
                         (beneficio: string, i: number) => (
                           <div key={i} className="flex items-center gap-2">
@@ -884,7 +884,7 @@ export function Products() {
                                 }));
                               }}
                               className={inputClass}
-                              placeholder={`BenefÃ­cio ${i + 1}`}
+                              placeholder={`Beneficio ${i + 1}`}
                             />
                             {form.beneficios.length > 1 && (
                               <button
@@ -914,7 +914,7 @@ export function Products() {
                         className="inline-flex items-center gap-2 rounded-2xl border border-primary/20 bg-primary/10 px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/15"
                       >
                         <Plus className="h-4 w-4" />
-                        Adicionar benefÃ­cio
+                        Adicionar beneficio
                       </button>
                     </div>
                   </ModalSection>
@@ -1028,8 +1028,8 @@ export function Products() {
               {activeTab === "Imagens" && (
                 <div className="space-y-5">
                   <ModalSection
-                    eyebrow="MÃ­dia"
-                    title="Imagens, vÃ­deos e PDF"
+                    eyebrow="Midia"
+                    title="Imagens, videos e PDF"
                     description="Organize os ativos visuais do produto mantendo o mesmo fluxo atual."
                   >
                     <div className="space-y-4">
@@ -1061,7 +1061,7 @@ export function Products() {
                               : "Selecionar imagem para upload"}
                           </span>
                           <span className="mt-1 text-xs text-muted-foreground">
-                            PNG, JPG ou WEBP com atÃƒÂ© 10MB
+                            PNG, JPG ou WEBP com ate 10MB
                           </span>
                           <input
                             type="file"
@@ -1085,7 +1085,7 @@ export function Products() {
                           if (e.target.value) setNewImageFile(null);
                         }}
                         className={inputClass}
-                        placeholder="URL da imagem, vÃ­deo ou PDF..."
+                        placeholder="URL da imagem, video ou PDF..."
                       />
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto]">
                         <input
@@ -1100,7 +1100,7 @@ export function Products() {
                           className={inputClass}
                         >
                           <option value="image">Imagem</option>
-                          <option value="video">VÃ­deo</option>
+                          <option value="video">Video</option>
                           <option value="pdf">PDF</option>
                         </select>
                         <button
@@ -1126,7 +1126,7 @@ export function Products() {
                     {(selected?.images || []).length === 0 ? (
                       <div className="py-12 text-center text-sm text-muted-foreground">
                         <ImageIcon className="mx-auto mb-3 h-9 w-9 opacity-20" />
-                        Nenhuma mÃ­dia adicionada.
+                        Nenhuma midia adicionada.
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1179,7 +1179,7 @@ export function Products() {
                   <ModalSection
                     eyebrow="Oferta"
                     title={editingOffer ? "Editar oferta" : "Nova oferta"}
-                    description="Cadastre ofertas dinÃ¢micas sem alterar o comportamento atual da IA."
+                    description="Cadastre ofertas dinamicas sem alterar o comportamento atual da IA."
                   >
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div className="md:col-span-2">
@@ -1197,7 +1197,7 @@ export function Products() {
                         />
                       </div>
                       <div>
-                        <FieldLabel label="PreÃ§o" />
+                        <FieldLabel label="Preco" />
                         <input
                           type="number"
                           value={offerForm.preco}
@@ -1208,7 +1208,7 @@ export function Products() {
                             }))
                           }
                           className={inputClass}
-                          placeholder="PreÃ§o (R$)"
+                          placeholder="Preco (R$)"
                         />
                       </div>
                       <div className={subtlePanel}>
@@ -1235,7 +1235,7 @@ export function Products() {
                         />
                       </div>
                       <div className="md:col-span-2">
-                        <FieldLabel label="DescriÃ§Ã£o" />
+                        <FieldLabel label="Descricao" />
                         <textarea
                           value={offerForm.descricao}
                           onChange={(e) =>
@@ -1245,7 +1245,7 @@ export function Products() {
                             }))
                           }
                           rows={3}
-                          placeholder="DescriÃ§Ã£o da oferta"
+                          placeholder="Descricao da oferta"
                           className={textareaClass}
                         />
                       </div>
@@ -1284,7 +1284,7 @@ export function Products() {
                           }}
                           className="inline-flex h-12 items-center justify-center rounded-2xl border border-black/[0.08] px-5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground dark:border-white/[0.08] dark:hover:text-white"
                         >
-                          Cancelar ediÃ§Ã£o
+                          Cancelar edicao
                         </button>
                       )}
                     </div>
@@ -1407,7 +1407,7 @@ export function Products() {
                   <ModalSection
                     eyebrow="FAQ"
                     title="Perguntas frequentes"
-                    description="Cadastre respostas que ajudam a IA a lidar melhor com objeÃ§Ãµes e dÃºvidas comuns."
+                    description="Cadastre respostas que ajudam a IA a lidar melhor com objecoes e duvidas comuns."
                   >
                     <div className="space-y-4">
                       <div>
@@ -1494,7 +1494,7 @@ export function Products() {
               >
                 Cancelar
               </button>
-              {(activeTab === "InformaÃ§Ãµes" || activeTab === "FAQ") && (
+              {(activeTab === "Informacoes" || activeTab === "FAQ") && (
                 <button
                   onClick={saveProduct}
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-primary px-5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(245,121,59,0.28)] transition-all hover:-translate-y-0.5 sm:min-w-[180px]"
