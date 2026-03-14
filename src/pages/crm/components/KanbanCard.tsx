@@ -16,14 +16,13 @@ interface KanbanCardProps {
     lead: Lead;
     onDragStart: (e: React.DragEvent<HTMLDivElement>, leadId: string) => void;
     onDelete?: (leadId: string) => void;
-    onEdit?: (lead: Lead) => void;
     onOpenDetails?: (lead: Lead) => void;
     onMarkAsClient?: (leadId: string) => void;
     vendedores?: Vendedor[];
     token?: string;
 }
 
-export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onOpenDetails, onMarkAsClient, vendedores = [], token }: KanbanCardProps) {
+export function KanbanCard({ lead, onDragStart, onDelete, onOpenDetails, onMarkAsClient, vendedores = [], token }: KanbanCardProps) {
     if (!lead) return null;
 
     const [showMenu, setShowMenu] = useState(false);
@@ -86,7 +85,8 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onOpenDetails,
             draggable
             onDragStart={(e) => onDragStart(e, lead.id)}
             onClick={() => onOpenDetails?.(lead)}
-            className={`bg-surface border rounded-lg p-2.5 shadow-sm hover:shadow-md transition-all cursor-move group animate-fade-in mb-2 active:scale-95 active:rotate-1 overflow-hidden ${intentCfg ? intentCfg.cardBorder : 'border-border/50'} hover:border-primary/30`}
+            className={`bg-surface border rounded-lg p-2.5 shadow-sm hover:shadow-md transition-all cursor-pointer group animate-fade-in mb-2 active:scale-[0.99] overflow-hidden ${intentCfg ? intentCfg.cardBorder : 'border-border/50'} hover:border-primary/30`}
+            title="Abrir detalhes do lead"
         >
             {/* Header Row */}
             <div className="flex justify-between items-start mb-2">
@@ -110,9 +110,8 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onOpenDetails,
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                             <h4
-                                onClick={(e) => { e.stopPropagation(); if (onEdit) onEdit(lead); }}
-                                className="font-semibold text-text-primary text-sm leading-tight hover:text-primary transition-colors cursor-pointer"
-                                title="Editar Negócio"
+                                className="font-semibold text-text-primary text-sm leading-tight"
+                                title="Abrir detalhes do lead"
                             >
                                 {lead.name || 'Sem Nome'}
                             </h4>

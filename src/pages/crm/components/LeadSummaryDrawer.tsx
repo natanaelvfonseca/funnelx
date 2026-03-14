@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrainCircuit, Lightbulb, Target, User, X } from 'lucide-react';
+import { BrainCircuit, Building2, DollarSign, Globe, Lightbulb, Mail, Phone, Target, Trash2, User, UserCheck, X } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { Lead } from '../types';
 
@@ -69,10 +69,18 @@ export function LeadSummaryDrawer({
     lead,
     isOpen,
     onClose,
+    onEdit,
+    onDelete,
+    onConvertToClient,
+    isProcessing = false,
 }: {
     lead: Lead | null;
     isOpen: boolean;
     onClose: () => void;
+    onEdit: () => void;
+    onDelete: () => void;
+    onConvertToClient: () => void;
+    isProcessing?: boolean;
 }) {
     const { token } = useAuth();
     const [data, setData] = useState<LeadSummaryResponse | null>(null);
@@ -124,6 +132,12 @@ export function LeadSummaryDrawer({
     const recommendation = data?.summary?.recommendation || data?.memory?.next_recommendation || 'Continuar acompanhando a conversa e registrar o proximo passo.';
     const stage = data?.summary?.stage || data?.state?.lead_stage || lead.status;
     const intent = data?.summary?.intent || data?.memory?.last_intent || null;
+    const lastContactLabel = lead.lastContact
+        ? new Intl.DateTimeFormat('pt-BR', {
+            dateStyle: 'short',
+            timeStyle: 'short',
+        }).format(new Date(lead.lastContact))
+        : 'Nao registrado';
 
     return (
         <div className="fixed inset-0 z-50 flex justify-end">
@@ -138,7 +152,7 @@ export function LeadSummaryDrawer({
                 <div className="sticky top-0 z-10 border-b border-border bg-background/95 px-6 py-5 backdrop-blur">
                     <div className="flex items-start justify-between gap-4">
                         <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary/80">Resumo do lead</p>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary/80">Detalhes do lead</p>
                             <h2 className="mt-2 text-2xl font-bold text-foreground">{lead.name || 'Lead sem nome'}</h2>
                             <div className="mt-3 flex flex-wrap gap-2 text-xs">
                                 <span className="rounded-full border border-border bg-surface px-3 py-1 font-medium text-foreground">
@@ -173,9 +187,114 @@ export function LeadSummaryDrawer({
                     )}
 
                     <section className="rounded-3xl border border-border bg-surface p-5">
+                        <div className="flex flex-wrap gap-3">
+                            <button
+                                type="button"
+                                onClick={onEdit}
+                                disabled={isProcessing}
+                                className="inline-flex items-center gap-2 rounded-2xl border border-primary/25 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                <User size={15} />
+                                Editar lead
+                            </button>
+                            {lead.status !== 'Cliente' && (
+                                <button
+                                    type="button"
+                                    onClick={onConvertToClient}
+                                    disabled={isProcessing}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-500 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <UserCheck size={15} />
+                                    Converter em cliente
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={onDelete}
+                                disabled={isProcessing}
+                                className="inline-flex items-center gap-2 rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                <Trash2 size={15} />
+                                Excluir lead
+                            </button>
+                        </div>
+                    </section>
+
+                    <section className="rounded-3xl border border-border bg-surface p-5">
+                        <div className="mb-3 flex items-center gap-2">
+                            <User size={17} className="text-sky-400" />
+                            <h3 className="text-sm font-semibold text-foreground">Dados do lead</h3>
+                        </div>
+                        <div className="grid gap-3 text-sm md:grid-cols-2">
+                            <div className="rounded-2xl border border-border/70 bg-background px-4 py-3">
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Telefone</p>
+                                <p className="mt-2 flex items-center gap-2 text-foreground">
+                                    <Phone size={14} className="text-muted-foreground" />
+                                    {lead.phone || 'Nao informado'}
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-background px-4 py-3">
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Email</p>
+                                <p className="mt-2 flex items-center gap-2 text-foreground">
+                                    <Mail size={14} className="text-muted-foreground" />
+                                    {lead.email || 'Nao informado'}
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-background px-4 py-3">
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Empresa</p>
+                                <p className="mt-2 flex items-center gap-2 text-foreground">
+                                    <Building2 size={14} className="text-muted-foreground" />
+                                    {lead.company || data?.memory?.company || 'Nao informado'}
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-background px-4 py-3">
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Origem</p>
+                                <p className="mt-2 flex items-center gap-2 text-foreground">
+                                    <Globe size={14} className="text-muted-foreground" />
+                                    {lead.source || 'Nao informada'}
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-background px-4 py-3">
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Valor</p>
+                                <p className="mt-2 flex items-center gap-2 text-foreground">
+                                    <DollarSign size={14} className="text-muted-foreground" />
+                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(lead.value || 0)}
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-background px-4 py-3">
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Resumo curto</p>
+                                <p className="mt-2 text-foreground">{lead.briefing || data?.lead?.last_ia_briefing || 'Sem briefing curto ainda'}</p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-background px-4 py-3">
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Ultimo contato</p>
+                                <p className="mt-2 text-foreground">{lastContactLabel}</p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-background px-4 py-3">
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Score do lead</p>
+                                <p className="mt-2 text-foreground">{lead.score ?? data?.lead?.score ?? 0}</p>
+                            </div>
+                        </div>
+                        {lead.tags && lead.tags.length > 0 && (
+                            <div className="mt-4">
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Tags</p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    {lead.tags.map((tag) => (
+                                        <span
+                                            key={tag}
+                                            className="rounded-full border border-border/80 bg-background px-3 py-1 text-xs font-medium text-foreground/85"
+                                        >
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </section>
+
+                    <section className="rounded-3xl border border-border bg-surface p-5">
                         <div className="mb-3 flex items-center gap-2">
                             <BrainCircuit size={18} className="text-primary" />
-                            <h3 className="text-sm font-semibold text-foreground">O que esta acontecendo</h3>
+                            <h3 className="text-sm font-semibold text-foreground">Resumo da IA</h3>
                         </div>
                         <p className="text-sm leading-7 text-foreground/90">{summaryText}</p>
                     </section>

@@ -28,11 +28,9 @@ const LEGACY_STATUS_MAP: Record<string, string> = {
 
 export function KanbanBoard({
     refreshTrigger,
-    onEditLead,
     onOpenLead,
 }: {
     refreshTrigger: number;
-    onEditLead: (lead: Lead) => void;
     onOpenLead: (lead: Lead) => void;
 }) {
     const { token } = useAuth();
@@ -220,7 +218,6 @@ export function KanbanBoard({
                             onDragOver={handleDragOver}
                             onDragStart={handleDragStart}
                             onDeleteLead={handleDeleteLead}
-                            onEditLead={onEditLead}
                             onOpenLead={onOpenLead}
                             onMarkAsClient={handleMarkAsClient}
                             token={token || undefined}

@@ -4,21 +4,77 @@ import { LeadModal } from './components/CreateLeadModal';
 import { LeadSummaryDrawer } from './components/LeadSummaryDrawer';
 import { ErrorBoundary } from '../../components/common/ErrorBoundary';
 import { Lead } from './types';
+import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../context/NotificationContext';
 
 export function CRM() {
+    const { token } = useAuth();
+    const { showToast } = useNotifications();
     const [createModalOpen, setCreateModalOpen] = useState(false);
     const [editingLead, setEditingLead] = useState<Lead | null>(null);
     const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
-
-    const handleEditLead = (lead: Lead) => {
-        setEditingLead(lead);
-        setCreateModalOpen(true);
-    };
+    const [actionLoading, setActionLoading] = useState(false);
 
     const handleCloseModal = () => {
         setCreateModalOpen(false);
         setEditingLead(null);
+    };
+
+    const handleEditFromDrawer = () => {
+        if (!selectedLead) return;
+        setEditingLead(selectedLead);
+        setCreateModalOpen(true);
+        setSelectedLead(null);
+    };
+
+    const handleDeleteFromDrawer = async () => {
+        if (!selectedLead?.id || !token) return;
+        if (!confirm(`Excluir ${selectedLead.name || 'este lead'}?`)) return;
+
+        setActionLoading(true);
+        try {
+            const response = await fetch(`/api/leads/${selectedLead.id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+
+            if (!response.ok) throw new Error('Falha ao excluir lead');
+
+            setSelectedLead(null);
+            setRefreshTrigger(prev => prev + 1);
+            showToast('Lead excluido', 'O lead foi removido do funil.', 'success');
+        } catch {
+            showToast('Erro ao excluir', 'Nao foi possivel excluir este lead agora.', 'error');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleConvertFromDrawer = async () => {
+        if (!selectedLead?.id || !token) return;
+
+        setActionLoading(true);
+        try {
+            const response = await fetch(`/api/leads/${selectedLead.id}/status`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ status: 'Cliente' }),
+            });
+
+            if (!response.ok) throw new Error('Falha ao converter lead');
+
+            setSelectedLead(null);
+            setRefreshTrigger(prev => prev + 1);
+            showToast('Lead convertido', 'O lead foi movido para clientes.', 'success');
+        } catch {
+            showToast('Erro ao converter', 'Nao foi possivel converter este lead em cliente.', 'error');
+        } finally {
+            setActionLoading(false);
+        }
     };
 
     return (
@@ -43,7 +99,6 @@ export function CRM() {
                 <ErrorBoundary fallback={<div className="text-text-primary p-4">Erro ao carregar o Kanban. Verifique a conexão.</div>}>
                     <KanbanBoard
                         refreshTrigger={refreshTrigger}
-                        onEditLead={handleEditLead}
                         onOpenLead={setSelectedLead}
                     />
                 </ErrorBoundary>
@@ -60,6 +115,10 @@ export function CRM() {
                 lead={selectedLead}
                 isOpen={Boolean(selectedLead)}
                 onClose={() => setSelectedLead(null)}
+                onEdit={handleEditFromDrawer}
+                onDelete={handleDeleteFromDrawer}
+                onConvertToClient={handleConvertFromDrawer}
+                isProcessing={actionLoading}
             />
         </div>
     );
