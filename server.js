@@ -2577,8 +2577,8 @@ const ensureProductEngineTables = async () => {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS products (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        organization_id TEXT NOT NULL,
-        nome TEXT NOT NULL,
+        organization_id TEXT,
+        nome TEXT,
         categoria TEXT,
         descricao_curta TEXT,
         descricao_detalhada TEXT,
@@ -2587,6 +2587,13 @@ const ensureProductEngineTables = async () => {
         faq JSONB DEFAULT '[]',
         tags TEXT[] DEFAULT '{}',
         status VARCHAR(20) DEFAULT 'ativo' CHECK (status IN ('ativo','inativo')),
+        name TEXT,
+        description TEXT,
+        price FLOAT,
+        active BOOLEAN DEFAULT TRUE,
+        koins_bonus INT DEFAULT 0,
+        connections_bonus INT DEFAULT 0,
+        type VARCHAR(50) DEFAULT 'KOINS',
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
@@ -2602,6 +2609,13 @@ const ensureProductEngineTables = async () => {
     await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS faq JSONB DEFAULT '[]'`);
     await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'`);
     await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'ativo'`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS name TEXT`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS description TEXT`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS price FLOAT`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS koins_bonus INT DEFAULT 0`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS connections_bonus INT DEFAULT 0`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT 'KOINS'`);
     await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
     await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
 
@@ -16184,8 +16198,12 @@ app.post('/api/catalog/products', verifyJWT, async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO products (organization_id, nome, categoria, descricao_curta, descricao_detalhada, beneficios, preco_base, faq, tags, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      `INSERT INTO products (
+         organization_id, nome, categoria, descricao_curta, descricao_detalhada,
+         beneficios, preco_base, faq, tags, status,
+         name, description, price, active, koins_bonus, connections_bonus, type
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        RETURNING *`,
       [
         user.organization_id,
@@ -16198,6 +16216,13 @@ app.post('/api/catalog/products', verifyJWT, async (req, res) => {
         JSON.stringify(faq || []),
         tags || [],
         status || 'ativo',
+        nome.trim(),
+        descricao_curta || descricao_detalhada || '',
+        preco_base || 0,
+        status !== 'inativo',
+        0,
+        0,
+        'CATALOG',
       ]
     );
 
@@ -16266,7 +16291,10 @@ app.put('/api/catalog/products/:id', verifyJWT, async (req, res) => {
 
     const result = await pool.query(
       `UPDATE products SET nome=$1, categoria=$2, descricao_curta=$3, descricao_detalhada=$4,
-       beneficios=$5, preco_base=$6, faq=$7, tags=$8, status=$9, updated_at=NOW()
+       beneficios=$5, preco_base=$6, faq=$7, tags=$8, status=$9,
+       name=$1, description=COALESCE($3, $4, ''), price=COALESCE($6, 0),
+       active=CASE WHEN $9 = 'inativo' THEN false ELSE true END,
+       type='CATALOG', updated_at=NOW()
        WHERE id=$10 AND organization_id=$11
        RETURNING *`,
       [
