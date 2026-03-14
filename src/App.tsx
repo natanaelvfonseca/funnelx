@@ -1,6 +1,4 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { SpeedInsights } from '@vercel/speed-insights/react';
-import { Analytics } from '@vercel/analytics/react';
 import { Login } from './pages/auth/Login';
 import { RevenueMetrics } from './pages/dashboard/RevenueMetrics';
 import { Onboarding } from './pages/onboarding/Onboarding';
@@ -117,8 +115,6 @@ function App() {
                                 <Route path="*" element={<div className="text-white p-8">Página em construção</div>} />
                             </Route>
                         </Routes>
-                        <SpeedInsights />
-                        <Analytics />
                     </NotificationProvider>
                 </AuthProvider>
             </BrowserRouter>

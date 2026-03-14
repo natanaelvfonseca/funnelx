@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { KanbanBoard } from './components/KanbanBoard';
 import { LeadModal } from './components/CreateLeadModal';
+import { LeadSummaryDrawer } from './components/LeadSummaryDrawer';
 import { ErrorBoundary } from '../../components/common/ErrorBoundary';
 import { Lead } from './types';
 
 export function CRM() {
     const [createModalOpen, setCreateModalOpen] = useState(false);
     const [editingLead, setEditingLead] = useState<Lead | null>(null);
+    const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
 
     const handleEditLead = (lead: Lead) => {
@@ -42,6 +44,7 @@ export function CRM() {
                     <KanbanBoard
                         refreshTrigger={refreshTrigger}
                         onEditLead={handleEditLead}
+                        onOpenLead={setSelectedLead}
                     />
                 </ErrorBoundary>
             </div>
@@ -51,6 +54,12 @@ export function CRM() {
                 onClose={handleCloseModal}
                 onSuccess={() => setRefreshTrigger(prev => prev + 1)}
                 leadToEdit={editingLead}
+            />
+
+            <LeadSummaryDrawer
+                lead={selectedLead}
+                isOpen={Boolean(selectedLead)}
+                onClose={() => setSelectedLead(null)}
             />
         </div>
     );

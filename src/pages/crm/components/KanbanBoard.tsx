@@ -26,7 +26,15 @@ const LEGACY_STATUS_MAP: Record<string, string> = {
     'lost': 'Perdido',
 };
 
-export function KanbanBoard({ refreshTrigger, onEditLead }: { refreshTrigger: number; onEditLead: (lead: Lead) => void }) {
+export function KanbanBoard({
+    refreshTrigger,
+    onEditLead,
+    onOpenLead,
+}: {
+    refreshTrigger: number;
+    onEditLead: (lead: Lead) => void;
+    onOpenLead: (lead: Lead) => void;
+}) {
     const { token } = useAuth();
     const { showToast } = useNotifications();
     const [leads, setLeads] = useState<Lead[]>([]);
@@ -213,6 +221,7 @@ export function KanbanBoard({ refreshTrigger, onEditLead }: { refreshTrigger: nu
                             onDragStart={handleDragStart}
                             onDeleteLead={handleDeleteLead}
                             onEditLead={onEditLead}
+                            onOpenLead={onOpenLead}
                             onMarkAsClient={handleMarkAsClient}
                             token={token || undefined}
                         />

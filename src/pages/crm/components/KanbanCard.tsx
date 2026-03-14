@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Calendar, DollarSign, Trash2, Phone, Mail, Globe, MoreHorizontal, UserCheck, User, Brain, Bell } from 'lucide-react';
+import { Calendar, DollarSign, Trash2, Phone, Mail, Globe, MoreHorizontal, UserCheck, User, Brain, Bell, Lightbulb } from 'lucide-react';
 import { Lead } from '../types';
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || '';
@@ -17,12 +17,13 @@ interface KanbanCardProps {
     onDragStart: (e: React.DragEvent<HTMLDivElement>, leadId: string) => void;
     onDelete?: (leadId: string) => void;
     onEdit?: (lead: Lead) => void;
+    onOpenDetails?: (lead: Lead) => void;
     onMarkAsClient?: (leadId: string) => void;
     vendedores?: Vendedor[];
     token?: string;
 }
 
-export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient, vendedores = [], token }: KanbanCardProps) {
+export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onOpenDetails, onMarkAsClient, vendedores = [], token }: KanbanCardProps) {
     if (!lead) return null;
 
     const [showMenu, setShowMenu] = useState(false);
@@ -84,6 +85,7 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient
         <div
             draggable
             onDragStart={(e) => onDragStart(e, lead.id)}
+            onClick={() => onOpenDetails?.(lead)}
             className={`bg-surface border rounded-lg p-2.5 shadow-sm hover:shadow-md transition-all cursor-move group animate-fade-in mb-2 active:scale-95 active:rotate-1 overflow-hidden ${intentCfg ? intentCfg.cardBorder : 'border-border/50'} hover:border-primary/30`}
         >
             {/* Header Row */}
@@ -144,6 +146,14 @@ export function KanbanCard({ lead, onDragStart, onDelete, onEdit, onMarkAsClient
                             {followupStatus === 'replied' && (
                                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/25 flex items-center gap-1 flex-shrink-0">
                                     ✅ LEAD REENGAGED
+                                </span>
+                            )}
+                            {lead.hasAiSummary && (
+                                <span
+                                    title="A IA ja gerou um resumo operacional para este lead"
+                                    className="inline-flex items-center justify-center rounded-full border border-amber-500/25 bg-amber-500/10 p-1 text-amber-400"
+                                >
+                                    <Lightbulb size={11} />
                                 </span>
                             )}
                         </div>

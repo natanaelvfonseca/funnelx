@@ -11,11 +11,12 @@ interface KanbanColumnProps {
     onDragStart: (e: React.DragEvent<HTMLDivElement>, leadId: string) => void;
     onDeleteLead?: (leadId: string) => void;
     onEditLead?: (lead: any) => void;
+    onOpenLead?: (lead: any) => void;
     onMarkAsClient?: (leadId: string) => void;
     token?: string;
 }
 
-export function KanbanColumn({ column, onDrop, onDragOver, onDragStart, onDeleteLead, onEditLead, onMarkAsClient, token }: KanbanColumnProps) {
+export function KanbanColumn({ column, onDrop, onDragOver, onDragStart, onDeleteLead, onEditLead, onOpenLead, onMarkAsClient, token }: KanbanColumnProps) {
     const columnRef = useRef<HTMLDivElement>(null);
     const [visibleCount, setVisibleCount] = useState(20);
 
@@ -45,6 +46,7 @@ export function KanbanColumn({ column, onDrop, onDragOver, onDragStart, onDelete
                         onDragStart={onDragStart}
                         onDelete={onDeleteLead}
                         onEdit={onEditLead}
+                        onOpenDetails={onOpenLead}
                         onMarkAsClient={onMarkAsClient}
                         token={token}
                     />

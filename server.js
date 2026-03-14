@@ -1468,6 +1468,12 @@ const ensureConversationStateTables = async () => {
       `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS lead_comparing_options BOOLEAN DEFAULT FALSE`,
       `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS lead_not_ready BOOLEAN DEFAULT FALSE`,
       `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS lead_urgent BOOLEAN DEFAULT FALSE`,
+      // Orchestrator / CRM summary fields
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS last_intent TEXT`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS last_temperature TEXT`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS last_agent_decision TEXT`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS lead_summary TEXT`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS next_recommendation TEXT`,
     ];
     for (const sql of alterColumns) {
       await pool.query(sql).catch(e => log(`[CSE] ALTER warning: ${e.message}`));
@@ -1811,6 +1817,249 @@ async function updateLeadMemory(orgId, leadId, intent, extractedMemory) {
     log(`[MEMORY] Updated lead_memory for ${leadId}: ${setClauses.length - 1} fields`);
   } catch (err) {
     log(`[MEMORY] updateLeadMemory error: ${err.message}`);
+  }
+}
+
+function normalizePhoneDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function formatConversationStage(stage) {
+  const labels = {
+    novo: 'Inicio do contato',
+    qualificacao: 'Qualificacao',
+    diagnostico: 'Diagnostico',
+    apresentacao: 'Apresentacao da solucao',
+    proposta: 'Proposta',
+    agendamento: 'Agendamento',
+    followup: 'Follow-up',
+  };
+  return labels[stage] || stage || 'Em andamento';
+}
+
+function formatIntentLabel(intent) {
+  const labels = {
+    buying_intent: 'Interesse de compra',
+    asked_price: 'Pedido de preco',
+    accepted_meeting: 'Aceitou agendamento',
+    gave_objection: 'Objeção ativa',
+    asked_info: 'Pedido de informacoes',
+    not_interested: 'Sem interesse',
+    neutral: 'Explorando a conversa',
+  };
+  return labels[intent] || 'Sem classificacao';
+}
+
+function buildNextRecommendation({ stage, nextExpected, memory, intent, leadRow }) {
+  if (nextExpected === 'schedule_meeting' || memory?.accepted_meeting) {
+    return 'Priorizar confirmacao de dia e horario para avancar a conversa.';
+  }
+  if (intent === 'asked_price' || memory?.lead_price_sensitive) {
+    return 'Responder valor com contexto de ROI e reduzir a friccao sobre preco.';
+  }
+  if (intent === 'gave_objection' || memory?.main_objection) {
+    return `Trabalhar a objecao principal${memory?.main_objection ? `: ${memory.main_objection}` : ''} antes de pressionar o fechamento.`;
+  }
+  if (stage === 'proposta') {
+    return 'Retomar a proposta enviada, validar aderencia e conduzir para decisao.';
+  }
+  if (stage === 'apresentacao') {
+    return 'Conectar a solucao diretamente a dor do lead e puxar o proximo compromisso.';
+  }
+  if (stage === 'diagnostico') {
+    return 'Aprofundar contexto, urgencia e criterios de decisao para qualificar melhor.';
+  }
+  if (memory?.lead_not_ready) {
+    return 'Manter o lead aquecido com educacao e um proximo passo leve, sem forcar fechamento.';
+  }
+  if (leadRow?.temperature && String(leadRow.temperature).toLowerCase().includes('quente')) {
+    return 'Acao comercial rapida: responder agora e tentar avancar para proposta ou fechamento.';
+  }
+  return 'Continuar a qualificacao com uma unica pergunta objetiva e mover a conversa para o proximo passo.';
+}
+
+function buildLeadSummaryText({ leadRow, stage, intent, memory, nextRecommendation }) {
+  const pieces = [];
+  const leadName = leadRow?.name || memory?.name || 'O lead';
+
+  pieces.push(`${leadName} esta em ${formatConversationStage(stage)}.`);
+
+  if (leadRow?.last_ia_briefing) {
+    pieces.push(leadRow.last_ia_briefing);
+  } else if (memory?.pain_point) {
+    pieces.push(`A principal dor percebida e ${memory.pain_point}.`);
+  } else {
+    pieces.push(`A conversa indica ${formatIntentLabel(intent).toLowerCase()}.`);
+  }
+
+  if (memory?.lead_interest || memory?.product_interest) {
+    pieces.push(`Interesse atual: ${memory.lead_interest || memory.product_interest}.`);
+  }
+  if (memory?.main_objection) {
+    pieces.push(`Objecao principal: ${memory.main_objection}.`);
+  }
+  if (memory?.purchase_moment) {
+    pieces.push(`Momento de compra: ${memory.purchase_moment}.`);
+  }
+
+  pieces.push(`Recomendacao: ${nextRecommendation}`);
+
+  return pieces.join(' ');
+}
+
+async function resolveLeadConversationContext(orgId, leadIdentifier) {
+  const identifier = String(leadIdentifier || '');
+  let lead = null;
+
+  const leadByIdRes = await pool.query(
+    `SELECT id, name, phone, mobile_phone, status, score, temperature, last_ia_briefing
+     FROM leads
+     WHERE organization_id = $1 AND id = $2
+     LIMIT 1`,
+    [orgId, identifier]
+  );
+  if (leadByIdRes.rows.length > 0) {
+    lead = leadByIdRes.rows[0];
+  }
+
+  const digits = normalizePhoneDigits(lead?.phone || lead?.mobile_phone || identifier);
+  const exactConversationKey = digits ? `${digits}@s.whatsapp.net` : identifier.includes('@') ? identifier : null;
+
+  const leadIdCandidates = [];
+  if (identifier) leadIdCandidates.push(identifier);
+  if (exactConversationKey && !leadIdCandidates.includes(exactConversationKey)) {
+    leadIdCandidates.push(exactConversationKey);
+  }
+  if (digits && !leadIdCandidates.includes(digits)) {
+    leadIdCandidates.push(digits);
+  }
+
+  if (!lead && digits) {
+    const leadByPhoneRes = await pool.query(
+      `SELECT id, name, phone, mobile_phone, status, score, temperature, last_ia_briefing
+       FROM leads
+       WHERE organization_id = $1
+         AND (
+           regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = $2
+           OR regexp_replace(COALESCE(mobile_phone, ''), '\\D', '', 'g') = $2
+         )
+       ORDER BY last_contact DESC NULLS LAST, created_at DESC
+       LIMIT 1`,
+      [orgId, digits]
+    );
+    lead = leadByPhoneRes.rows[0] || null;
+    if (lead?.id && !leadIdCandidates.includes(lead.id)) {
+      leadIdCandidates.unshift(lead.id);
+    }
+  }
+
+  let memory = null;
+  let conversationKey = exactConversationKey || identifier;
+  for (const candidate of leadIdCandidates) {
+    const memRes = await pool.query(
+      `SELECT * FROM lead_memory WHERE organization_id = $1 AND lead_id = $2 LIMIT 1`,
+      [orgId, candidate]
+    );
+    if (memRes.rows.length > 0) {
+      memory = memRes.rows[0];
+      conversationKey = candidate;
+      break;
+    }
+  }
+
+  let state = null;
+  for (const candidate of [conversationKey, ...leadIdCandidates.filter(c => c !== conversationKey)]) {
+    if (!candidate) continue;
+    const stateRes = await pool.query(
+      `SELECT lead_stage, conversation_goal, last_user_intent, last_ai_action,
+              next_expected_action, stage_entered_at, updated_at
+       FROM conversation_state
+       WHERE organization_id = $1 AND lead_id = $2
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [orgId, candidate]
+    );
+    if (stateRes.rows.length > 0) {
+      state = stateRes.rows[0];
+      conversationKey = candidate;
+      break;
+    }
+  }
+
+  return { lead, memory, state, conversationKey, digits };
+}
+
+async function refreshLeadConversationSummary({
+  orgId,
+  conversationKey,
+  leadId = null,
+  intent = null,
+  stage = null,
+  nextExpected = null,
+  agentDecision = null,
+}) {
+  try {
+    const context = await resolveLeadConversationContext(orgId, leadId || conversationKey);
+    const effectiveKey = context.conversationKey || conversationKey;
+    if (!effectiveKey) return null;
+
+    const memory = context.memory || {};
+    const effectiveStage = stage || context.state?.lead_stage || null;
+    const effectiveIntent = intent || memory.last_intent || context.state?.last_user_intent || 'neutral';
+    const effectiveRecommendation = buildNextRecommendation({
+      stage: effectiveStage,
+      nextExpected: nextExpected || context.state?.next_expected_action || null,
+      memory,
+      intent: effectiveIntent,
+      leadRow: context.lead,
+    });
+    const summaryText = buildLeadSummaryText({
+      leadRow: context.lead,
+      stage: effectiveStage,
+      intent: effectiveIntent,
+      memory,
+      nextRecommendation: effectiveRecommendation,
+    });
+
+    const effectiveTemperature = context.lead?.temperature || memory.last_temperature || null;
+    const effectiveAgentDecision = agentDecision || memory.last_agent_decision || null;
+
+    const targets = Array.from(new Set([effectiveKey, context.lead?.id].filter(Boolean)));
+
+    for (const targetLeadId of targets) {
+      await pool.query(
+        `INSERT INTO lead_memory (organization_id, lead_id, last_intent, last_temperature, last_agent_decision, lead_summary, next_recommendation, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         ON CONFLICT (organization_id, lead_id)
+         DO UPDATE SET
+           last_intent = EXCLUDED.last_intent,
+           last_temperature = COALESCE(EXCLUDED.last_temperature, lead_memory.last_temperature),
+           last_agent_decision = COALESCE(EXCLUDED.last_agent_decision, lead_memory.last_agent_decision),
+           lead_summary = EXCLUDED.lead_summary,
+           next_recommendation = EXCLUDED.next_recommendation,
+           updated_at = NOW()`,
+        [
+          orgId,
+          targetLeadId,
+          effectiveIntent,
+          effectiveTemperature,
+          effectiveAgentDecision,
+          summaryText,
+          effectiveRecommendation,
+        ]
+      );
+    }
+
+    return {
+      summary: summaryText,
+      recommendation: effectiveRecommendation,
+      stage: effectiveStage,
+      intent: effectiveIntent,
+      conversationKey: effectiveKey,
+    };
+  } catch (err) {
+    log(`[LEAD-SUMMARY] refresh error: ${err.message}`);
+    return null;
   }
 }
 
@@ -6992,23 +7241,34 @@ app.get('/api/leads/:leadId/memory', verifyJWT, async (req, res) => {
     const orgId = orgRes.rows[0]?.organization_id;
     if (!orgId) return res.status(400).json({ error: 'No organization' });
 
-    const memRes = await pool.query(
-      `SELECT * FROM lead_memory WHERE organization_id = $1 AND lead_id = $2`,
-      [orgId, leadId]
-    );
-    const memory = memRes.rows[0] || null;
+    const context = await resolveLeadConversationContext(orgId, leadId);
+    const summaryData = context.memory?.lead_summary
+      ? {
+        text: context.memory.lead_summary,
+        recommendation: context.memory.next_recommendation || null,
+        stage: context.state?.lead_stage || null,
+        intent: context.memory.last_intent || context.state?.last_user_intent || null,
+      }
+      : await refreshLeadConversationSummary({
+        orgId,
+        conversationKey: context.conversationKey || leadId,
+        leadId: context.lead?.id || leadId,
+      });
 
-    const stateRes = await pool.query(
-      `SELECT lead_stage, conversation_goal, last_user_intent, last_ai_action,
-              next_expected_action, stage_entered_at, updated_at
-       FROM conversation_state
-       WHERE organization_id = $1 AND lead_id = $2
-       ORDER BY updated_at DESC LIMIT 1`,
-      [orgId, leadId]
-    );
-    const state = stateRes.rows[0] || null;
-
-    res.json({ memory, state });
+    res.json({
+      memory: context.memory || null,
+      state: context.state || null,
+      lead: context.lead || null,
+      conversationKey: context.conversationKey || null,
+      summary: summaryData
+        ? {
+          text: summaryData.text || summaryData.summary || null,
+          recommendation: summaryData.recommendation || null,
+          stage: summaryData.stage || context.state?.lead_stage || null,
+          intent: summaryData.intent || context.memory?.last_intent || context.state?.last_user_intent || null,
+        }
+        : null,
+    });
   } catch (err) {
     log(`[MEMORY] GET /api/leads/:leadId/memory error: ${err.message}`);
     res.status(500).json({ error: 'Internal server error' });
@@ -7252,7 +7512,17 @@ app.get("/api/leads", verifyJWT, async (req, res) => {
     if (!orgId) return res.status(403).json({ error: "No organization" });
 
     const result = await pool.query(
-      "SELECT * FROM leads WHERE organization_id = $1 ORDER BY last_contact DESC",
+      `SELECT l.*,
+              EXISTS (
+                SELECT 1
+                FROM lead_memory lm
+                WHERE lm.organization_id = l.organization_id
+                  AND lm.lead_id = l.id
+                  AND lm.lead_summary IS NOT NULL
+              ) AS has_ai_summary
+       FROM leads l
+       WHERE l.organization_id = $1
+       ORDER BY l.last_contact DESC`,
       [orgId]
     );
 
@@ -7269,8 +7539,9 @@ app.get("/api/leads", verifyJWT, async (req, res) => {
       source: row.source,
       lastContact: row.last_contact,
       assignedTo: row.assigned_to,
-      briefing: row.briefing,
-      temperature: row.temperature
+      briefing: row.last_ia_briefing || row.briefing || null,
+      temperature: row.temperature,
+      hasAiSummary: Boolean(row.has_ai_summary)
     }));
 
     res.json(leads);
@@ -8593,7 +8864,17 @@ app.get("/api/leads", verifyJWT, async (req, res) => {
 
     // Filter by Organization ID
     const result = await pool.query(
-      "SELECT * FROM leads WHERE organization_id = $1 ORDER BY created_at DESC",
+      `SELECT l.*,
+              EXISTS (
+                SELECT 1
+                FROM lead_memory lm
+                WHERE lm.organization_id = l.organization_id
+                  AND lm.lead_id = l.id
+                  AND lm.lead_summary IS NOT NULL
+              ) AS has_ai_summary
+       FROM leads l
+       WHERE l.organization_id = $1
+       ORDER BY l.created_at DESC`,
       [orgId],
     );
 
@@ -8613,6 +8894,7 @@ app.get("/api/leads", verifyJWT, async (req, res) => {
       temperature: row.temperature,
       intentLabel: row.intent_label || null,
       briefing: row.last_ia_briefing || null,
+      hasAiSummary: Boolean(row.has_ai_summary),
     }));
 
     res.json(leads);
@@ -12580,6 +12862,12 @@ JSON:`;
 
     log(`[INTENT-SCORE] Lead ${leadId}: ${intentLabel} (${newScore}pts) | ${result.briefing || result.reason}`);
 
+    refreshLeadConversationSummary({
+      orgId: organizationId,
+      conversationKey: remoteJid,
+      leadId,
+    }).catch(err => log(`[LEAD-SUMMARY] score refresh error: ${err.message}`));
+
     // 5. 🔥 HEAT ALERT — notify when lead transitions to HOT (Quente)
     // Only fires when lead crosses the HOT threshold for the first time in this turn
     if (newScore >= 65 && prevScore < 65) {
@@ -13443,18 +13731,25 @@ async function processAIResponse(
 
     // 5. CSE + MEMORY: Persist state and extract structured memory (async, non-blocking)
     if (cseState && cseOrgId) {
-      updateConversationState(cseState.id, userIntent, cseStage, cseGoal, cseNextExpected, aiResponse)
-        .catch(err => log(`[CSE] updateConversationState error: ${err.message}`));
+      (async () => {
+        await updateConversationState(cseState.id, userIntent, cseStage, cseGoal, cseNextExpected, aiResponse);
 
-      // Extract full structured + semantic memory from last 3 msgs + current user message
-      const memoryLast3 = coalescedHistory
-        .filter(m => m.role === 'user' || m.role === 'assistant')
-        .filter(m => typeof m.content === 'string')
-        .slice(-3);
+        const memoryLast3 = coalescedHistory
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .filter(m => typeof m.content === 'string')
+          .slice(-3);
 
-      extractConversationMemory(memoryLast3, userText)
-        .then(extracted => updateLeadMemory(cseOrgId, remoteJid, userIntent, extracted))
-        .catch(err => log(`[MEMORY] pipeline error: ${err.message}`));
+        const extracted = await extractConversationMemory(memoryLast3, userText);
+        await updateLeadMemory(cseOrgId, remoteJid, userIntent, extracted);
+        await refreshLeadConversationSummary({
+          orgId: cseOrgId,
+          conversationKey: remoteJid,
+          intent: userIntent,
+          stage: cseStage,
+          nextExpected: cseNextExpected,
+          agentDecision: activeAgent?.name || activeAgent?.key || null,
+        });
+      })().catch(err => log(`[MEMORY] pipeline error: ${err.message}`));
     }
 
   } catch (error) {

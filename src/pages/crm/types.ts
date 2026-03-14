@@ -17,6 +17,7 @@ export interface Lead {
     intentLabel?: 'HOT' | 'WARM' | 'COLD' | null;
     briefing?: string | null;
     assignedTo?: string;
+    hasAiSummary?: boolean;
 }
 
 export interface KanbanColumn {
