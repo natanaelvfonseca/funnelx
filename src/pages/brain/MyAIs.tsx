@@ -144,11 +144,6 @@ function getTypeMeta(type: string) {
     return typeConfig[type?.toLowerCase()] || typeConfig.custom;
 }
 
-function getAgentDescription(type: string) {
-    const template = agentTemplates.find((item) => item.id === type?.toLowerCase());
-    return template?.description || getTypeMeta(type).description;
-}
-
 function isWhatsAppConnected(status?: string) {
     const normalized = (status || '').toLowerCase();
     return normalized === 'connected' || normalized === 'open';
@@ -653,15 +648,6 @@ Seja sempre proativo, orientado a resultados, e conduza o cliente em direcao ao 
                                                     )}
                                                 </div>
                                             </div>
-                                        </div>
-
-                                        <div className="mt-5 flex-1">
-                                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                                                Descricao
-                                            </p>
-                                            <p className="mt-2 min-h-[72px] text-sm leading-7 text-text-secondary">
-                                                {getAgentDescription(agent.type)}
-                                            </p>
                                         </div>
 
                                         <div className="mt-6 flex items-center justify-between gap-3 border-t border-black/[0.06] pt-5 dark:border-white/[0.06]">
