@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Search, Paperclip, CheckCheck, X, Play, Pause, UserCheck, BrainCircuit, Lightbulb, Target, MessageSquare, Sparkles, Loader2 } from 'lucide-react';
+import { Send, Search, Paperclip, CheckCheck, X, Play, Pause, UserCheck, BrainCircuit, Lightbulb, Target, MessageSquare, Sparkles, Loader2, TrendingUp, Clock3, ShieldAlert, Bot, ArrowUpRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../utils/cn';
 
@@ -48,6 +48,110 @@ interface LeadSummaryData {
     recommendation?: string | null;
     stage?: string | null;
     intent?: string | null;
+}
+
+function formatRelativeMoment(timestamp?: number | string | null) {
+    if (!timestamp) return 'Agora';
+
+    const date = new Date(typeof timestamp === 'number' && timestamp < 10000000000 ? timestamp * 1000 : timestamp);
+    const diffMs = Date.now() - date.getTime();
+    const diffMinutes = Math.max(0, Math.round(diffMs / 60000));
+
+    if (diffMinutes < 1) return 'Agora';
+    if (diffMinutes < 60) return `${diffMinutes} min atras`;
+
+    const diffHours = Math.round(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h atras`;
+
+    const diffDays = Math.round(diffHours / 24);
+    return `${diffDays}d atras`;
+}
+
+function getLeadPriorityMeta(temperature?: string, score = 0) {
+    if ((temperature || '').includes('Quente') || score >= 80) {
+        return {
+            label: 'Alta prioridade',
+            description: 'Momento forte para fechamento ou agendamento.',
+            badgeClass: 'border-red-200 bg-red-50 text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300',
+        };
+    }
+
+    if ((temperature || '').includes('Morno') || score >= 45) {
+        return {
+            label: 'Em aceleracao',
+            description: 'Existe interesse, mas ainda ha friccao para resolver.',
+            badgeClass: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+        };
+    }
+
+    return {
+        label: 'Em qualificacao',
+        description: 'Ainda vale investigar dor, timing e contexto.',
+        badgeClass: 'border-sky-200 bg-sky-50 text-sky-600 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300',
+    };
+}
+
+function buildRevenueOsTips({
+    temperature,
+    score,
+    isChatPaused,
+    unreadCount,
+    summary,
+    lastInboundTimestamp,
+}: {
+    temperature?: string;
+    score?: number;
+    isChatPaused: boolean;
+    unreadCount?: number;
+    summary?: LeadSummaryData | null;
+    lastInboundTimestamp?: number | string | null;
+}) {
+    const tips: { title: string; body: string }[] = [];
+
+    if (isChatPaused) {
+        tips.push({
+            title: 'Assuma com contexto',
+            body: 'A IA ja pausou a automacao. Entre manualmente, confirme o objetivo atual do lead e proponha o proximo passo comercial.',
+        });
+    } else if ((temperature || '').includes('Quente') || (score || 0) >= 80) {
+        tips.push({
+            title: 'Conduza para decisao',
+            body: 'Reduza opcoes, use uma CTA unica e tente converter em agenda, pagamento ou confirmacao de interesse.',
+        });
+    } else if ((temperature || '').includes('Morno') || (score || 0) >= 45) {
+        tips.push({
+            title: 'Remova friccao',
+            body: 'Valide a principal dor, o timing e o criterio de compra antes de entrar em detalhes de preco.',
+        });
+    } else {
+        tips.push({
+            title: 'Aprofunde a qualificacao',
+            body: 'Use perguntas abertas para entender contexto, urgencia e o que faria esse lead avancar.',
+        });
+    }
+
+    if (summary?.recommendation) {
+        tips.push({
+            title: 'Siga a proxima acao da IA',
+            body: summary.recommendation,
+        });
+    }
+
+    if (summary?.intent) {
+        tips.push({
+            title: 'Ancore na intencao atual',
+            body: `A conversa indica foco em ${summary.intent.toLowerCase()}. Conecte a resposta a esse objetivo para ganhar velocidade.`,
+        });
+    }
+
+    if ((unreadCount || 0) > 0 || lastInboundTimestamp) {
+        tips.push({
+            title: 'Mantenha velocidade',
+            body: `A ultima interacao do contato foi ${formatRelativeMoment(lastInboundTimestamp)}. Responda rapido para nao esfriar a conversa.`,
+        });
+    }
+
+    return tips.slice(0, 3);
 }
 
 export function LiveChat() {
@@ -1154,59 +1258,27 @@ export function LiveChat() {
                                         <UserCheck size={16} />
                                         Assumir
                                     </button>
-
-                                    <button className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-black/[0.06] bg-white text-gray-500 transition-colors hover:text-gray-900 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-400 dark:hover:text-white">
-                                        <Search size={18} />
-                                    </button>
                                 </div>
                                 </div>
                             </div>
 
+                            <div className="min-h-0 flex flex-1">
+                                <div className="flex min-w-0 flex-1 flex-col">
                             {/* Messages Area */}
                             <div ref={messagesContainerRef} className="relative flex-1 overflow-y-auto scroll-smooth bg-[#F7F7F8] px-5 py-5 dark:bg-[#0D0D0F]">
                                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(245,121,59,0.08),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(15,23,42,0.06),_transparent_26%)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(245,121,59,0.12),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(255,255,255,0.04),_transparent_24%)]" />
                                 <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col gap-5 pb-4">
-
-                                {activeLeadSummary?.text && (
-                                    <div className="rounded-[24px] border border-amber-500/20 bg-white/90 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)] dark:bg-[#171717]">
-                                        <div className="flex items-start gap-3">
-                                            <div className="mt-0.5 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-2 text-amber-400">
-                                                <BrainCircuit size={18} />
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Resumo da IA</p>
-                                                    {activeLeadSummary.stage && (
-                                                        <span className="inline-flex items-center gap-1 rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-500">
-                                                            <Target size={11} />
-                                                            {activeLeadSummary.stage}
-                                                        </span>
-                                                    )}
-                                                    {activeLeadSummary.intent && (
-                                                        <span className="inline-flex items-center gap-1 rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-purple-500">
-                                                            <Lightbulb size={11} />
-                                                            {activeLeadSummary.intent}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <p className="mt-2 text-sm leading-relaxed text-gray-700 dark:text-gray-300">
-                                                    {activeLeadSummary.text}
-                                                </p>
-                                                {activeLeadSummary.recommendation && (
-                                                    <div className="mt-3 rounded-xl border border-gray-200 dark:border-[#2A2A2A] bg-gray-50 dark:bg-[#101010] px-3 py-2">
-                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
-                                                            Proxima acao recomendada
-                                                        </p>
-                                                        <p className="mt-1 text-sm text-gray-800 dark:text-gray-200">
-                                                            {activeLeadSummary.recommendation}
-                                                        </p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
+                                    <div className="xl:hidden">
+                                        <ConversationInsightsPanel
+                                            activeChat={activeChat}
+                                            activeLeadTemp={activeLeadTemp}
+                                            activeLeadScore={activeLeadScore}
+                                            activeLeadSummary={activeLeadSummary}
+                                            currentAgentId={currentAgentId}
+                                            isChatPaused={isChatPaused}
+                                            messages={messages}
+                                        />
                                     </div>
-                                )}
-
                                 {/* Handoff Banner — shown when AI is paused (may be auto-handoff or manual) */}
                                 {isChatPaused && (
                                     <div className="mb-2 flex items-start gap-3 rounded-[24px] border border-amber-500/30 bg-amber-500/10 p-4 shadow-[0_12px_26px_rgba(245,158,11,0.10)]">
@@ -1366,6 +1438,35 @@ export function LiveChat() {
                                 </button>
                                 </div>
                             </div>
+
+                                </div>
+
+                                <aside className="hidden w-[360px] flex-col border-l border-black/[0.06] bg-white/[0.72] dark:border-white/[0.08] dark:bg-[#141416]/92 xl:flex">
+                                    <div className="border-b border-black/[0.06] px-5 py-4 dark:border-white/[0.08]">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div>
+                                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">Revenue OS</p>
+                                                <h3 className="mt-2 text-lg font-display font-bold tracking-tight text-gray-900 dark:text-white">Contexto da conversa</h3>
+                                            </div>
+                                            <span className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/[0.08] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">
+                                                <Bot size={12} />
+                                                Ao vivo
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto px-4 py-4">
+                                        <ConversationInsightsPanel
+                                            activeChat={activeChat}
+                                            activeLeadTemp={activeLeadTemp}
+                                            activeLeadScore={activeLeadScore}
+                                            activeLeadSummary={activeLeadSummary}
+                                            currentAgentId={currentAgentId}
+                                            isChatPaused={isChatPaused}
+                                            messages={messages}
+                                        />
+                                    </div>
+                                </aside>
+                            </div>
                         </>
                     ) : (
                         <div className="flex flex-1 flex-col items-center justify-center px-8 py-12 text-center">
@@ -1390,6 +1491,175 @@ export function LiveChat() {
             </div>
             {showTakeoverModal && <TakeoverModal vendedores={vendedores} selectedId={selectedVendedorId} onSelect={setSelectedVendedorId} onConfirm={handleTakeover} onClose={() => setShowTakeoverModal(false)} />}
         </>
+    );
+}
+
+function ConversationInsightsPanel({
+    activeChat,
+    activeLeadTemp,
+    activeLeadScore,
+    activeLeadSummary,
+    currentAgentId,
+    isChatPaused,
+    messages,
+}: {
+    activeChat: Chat;
+    activeLeadTemp: string;
+    activeLeadScore: number;
+    activeLeadSummary: LeadSummaryData | null;
+    currentAgentId: string | null;
+    isChatPaused: boolean;
+    messages: Message[];
+}) {
+    const lastInboundMessage = [...messages].reverse().find((msg) => msg?.key && !msg.key.fromMe && !msg.message?.reactionMessage) || null;
+    const leadPriority = getLeadPriorityMeta(activeLeadTemp, activeLeadScore);
+    const automationLabel = isChatPaused ? 'Handoff humano' : currentAgentId ? 'IA ativa' : 'Sem agente';
+    const lastContactLabel = formatRelativeMoment(lastInboundMessage?.messageTimestamp ?? activeChat.lastMessage?.timestamp ?? null);
+    const summaryText = activeLeadSummary?.text || 'A IA ainda esta consolidando contexto. Continue a conversa para enriquecer o resumo e a recomendacao operacional.';
+    const conversationLabel = activeChat.name || activeChat.pushName || activeChat.remoteJid || activeChat.id;
+    const tips = buildRevenueOsTips({
+        temperature: activeLeadTemp,
+        score: activeLeadScore,
+        isChatPaused,
+        unreadCount: activeChat.unreadCount,
+        summary: activeLeadSummary,
+        lastInboundTimestamp: lastInboundMessage?.messageTimestamp ?? activeChat.lastMessage?.timestamp ?? null,
+    });
+
+    const signalCards = [
+        {
+            label: 'Temperatura',
+            value: activeLeadTemp || 'Sem leitura',
+            detail: activeLeadScore > 0 ? `${activeLeadScore}% de score` : 'Score em processamento',
+            icon: TrendingUp,
+        },
+        {
+            label: 'Automacao',
+            value: automationLabel,
+            detail: isChatPaused ? 'Operacao manual recomendada' : 'Fluxo automatico ativo',
+            icon: Bot,
+        },
+        {
+            label: 'Ultima resposta',
+            value: lastContactLabel,
+            detail: activeChat.unreadCount ? `${activeChat.unreadCount} mensagem(ns) pendentes` : 'Sem mensagens pendentes',
+            icon: Clock3,
+        },
+        {
+            label: 'Sinal comercial',
+            value: leadPriority.label,
+            detail: leadPriority.description,
+            icon: ShieldAlert,
+        },
+    ];
+
+    return (
+        <div className="space-y-4">
+            <div className="rounded-[28px] border border-black/[0.06] bg-white/[0.94] p-5 shadow-[0_18px_44px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-[#171719]">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">Lead em foco</p>
+                        <h4 className="mt-2 truncate text-lg font-display font-bold tracking-tight text-gray-900 dark:text-white">
+                            {conversationLabel}
+                        </h4>
+                        <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
+                            {activeChat.remoteJid || activeChat.id}
+                        </p>
+                    </div>
+                    <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]', leadPriority.badgeClass)}>
+                        {leadPriority.label}
+                    </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {signalCards.map((card) => (
+                        <div key={card.label} className="rounded-[22px] border border-black/[0.06] bg-[#F8F8FA] p-4 dark:border-white/[0.08] dark:bg-[#111214]">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                                        {card.label}
+                                    </p>
+                                    <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
+                                        {card.value}
+                                    </p>
+                                    <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                                        {card.detail}
+                                    </p>
+                                </div>
+                                <div className="rounded-2xl border border-primary/15 bg-primary/[0.08] p-2 text-primary">
+                                    <card.icon size={15} />
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div className="rounded-[28px] border border-black/[0.06] bg-white/[0.94] p-5 shadow-[0_18px_44px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-[#171719]">
+                <div className="flex items-start gap-3">
+                    <div className="mt-0.5 rounded-2xl border border-primary/15 bg-primary/[0.08] p-2 text-primary">
+                        <BrainCircuit size={18} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">Resumo da IA</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-500">
+                                <Target size={11} />
+                                {activeLeadSummary?.stage || 'Em andamento'}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-purple-500">
+                                <Lightbulb size={11} />
+                                {activeLeadSummary?.intent || 'Em descoberta'}
+                            </span>
+                        </div>
+                        <p className="mt-3 text-sm leading-7 text-gray-700 dark:text-gray-300">
+                            {summaryText}
+                        </p>
+
+                        {activeLeadSummary?.recommendation && (
+                            <div className="mt-4 rounded-[22px] border border-black/[0.06] bg-[#F8F8FA] px-4 py-3 dark:border-white/[0.08] dark:bg-[#111214]">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                                    Proxima acao recomendada
+                                </p>
+                                <p className="mt-2 text-sm leading-6 text-gray-800 dark:text-gray-200">
+                                    {activeLeadSummary.recommendation}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <div className="rounded-[28px] border border-black/[0.06] bg-white/[0.94] p-5 shadow-[0_18px_44px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-[#171719]">
+                <div className="flex items-start justify-between gap-3">
+                    <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">Playbook</p>
+                        <h4 className="mt-2 text-lg font-display font-bold tracking-tight text-gray-900 dark:text-white">
+                            Dicas do Revenue OS
+                        </h4>
+                    </div>
+                    <div className="rounded-2xl border border-primary/15 bg-primary/[0.08] p-2 text-primary">
+                        <ArrowUpRight size={16} />
+                    </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                    {tips.map((tip) => (
+                        <div key={tip.title} className="rounded-[22px] border border-black/[0.06] bg-[#F8F8FA] px-4 py-3 dark:border-white/[0.08] dark:bg-[#111214]">
+                            <div className="flex items-start gap-3">
+                                <div className="mt-0.5 rounded-full bg-primary/10 p-1.5 text-primary">
+                                    <Sparkles size={12} />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{tip.title}</p>
+                                    <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">{tip.body}</p>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
     );
 }
 
