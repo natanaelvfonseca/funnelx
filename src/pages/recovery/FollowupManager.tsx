@@ -161,6 +161,36 @@ function HeaderStat({ label, value, hint }: { label: string; value: string | num
     );
 }
 
+function ToggleSwitch({
+    checked,
+    onChange,
+    ariaLabel,
+}: {
+    checked: boolean;
+    onChange: () => void;
+    ariaLabel: string;
+}) {
+    return (
+        <button
+            type="button"
+            aria-label={ariaLabel}
+            aria-pressed={checked}
+            onClick={onChange}
+            className={cn(
+                'relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors duration-200',
+                checked ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-700',
+            )}
+        >
+            <span
+                className={cn(
+                    'absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow-[0_4px_12px_rgba(15,23,42,0.18)] transition-transform duration-200',
+                    checked ? 'translate-x-5' : 'translate-x-0',
+                )}
+            />
+        </button>
+    );
+}
+
 function EmptyState({
     icon: Icon,
     title,
@@ -256,7 +286,11 @@ export function FollowupManager() {
         window.setTimeout(() => setFlash(null), 3000);
     }, []);
 
-    const fetchSequences = useCallback(async () => {
+    const fetchSequences = useCallback(async (silent = false) => {
+        if (!token) {
+            setLoadingSeqs(false);
+            return;
+        }
         setLoadingSeqs(true);
         try {
             const res = await fetch('/api/followup/sequences', { headers });
@@ -266,13 +300,17 @@ export function FollowupManager() {
             setSelectedSequenceId((current) => current && data.some((item: FollowupSequence) => item.id === current) ? current : data[0]?.id || null);
         } catch (error) {
             console.error(error);
-            pushFlash('error', 'Nao foi possivel carregar as sequencias.');
+            if (!silent) pushFlash('error', 'Nao foi possivel carregar as sequencias.');
         } finally {
             setLoadingSeqs(false);
         }
-    }, [headers, pushFlash]);
+    }, [headers, pushFlash, token]);
 
-    const fetchQueue = useCallback(async () => {
+    const fetchQueue = useCallback(async (silent = false) => {
+        if (!token) {
+            setLoadingQueue(false);
+            return;
+        }
         setLoadingQueue(true);
         try {
             const res = await fetch('/api/followup/queue', { headers });
@@ -280,13 +318,17 @@ export function FollowupManager() {
             setQueue(await res.json());
         } catch (error) {
             console.error(error);
-            pushFlash('error', 'Nao foi possivel carregar a fila ativa.');
+            if (!silent) pushFlash('error', 'Nao foi possivel carregar a fila ativa.');
         } finally {
             setLoadingQueue(false);
         }
-    }, [headers, pushFlash]);
+    }, [headers, pushFlash, token]);
 
-    const fetchDashboard = useCallback(async () => {
+    const fetchDashboard = useCallback(async (silent = false) => {
+        if (!token) {
+            setLoadingDash(false);
+            return;
+        }
         setLoadingDash(true);
         try {
             const res = await fetch('/api/followup/dashboard', { headers });
@@ -294,13 +336,17 @@ export function FollowupManager() {
             setDashData(await res.json());
         } catch (error) {
             console.error(error);
-            pushFlash('error', 'Nao foi possivel carregar o desempenho da recuperacao.');
+            if (!silent) pushFlash('error', 'Nao foi possivel carregar o desempenho da recuperacao.');
         } finally {
             setLoadingDash(false);
         }
-    }, [headers, pushFlash]);
+    }, [headers, pushFlash, token]);
 
-    const fetchSettings = useCallback(async () => {
+    const fetchSettings = useCallback(async (silent = false) => {
+        if (!token) {
+            setLoadingSettings(false);
+            return;
+        }
         setLoadingSettings(true);
         try {
             const res = await fetch('/api/followup/settings', { headers });
@@ -308,11 +354,11 @@ export function FollowupManager() {
             setSettings(await res.json());
         } catch (error) {
             console.error(error);
-            pushFlash('error', 'Nao foi possivel carregar as configuracoes.');
+            if (!silent) pushFlash('error', 'Nao foi possivel carregar as configuracoes.');
         } finally {
             setLoadingSettings(false);
         }
-    }, [headers, pushFlash]);
+    }, [headers, pushFlash, token]);
 
     const fetchSteps = useCallback(async (sequenceId: string) => {
         const res = await fetch(`/api/followup/sequences/${sequenceId}/steps`, { headers });
@@ -322,9 +368,14 @@ export function FollowupManager() {
         return steps as FollowupStep[];
     }, [headers]);
 
-    const refreshAll = useCallback(async () => {
+    const refreshAll = useCallback(async (silent = false) => {
         setPageRefreshing(true);
-        await Promise.all([fetchSequences(), fetchQueue(), fetchDashboard(), fetchSettings()]);
+        await Promise.all([
+            fetchSequences(silent),
+            fetchQueue(silent),
+            fetchDashboard(silent),
+            fetchSettings(silent),
+        ]);
         setPageRefreshing(false);
     }, [fetchDashboard, fetchQueue, fetchSequences, fetchSettings]);
 
@@ -336,7 +387,7 @@ export function FollowupManager() {
     }, []);
 
     useEffect(() => {
-        refreshAll();
+        refreshAll(true);
     }, [refreshAll]);
 
     useEffect(() => {
@@ -539,7 +590,7 @@ export function FollowupManager() {
                                 </div>
                                 <div className="flex gap-3">
                                     <button
-                                        onClick={refreshAll}
+                                        onClick={() => refreshAll()}
                                         type="button"
                                         className="inline-flex h-[58px] w-[58px] items-center justify-center rounded-[22px] border border-black/[0.06] bg-white/78 text-muted-foreground transition-colors hover:text-foreground dark:border-white/[0.08] dark:bg-white/[0.04]"
                                     >
@@ -947,9 +998,11 @@ export function FollowupManager() {
                                                     <p className="text-sm font-semibold text-foreground">Engine automatica</p>
                                                     <p className="mt-1 text-xs text-muted-foreground">Liga ou pausa o disparo automatico.</p>
                                                 </div>
-                                                <button type="button" onClick={() => setSettings((current) => ({ ...current, enabled: !current.enabled }))} className={cn('relative h-7 w-12 rounded-full', settings.enabled ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-700')}>
-                                                    <span className={cn('absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform', settings.enabled ? 'translate-x-6' : 'translate-x-1')} />
-                                                </button>
+                                                <ToggleSwitch
+                                                    checked={settings.enabled}
+                                                    onChange={() => setSettings((current) => ({ ...current, enabled: !current.enabled }))}
+                                                    ariaLabel="Alternar engine automatica"
+                                                />
                                             </div>
                                         </div>
                                         <div className="rounded-[28px] border border-black/[0.06] bg-[#F8F8FA] p-5 dark:border-white/[0.08] dark:bg-[#111214]">
@@ -958,9 +1011,11 @@ export function FollowupManager() {
                                                     <p className="text-sm font-semibold text-foreground">Modo IA global</p>
                                                     <p className="mt-1 text-xs text-muted-foreground">Mantem o texto mais contextual.</p>
                                                 </div>
-                                                <button type="button" onClick={() => setSettings((current) => ({ ...current, ai_mode_enabled: !current.ai_mode_enabled }))} className={cn('relative h-7 w-12 rounded-full', settings.ai_mode_enabled ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-700')}>
-                                                    <span className={cn('absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform', settings.ai_mode_enabled ? 'translate-x-6' : 'translate-x-1')} />
-                                                </button>
+                                                <ToggleSwitch
+                                                    checked={settings.ai_mode_enabled}
+                                                    onChange={() => setSettings((current) => ({ ...current, ai_mode_enabled: !current.ai_mode_enabled }))}
+                                                    ariaLabel="Alternar modo IA global"
+                                                />
                                             </div>
                                         </div>
                                     </div>
@@ -1080,13 +1135,11 @@ export function FollowupManager() {
                                                     Permite ajustar a mensagem final ao contexto comercial de cada conversa.
                                                 </p>
                                             </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setNewSeqAI((current) => !current)}
-                                                className={cn('relative h-7 w-12 rounded-full transition-colors', newSeqAI ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-700')}
-                                            >
-                                                <span className={cn('absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform', newSeqAI ? 'translate-x-6' : 'translate-x-1')} />
-                                            </button>
+                                            <ToggleSwitch
+                                                checked={newSeqAI}
+                                                onChange={() => setNewSeqAI((current) => !current)}
+                                                ariaLabel="Alternar modo IA da nova sequencia"
+                                            />
                                         </div>
 
                                         <div className="mt-4 flex flex-wrap gap-2">
