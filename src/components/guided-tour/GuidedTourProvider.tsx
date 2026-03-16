@@ -197,7 +197,7 @@ function GuidedTourOverlay({
 
     return (
         <div className="pointer-events-none fixed inset-0 z-[1200]">
-            <div className="absolute inset-0 bg-slate-950/44" />
+            {!spotlightRect && <div className="absolute inset-0 bg-slate-950/44" />}
 
             {spotlightRect && (
                 <div
