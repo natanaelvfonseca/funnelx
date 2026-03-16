@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface User {
@@ -27,11 +27,27 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function readJwtExpiration(token: string): number | null {
+    try {
+        const [, payload] = token.split('.');
+        if (!payload) return null;
+
+        const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+        const decoded = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='));
+        const parsed = JSON.parse(decoded);
+
+        return typeof parsed.exp === 'number' ? parsed.exp * 1000 : null;
+    } catch {
+        return null;
+    }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [token, setToken] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
+    const tokenExpiration = useMemo(() => token ? readJwtExpiration(token) : null, [token]);
 
     // Note: Hydration is now handled by refreshUser on mount
 
@@ -142,6 +158,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
         }
 
+        const tokenExpiry = readJwtExpiration(storedToken);
+        if (tokenExpiry && tokenExpiry <= Date.now()) {
+            console.warn('Session expired locally. Logging out before calling the API...');
+            localStorage.removeItem('kogna_token');
+            localStorage.removeItem('kogna_user');
+            setToken(null);
+            setUser(null);
+            setLoading(false);
+            navigate('/login');
+            return;
+        }
+
         try {
             const apiBase = '';
             const res = await fetch(`${apiBase}/api/me`, {
@@ -168,6 +196,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         refreshUser();
     }, []);
+
+    useEffect(() => {
+        if (!tokenExpiration) return;
+
+        const remainingMs = tokenExpiration - Date.now();
+        if (remainingMs <= 0) {
+            logout();
+            return;
+        }
+
+        const timeoutId = window.setTimeout(() => {
+            console.warn('Session expired. Logging out to avoid invalid requests.');
+            logout();
+        }, remainingMs);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [logout, tokenExpiration]);
 
     return (
         <AuthContext.Provider value={{ user, token, login, register, logout, refreshUser, isAuthenticated: !!token }}>
