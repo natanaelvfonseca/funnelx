@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ElementType, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ElementType, type ReactNode } from 'react';
 import {
     BarChart3,
     Bell,
@@ -140,12 +140,12 @@ function cn(...classes: Array<string | false | null | undefined>) {
     return classes.filter(Boolean).join(' ');
 }
 
-function Surface({ className, children }: { className?: string; children: ReactNode }) {
+function Surface({ className, children, ...props }: ComponentPropsWithoutRef<'div'>) {
     return (
         <div className={cn(
             'rounded-[32px] border border-black/[0.06] bg-white/[0.86] shadow-[0_24px_70px_rgba(15,23,42,0.06)] backdrop-blur dark:border-white/[0.08] dark:bg-white/[0.03] dark:shadow-none',
             className,
-        )}>
+        )} {...props}>
             {children}
         </div>
     );
