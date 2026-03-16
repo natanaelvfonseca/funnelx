@@ -247,9 +247,13 @@ export function OnboardingV2() {
         setChatMessages(currentMessages);
         setChatLoading(true);
         try {
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (token.current) {
+                headers.Authorization = `Bearer ${token.current}`;
+            }
             const res = await fetch('/api/onboarding/preview-ai', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({
                     session_id: sessionId,
                     message: msg,

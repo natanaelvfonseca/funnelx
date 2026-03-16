@@ -3765,6 +3765,20 @@ MÃ¡ximo 3 parÃ¡grafos por resposta.`;
       [session_id, message, reply, JSON.stringify(ctx)]
     ).catch(() => { });
 
+    const previewUserId = getOptionalUserIdFromAuthHeader(req);
+    if (previewUserId) {
+      await runAdminEventAutomations('ai_tested', {
+        userId: previewUserId,
+        eventKey: `ai_tested:${previewUserId}`,
+        extraVars: {
+          mensagem_teste: message,
+          resposta_teste: reply,
+        },
+      }).catch((err) => {
+        log('[AUTO EVENT ai_tested] ' + err.message);
+      });
+    }
+
     const limitReached = newCount >= MAX_MSGS;
     res.json({ reply, messagesUsed: newCount, messagesLeft: Math.max(0, MAX_MSGS - newCount), limitReached });
   } catch (err) {
@@ -3902,6 +3916,17 @@ Seja sempre proativo, orientado a resultados, e conduza o cliente em direÃ§Ã�
 
     const { password: _, ...safeUser } = user;
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
+
+    await Promise.allSettled([
+      runAdminEventAutomations('user_created', {
+        userId: user.id,
+        eventKey: `user_created:${user.id}`,
+      }),
+      runAdminEventAutomations('onboarding_completed', {
+        userId: user.id,
+        eventKey: `onboarding_completed:${user.id}`,
+      }),
+    ]);
 
     log(`[ONBOARDING-V2] New account created: ${email} (org: ${org.id})`);
     res.status(201).json({ token, user: { ...safeUser, organization: org }, role: 'user' });
@@ -4065,6 +4090,13 @@ app.post('/api/agents', verifyJWT, async (req, res) => {
        VALUES ($1, $2, $3, $4, 'active') RETURNING *`,
       [orgId, name, type || 'sdr', system_prompt || '']
     );
+    await runAdminEventAutomations('agent_created', {
+      userId: req.userId,
+      eventKey: `agent_created:${r.rows[0].id}`,
+      extraVars: { nome_ia: r.rows[0].name },
+    }).catch((automationErr) => {
+      log('[AUTO EVENT agent_created] ' + automationErr.message);
+    });
     res.status(201).json(r.rows[0]);
   } catch (err) {
     log('[AGENTS] POST error: ' + err.message);
@@ -4190,9 +4222,234 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+async function ensureAdminAutomationColumns() {
+  try {
+    await pool.query(`ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS wa_instance TEXT`);
+    await pool.query(`ALTER TABLE automation_logs ADD COLUMN IF NOT EXISTS event_key TEXT`);
+    await pool.query(`ALTER TABLE automation_logs ADD COLUMN IF NOT EXISTS target_user_id TEXT`);
+  } catch (err) {
+    log('[AUTO] ensureAdminAutomationColumns error: ' + err.message);
+    throw err;
+  }
+}
+
+function normalizeWhatsAppNumber(phone) {
+  if (!phone) return null;
+  const digits = String(phone).replace(/\D/g, '');
+  if (!digits) return null;
+  return digits.startsWith('55') ? digits : `55${digits}`;
+}
+
+async function getAutomationRecipientByUserId(userId) {
+  const result = await pool.query(
+    `SELECT u.id, u.name, u.email, u.koins_balance, u.personal_phone, u.company_phone,
+            COALESCE(cfg.company_name, org.name, '') AS company_name
+     FROM users u
+     LEFT JOIN LATERAL (
+       SELECT company_name
+       FROM ia_configs
+       WHERE user_id = u.id
+       ORDER BY created_at DESC
+       LIMIT 1
+     ) cfg ON true
+     LEFT JOIN organizations org ON org.id = u.organization_id
+     WHERE u.id = $1
+     LIMIT 1`,
+    [userId],
+  );
+
+  return result.rows[0] || null;
+}
+
+async function doesAutomationAudienceMatchUser(automation, userId) {
+  if (!automation || automation.audience_type !== 'filtered') return true;
+  const filter = automation.audience_filter || {};
+  const tags = Array.isArray(filter.tags) ? filter.tags.map((tag) => String(tag).trim().toLowerCase()).filter(Boolean) : [];
+  if (!tags.length) return true;
+
+  const match = await pool.query(
+    `SELECT 1
+     FROM user_tags
+     WHERE user_id = $1
+       AND tag = ANY($2::text[])
+     LIMIT 1`,
+    [userId, tags],
+  );
+
+  return match.rows.length > 0;
+}
+
+function getAutomationTemplateVars(user, extraVars = {}) {
+  return {
+    nome: user?.name || '',
+    empresa: user?.company_name || '',
+    koins: user?.koins_balance ?? '',
+    email: user?.email || '',
+    link_dashboard: 'https://ia.kogna.co',
+    link_pagamento: 'https://ia.kogna.co/billing',
+    ...extraVars,
+  };
+}
+
+async function hasProcessedAutomationEvent(automationId, eventKey) {
+  if (!automationId || !eventKey) return false;
+
+  const existing = await pool.query(
+    `SELECT 1
+     FROM automation_logs
+     WHERE automation_id = $1
+       AND event_key = $2
+       AND status = 'sent'
+     LIMIT 1`,
+    [automationId, eventKey],
+  );
+
+  return existing.rows.length > 0;
+}
+
+async function createAutomationDispatchLog({
+  automationId,
+  automationName,
+  recipientsCount,
+  channels,
+  status,
+  error = null,
+  eventKey = null,
+  targetUserId = null,
+}) {
+  await ensureAdminAutomationColumns();
+
+  await pool.query(
+    `INSERT INTO automation_logs (
+       automation_id, automation_name, recipients_count, channel, status, error, event_key, target_user_id
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      automationId || null,
+      automationName,
+      recipientsCount,
+      Array.isArray(channels) ? channels.join(',') : String(channels || ''),
+      status,
+      error,
+      eventKey,
+      targetUserId,
+    ],
+  ).catch((err) => {
+    log('[AUTO LOG] ' + err.message);
+  });
+}
+
+async function dispatchAutomationToRecipient(automation, recipient, options = {}) {
+  const channels = Array.isArray(automation?.channels) ? automation.channels : [];
+  const eventKey = options.eventKey || null;
+  const extraVars = options.extraVars || {};
+  const vars = getAutomationTemplateVars(recipient, extraVars);
+  const finalMessage = interpolateTemplate(automation.message_template || '', vars);
+  const errors = [];
+  let delivered = false;
+
+  try {
+    if (channels.includes('email') && recipient.email) {
+      await sendEmail(recipient.email, automation.name, `<p>${finalMessage.replace(/\n/g, '<br>')}</p>`);
+      delivered = true;
+    }
+  } catch (err) {
+    errors.push(`email: ${err.message}`);
+  }
+
+  try {
+    if (channels.includes('internal')) {
+      await sendInternalNotification(recipient.id, finalMessage, automation.name || 'Mensagem da Kogna');
+      delivered = true;
+    }
+  } catch (err) {
+    errors.push(`internal: ${err.message}`);
+  }
+
+  try {
+    if (channels.includes('whatsapp')) {
+      if (!automation.wa_instance) {
+        errors.push('whatsapp: nenhuma conexao selecionada');
+      } else {
+        const phone = normalizeWhatsAppNumber(recipient.personal_phone || recipient.company_phone);
+        if (!phone) {
+          errors.push('whatsapp: usuario sem numero cadastrado');
+        } else {
+          await sendWhatsAppMsg(automation.wa_instance, phone, finalMessage);
+          delivered = true;
+        }
+      }
+    }
+  } catch (err) {
+    errors.push(`whatsapp: ${err.message}`);
+  }
+
+  await createAutomationDispatchLog({
+    automationId: automation.id,
+    automationName: automation.name,
+    recipientsCount: delivered ? 1 : 0,
+    channels,
+    status: delivered ? 'sent' : 'error',
+    error: errors.length ? errors.join(' | ') : null,
+    eventKey,
+    targetUserId: recipient.id,
+  });
+
+  return {
+    delivered,
+    error: errors.length ? errors.join(' | ') : null,
+  };
+}
+
+async function runAdminEventAutomations(triggerEvent, { userId, eventKey, extraVars = {} } = {}) {
+  if (!triggerEvent || !userId) return;
+
+  await ensureAdminAutomationColumns();
+
+  const recipient = await getAutomationRecipientByUserId(userId);
+  if (!recipient) return;
+
+  const automationRes = await pool.query(
+    `SELECT *
+     FROM automation_rules
+     WHERE is_active = true
+       AND trigger_event = $1
+     ORDER BY created_at DESC`,
+    [triggerEvent],
+  );
+
+  for (const automation of automationRes.rows) {
+    if (!(await doesAutomationAudienceMatchUser(automation, userId))) {
+      continue;
+    }
+
+    if (eventKey && await hasProcessedAutomationEvent(automation.id, eventKey)) {
+      continue;
+    }
+
+    await dispatchAutomationToRecipient(automation, recipient, {
+      eventKey,
+      extraVars,
+    });
+  }
+}
+
+function getOptionalUserIdFromAuthHeader(req) {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!token) return null;
+    const decoded = jwt.verify(token, JWT_SECRET);
+    return decoded?.id || null;
+  } catch (_err) {
+    return null;
+  }
+}
+
 // â”€â”€ GET /api/admin/automations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get('/api/admin/automations', verifyJWT, requireAdmin, async (req, res) => {
   try {
+    await ensureAdminAutomationColumns();
     const r = await pool.query(
       'SELECT * FROM automation_rules ORDER BY created_at DESC'
     );
@@ -4206,15 +4463,19 @@ app.get('/api/admin/automations', verifyJWT, requireAdmin, async (req, res) => {
 // â”€â”€ POST /api/admin/automations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/api/admin/automations', verifyJWT, requireAdmin, async (req, res) => {
   try {
-    const { name, trigger_event, trigger_rule, audience_type, audience_filter, channels, message_template } = req.body;
+    await ensureAdminAutomationColumns();
+    const { name, trigger_event, trigger_rule, audience_type, audience_filter, channels, message_template, wa_instance } = req.body;
     if (!name || !trigger_event || !message_template) {
       return res.status(400).json({ error: 'name, trigger_event e message_template sÃ£o obrigatÃ³rios.' });
     }
+    if (Array.isArray(channels) && channels.includes('whatsapp') && !wa_instance) {
+      return res.status(400).json({ error: 'Selecione qual conexao do WhatsApp sera usada nessa automacao.' });
+    }
     const r = await pool.query(
-      `INSERT INTO automation_rules (name, trigger_event, trigger_rule, audience_type, audience_filter, channels, message_template)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      `INSERT INTO automation_rules (name, trigger_event, trigger_rule, audience_type, audience_filter, channels, message_template, wa_instance)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [name, trigger_event, JSON.stringify(trigger_rule || {}), audience_type || 'all',
-        JSON.stringify(audience_filter || {}), channels || [], message_template]
+        JSON.stringify(audience_filter || {}), channels || [], message_template, wa_instance || null]
     );
     res.status(201).json(r.rows[0]);
   } catch (e) {
@@ -4226,18 +4487,23 @@ app.post('/api/admin/automations', verifyJWT, requireAdmin, async (req, res) => 
 // â”€â”€ PATCH /api/admin/automations/:id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.patch('/api/admin/automations/:id', verifyJWT, requireAdmin, async (req, res) => {
   try {
-    const { name, trigger_event, trigger_rule, audience_type, audience_filter, channels, message_template, is_active } = req.body;
+    await ensureAdminAutomationColumns();
+    const { name, trigger_event, trigger_rule, audience_type, audience_filter, channels, message_template, is_active, wa_instance } = req.body;
+    if (Array.isArray(channels) && channels.includes('whatsapp') && !wa_instance) {
+      return res.status(400).json({ error: 'Selecione qual conexao do WhatsApp sera usada nessa automacao.' });
+    }
     const r = await pool.query(
       `UPDATE automation_rules
        SET name=COALESCE($1,name), trigger_event=COALESCE($2,trigger_event),
            trigger_rule=COALESCE($3,trigger_rule), audience_type=COALESCE($4,audience_type),
            audience_filter=COALESCE($5,audience_filter), channels=COALESCE($6,channels),
            message_template=COALESCE($7,message_template),
-           is_active=COALESCE($8,is_active)
+           is_active=COALESCE($8,is_active),
+           wa_instance = CASE WHEN $10::text IS NULL THEN wa_instance ELSE $10 END
        WHERE id=$9 RETURNING *`,
       [name, trigger_event, trigger_rule ? JSON.stringify(trigger_rule) : null,
         audience_type, audience_filter ? JSON.stringify(audience_filter) : null,
-        channels, message_template, is_active, req.params.id]
+        channels, message_template, is_active, req.params.id, wa_instance ?? null]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'AutomaÃ§Ã£o nÃ£o encontrada.' });
     res.json(r.rows[0]);
@@ -4258,6 +4524,7 @@ app.delete('/api/admin/automations/:id', verifyJWT, requireAdmin, async (req, re
 // Manually trigger an automation, sending to its audience right now
 app.post('/api/admin/automations/:id/trigger', verifyJWT, requireAdmin, async (req, res) => {
   try {
+    await ensureAdminAutomationColumns();
     const autoRes = await pool.query('SELECT * FROM automation_rules WHERE id=$1', [req.params.id]);
     if (!autoRes.rows.length) return res.status(404).json({ error: 'AutomaÃ§Ã£o nÃ£o encontrada.' });
     const auto = autoRes.rows[0];
@@ -4276,9 +4543,24 @@ app.post('/api/admin/automations/:id/trigger', verifyJWT, requireAdmin, async (r
     const usersRes = await pool.query(usersQ, params);
     const recipients = usersRes.rows;
 
-    const channels = auto.channels || [];
+    const channels = Array.isArray(auto.channels) ? auto.channels : [];
     let sent = 0;
     let logError = null;
+
+    let userPhones = {};
+    if (channels.includes('whatsapp') && auto.wa_instance) {
+      const phoneRes = await pool.query(
+        `SELECT id, personal_phone, company_phone
+         FROM users
+         WHERE id = ANY($1::text[])`,
+        [recipients.map((recipient) => recipient.id)],
+      ).catch(() => ({ rows: [] }));
+
+      for (const row of phoneRes.rows) {
+        const phone = normalizeWhatsAppNumber(row.personal_phone || row.company_phone);
+        if (phone) userPhones[row.id] = phone;
+      }
+    }
 
     for (const u of recipients) {
       const vars = {
@@ -4293,16 +4575,27 @@ app.post('/api/admin/automations/:id/trigger', verifyJWT, requireAdmin, async (r
         if (channels.includes('internal')) {
           await sendInternalNotification(u.id, msg);
         }
+        if (channels.includes('whatsapp')) {
+          if (!auto.wa_instance) {
+            throw new Error('Nenhuma conexao do WhatsApp foi selecionada para esta automacao.');
+          }
+          if (!userPhones[u.id]) {
+            throw new Error(`Usuario ${u.email || u.id} nao possui numero de WhatsApp cadastrado.`);
+          }
+          await sendWhatsAppMsg(auto.wa_instance, userPhones[u.id], msg);
+        }
         sent++;
       } catch (e) { logError = e.message; }
     }
 
-    // Log it
-    await pool.query(
-      `INSERT INTO automation_logs (automation_id, automation_name, recipients_count, channel, status, error)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [auto.id, auto.name, sent, channels.join(','), logError ? 'error' : 'sent', logError]
-    ).catch(() => { });
+    await createAutomationDispatchLog({
+      automationId: auto.id,
+      automationName: auto.name,
+      recipientsCount: sent,
+      channels,
+      status: logError ? 'error' : 'sent',
+      error: logError,
+    });
 
     res.json({ sent, total: recipients.length, error: logError });
   } catch (e) {
@@ -5369,6 +5662,12 @@ app.post("/api/register", async (req, res) => {
     );
 
     log(`User registered successfully: ${user.id} (${email})`);
+    await runAdminEventAutomations('user_created', {
+      userId: user.id,
+      eventKey: `user_created:${user.id}`,
+    }).catch((automationErr) => {
+      log('[AUTO EVENT user_created] ' + automationErr.message);
+    });
     res.json({
       user: { ...safeUser, organization },
       role: user.role,
@@ -5744,6 +6043,12 @@ app.post("/api/onboarding/complete", verifyJWT, async (req, res) => {
       "UPDATE users SET onboarding_completed = true, koins_balance = koins_balance + 100 WHERE id = $1",
       [userId],
     );
+    await runAdminEventAutomations('onboarding_completed', {
+      userId,
+      eventKey: `onboarding_completed:${userId}`,
+    }).catch((automationErr) => {
+      log('[AUTO EVENT onboarding_completed] ' + automationErr.message);
+    });
 
     log(`User ${userId} completed onboarding. Awarded 100 Koins.`);
     res.json({ success: true, addedKoins: 100 });
@@ -6008,6 +6313,14 @@ RESTRIÃ‡Ã•ES (NUNCA FAZER):
         `Onboarding Agent Created: ${newAgent.rows[0].id} (No WhatsApp instance found to link)`,
       );
     }
+
+    await runAdminEventAutomations('agent_created', {
+      userId,
+      eventKey: `agent_created:${newAgent.rows[0].id}`,
+      extraVars: { nome_ia: newAgent.rows[0].name },
+    }).catch((automationErr) => {
+      log('[AUTO EVENT agent_created] ' + automationErr.message);
+    });
 
     res.json({ success: true, agent: newAgent.rows[0] });
   } catch (err) {
@@ -8179,6 +8492,13 @@ app.post("/api/whatsapp/connect", verifyJWT, async (req, res) => {
       log(`Instance already exists: ${instance.status}`);
 
       if (instance.status === "CONNECTED") {
+        await runAdminEventAutomations('whatsapp_connected', {
+          userId: instance.user_id,
+          eventKey: `whatsapp_connected:${instance.id || instance.instance_name}`,
+          extraVars: { conexao_whatsapp: instance.instance_name },
+        }).catch((automationErr) => {
+          log('[AUTO EVENT whatsapp_connected] ' + automationErr.message);
+        });
         return res.json({
           exists: true,
           instance: instance,
@@ -8217,6 +8537,13 @@ app.post("/api/whatsapp/connect", verifyJWT, async (req, res) => {
               ["CONNECTED", instance.id],
             );
             instance.status = "CONNECTED";
+            await runAdminEventAutomations('whatsapp_connected', {
+              userId: instance.user_id,
+              eventKey: `whatsapp_connected:${instance.id || instance.instance_name}`,
+              extraVars: { conexao_whatsapp: instance.instance_name },
+            }).catch((automationErr) => {
+              log('[AUTO EVENT whatsapp_connected] ' + automationErr.message);
+            });
             log(
               `Instance ${instanceName} was found connected on Evolution. Updated local DB.`,
             );
@@ -8254,6 +8581,13 @@ app.post("/api/whatsapp/connect", verifyJWT, async (req, res) => {
               ["CONNECTED", instance.id],
             );
             instance.status = "CONNECTED";
+            await runAdminEventAutomations('whatsapp_connected', {
+              userId: instance.user_id,
+              eventKey: `whatsapp_connected:${instance.id || instance.instance_name}`,
+              extraVars: { conexao_whatsapp: instance.instance_name },
+            }).catch((automationErr) => {
+              log('[AUTO EVENT whatsapp_connected] ' + automationErr.message);
+            });
             log(
               `Instance ${instanceName} connect call returned no QR (likely connected). Updated local DB.`,
             );
@@ -8465,6 +8799,20 @@ app.post("/api/webhooks/whatsapp", async (req, res) => {
           "UPDATE whatsapp_instances SET status = $1 WHERE instance_name = $2",
           ["CONNECTED", instanceName],
         );
+        const connectedInstanceRes = await pool.query(
+          "SELECT id, user_id, instance_name FROM whatsapp_instances WHERE instance_name = $1 LIMIT 1",
+          [instanceName],
+        );
+        const connectedInstance = connectedInstanceRes.rows[0];
+        if (connectedInstance?.user_id) {
+          await runAdminEventAutomations('whatsapp_connected', {
+            userId: connectedInstance.user_id,
+            eventKey: `whatsapp_connected:${connectedInstance.id || connectedInstance.instance_name}`,
+            extraVars: { conexao_whatsapp: connectedInstance.instance_name },
+          }).catch((automationErr) => {
+            log('[AUTO EVENT whatsapp_connected] ' + automationErr.message);
+          });
+        }
         log(`Instance ${instanceName} marked as CONNECTED`);
       } else if (state === "close" || state === "DISCONNECTED") {
         await pool.query(
