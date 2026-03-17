@@ -18,6 +18,8 @@ interface FormData {
     aiName: string;
     mainProduct: string;
     customerPain: string;
+    customerDesires: string;
+    differentiators: string;
     productPrice: string;
     targetAudience: string[];
     channels: string[];
@@ -25,6 +27,13 @@ interface FormData {
     revenueGoal: string;
     unknownBehavior: string;
     voiceTone: string;
+    humanHandoffPolicy: string;
+    buyingSignals: string;
+    qualificationCriteria: string;
+    objectionHandling: string;
+    idealNextStep: string;
+    agendaPolicy: string;
+    objections: string[];
     restrictions: string;
     name: string;
     email: string;
@@ -36,9 +45,10 @@ interface FormData {
 const EMPTY_FORM: FormData = {
     agentObjective: '', industry: '', industryDetail: '',
     companyName: '', aiName: '',
-    mainProduct: '', customerPain: '', productPrice: '',
+    mainProduct: '', customerPain: '', customerDesires: '', differentiators: '', productPrice: '',
     targetAudience: [], channels: [], salesCycle: '',
-    revenueGoal: '', unknownBehavior: '', voiceTone: '', restrictions: '',
+    revenueGoal: '', unknownBehavior: '', voiceTone: '',
+    humanHandoffPolicy: '', buyingSignals: '', qualificationCriteria: '', objectionHandling: '', idealNextStep: '', agendaPolicy: '', objections: [], restrictions: '',
     name: '', email: '', phone: '', password: '', confirmPassword: '',
 };
 
@@ -121,8 +131,8 @@ function NextBtn({ onClick, loading, label = 'Continuar' }: { onClick: () => voi
 // ── Progress Sidebar ──────────────────────────────────────────────────────────
 const STEP_LABELS = [
     'Bem-vindo', 'Agente', 'Mercado', 'Identidade', 'Produto',
-    'Público', 'Canais', 'Ciclo', 'Meta', 'Protocolo',
-    'Personalidade', 'Conhecimento', 'Pipeline', 'Conta', 'Teste',
+    'Público', 'Canais', 'Ciclo', 'Meta', 'Objecoes',
+    'Conducao', 'Conhecimento', 'Pipeline', 'Conta', 'Teste',
     'Melhorar', 'WhatsApp', 'Concluído'
 ];
 
@@ -194,7 +204,13 @@ export function OnboardingV2() {
         7: () => { if (form.channels.length === 0) { setError('Selecione pelo menos um canal.'); return false; } return true; },
         8: () => { if (!form.salesCycle) { setError('Selecione o ciclo de venda.'); return false; } return true; },
         9: () => { if (!form.revenueGoal) { setError('Informe sua meta mensal.'); return false; } return true; },
-        10: () => { if (!form.unknownBehavior) { setError('Selecione o protocolo.'); return false; } return true; },
+        10: () => {
+            if (form.objections.length === 0 && form.objectionHandling.trim().length < 20) {
+                setError('Defina pelo menos uma objecao ou explique como a IA deve contorna-las.');
+                return false;
+            }
+            return true;
+        },
         11: () => { if (!form.voiceTone) { setError('Selecione o estilo da IA.'); return false; } return true; },
         14: () => {
             if (!form.name.trim()) { setError('Informe seu nome.'); return false; }
@@ -229,6 +245,15 @@ export function OnboardingV2() {
             localStorage.setItem('kogna_token', data.token);
             localStorage.setItem('kogna_user', JSON.stringify(data.user));
             token.current = data.token;
+            if (files.length > 0 && data.agentId) {
+                const knowledgeData = new FormData();
+                files.forEach((file) => knowledgeData.append('files', file));
+                await fetch(`/api/agents/${data.agentId}/upload`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${data.token}` },
+                    body: knowledgeData,
+                }).catch(() => { });
+            }
             await refreshUser();
             go(15);
         } catch (e: any) {
@@ -264,6 +289,14 @@ export function OnboardingV2() {
                         agentObjective: form.agentObjective, mainProduct: form.mainProduct,
                         targetAudience: form.targetAudience, voiceTone: form.voiceTone,
                         industry: form.industry, restrictions: form.restrictions,
+                        customerPain: form.customerPain,
+                        customerDesires: form.customerDesires,
+                        differentiators: form.differentiators,
+                        productPrice: form.productPrice,
+                        humanHandoffPolicy: form.humanHandoffPolicy,
+                        objectionHandling: form.objectionHandling,
+                        idealNextStep: form.idealNextStep,
+                        objections: form.objections,
                     }
                 }),
             });
@@ -284,7 +317,7 @@ export function OnboardingV2() {
     // Initialize chat in step 15
     useEffect(() => {
         if (step === 15 && chatMessages.length === 0) {
-            setChatMessages([{ role: 'ai', text: `Olá! Sou ${form.aiName || 'sua IA'}, assistente da ${form.companyName || 'sua empresa'}. Como posso te ajudar hoje? 😊` }]);
+            setChatMessages([{ role: 'ai', text: `Oi! Sou ${form.aiName || 'sua IA'} da ${form.companyName || 'sua empresa'}. Me conta rapidamente o que voce esta buscando para eu te conduzir da melhor forma.` }]);
         }
     }, [step]);
 
@@ -538,6 +571,16 @@ function StepContent({ step, form, set, toggleArr, next, loading, go, files, set
                     <FieldLabel counter={<span className={form.customerPain.length < 50 ? 'text-red-400' : 'text-green-400'}>{form.customerPain.length}/50</span>}>Qual problema seu cliente quer resolver?</FieldLabel>
                     <Textarea rows={3} placeholder="Ex: O cliente tem medo de dentista e quer um atendimento humanizado..." value={form.customerPain} onChange={e => set('customerPain', e.target.value)} />
                 </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                        <FieldLabel>Qual resultado o cliente deseja?</FieldLabel>
+                        <Textarea rows={3} placeholder="Ex: crescer receita com previsibilidade, ganhar tempo, vender com mais clareza..." value={form.customerDesires} onChange={e => set('customerDesires', e.target.value)} />
+                    </div>
+                    <div>
+                        <FieldLabel>Quais diferenciais tornam sua oferta forte?</FieldLabel>
+                        <Textarea rows={3} placeholder="Ex: implantacao rapida, suporte consultivo, metodologia proprietaria..." value={form.differentiators} onChange={e => set('differentiators', e.target.value)} />
+                    </div>
+                </div>
                 <div>
                     <FieldLabel>Preço ou ticket médio <span className="text-gray-400 normal-case tracking-normal">(opcional)</span></FieldLabel>
                     <div className="relative">
@@ -633,15 +676,53 @@ function StepContent({ step, form, set, toggleArr, next, loading, go, files, set
     if (step === 10) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 10 — Protocolo</p>
-                <h2 className="text-2xl font-bold text-gray-900">O que a IA faz quando não sabe responder?</h2>
+                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 10 - Objecoes</p>
+                <h2 className="text-2xl font-bold text-gray-900">Como a IA deve quebrar objecoes?</h2>
+                <p className="text-gray-500 text-sm mt-2">Mapeie as objecoes mais comuns, diga o que funciona e qual proximo passo ideal a IA deve puxar.</p>
             </div>
-            <div className="space-y-3">
-                {[
-                    { v: 'transferir_humano', l: 'Transferir para um humano', d: 'Aciona um vendedor imediatamente' },
-                    { v: 'pedir_contato', l: 'Pedir contato para retorno', d: 'Registra e promete retorno' },
-                    { v: 'verificar_info', l: 'Informar que vai verificar', d: 'Ganha tempo para buscar a resposta' },
-                ].map(o => <ChoiceCard key={o.v} value={o.v} label={o.l} desc={o.d} selected={form.unknownBehavior === o.v} onClick={() => set('unknownBehavior', o.v)} />)}
+            <div className="space-y-4">
+                <div>
+                    <FieldLabel>Objecoes mais frequentes</FieldLabel>
+                    <div className="flex flex-wrap gap-2">
+                        {['Preco', 'Timing', 'Concorrente', 'Preciso pensar', 'Falta de confianca', 'Sem urgencia'].map((label) => (
+                            <MultiChip
+                                key={label}
+                                label={label}
+                                selected={form.objections.includes(label)}
+                                onClick={() => toggleArr('objections', label)}
+                            />
+                        ))}
+                    </div>
+                </div>
+                <div>
+                    <FieldLabel>Como a IA deve contornar essas objecoes</FieldLabel>
+                    <Textarea
+                        rows={4}
+                        value={form.objectionHandling}
+                        onChange={e => set('objectionHandling', e.target.value)}
+                        placeholder="Ex: primeiro valida a preocupacao, depois conecta valor ao resultado e fecha com uma CTA unica."
+                    />
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                        <FieldLabel>Sinais de compra importantes</FieldLabel>
+                        <Textarea
+                            rows={4}
+                            value={form.buyingSignals}
+                            onChange={e => set('buyingSignals', e.target.value)}
+                            placeholder="Ex: pediu preco, pediu agenda, comparou planos, falou de urgencia..."
+                        />
+                    </div>
+                    <div>
+                        <FieldLabel>Proximo passo ideal apos contornar</FieldLabel>
+                        <Textarea
+                            rows={4}
+                            value={form.idealNextStep}
+                            onChange={e => set('idealNextStep', e.target.value)}
+                            placeholder="Ex: levar para agenda, mostrar proposta, apresentar produto ou pedir contexto."
+                        />
+                    </div>
+                </div>
             </div>
             <NextBtn onClick={next} />
         </div>
@@ -650,20 +731,41 @@ function StepContent({ step, form, set, toggleArr, next, loading, go, files, set
     if (step === 11) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 11 — Personalidade</p>
-                <h2 className="text-2xl font-bold text-gray-900">Qual o estilo da sua IA?</h2>
+                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 11 - Conducao</p>
+                <h2 className="text-2xl font-bold text-gray-900">Como a IA deve operar no dia a dia?</h2>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {['Consultiva', 'Direta', 'Amigável', 'Executiva', 'Educadora'].map(t => (
-                    <button key={t} onClick={() => set('voiceTone', t)}
-                        className={`py-3 px-4 rounded-xl text-sm font-semibold border transition-all ${form.voiceTone === t ? 'border-[#FF4C00] bg-[#FF4C00]/15 text-[#FF4C00]' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300'}`}>
-                        {form.voiceTone === t && <Check className="w-3 h-3 inline mr-1 text-[#FF4C00]" />}{t}
-                    </button>
-                ))}
-            </div>
-            <div>
-                <FieldLabel>Coisas que a IA nunca deve dizer <span className="text-gray-400 normal-case tracking-normal">(opcional)</span></FieldLabel>
-                <Textarea rows={3} placeholder="Ex: nunca mencionar concorrentes, não prometer descontos sem aprovação..." value={form.restrictions} onChange={e => set('restrictions', e.target.value)} />
+            <div className="grid gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                    <FieldLabel>Tom de voz</FieldLabel>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {['Consultiva', 'Direta', 'Amigavel', 'Executiva', 'Educadora'].map(tone => (
+                            <button key={tone} onClick={() => set('voiceTone', tone)}
+                                className={`py-3 px-4 rounded-xl text-sm font-semibold border transition-all ${form.voiceTone === tone ? 'border-[#FF4C00] bg-[#FF4C00]/15 text-[#FF4C00]' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300'}`}>
+                                {form.voiceTone === tone && <Check className="w-3 h-3 inline mr-1 text-[#FF4C00]" />}{tone}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div>
+                    <FieldLabel>Quando a IA nao souber responder</FieldLabel>
+                    <Textarea rows={4} value={form.unknownBehavior} onChange={e => set('unknownBehavior', e.target.value)} placeholder="Ex: reconhece o limite, ganha contexto e oferece um proximo passo seguro." />
+                </div>
+                <div>
+                    <FieldLabel>Quando envolver um humano</FieldLabel>
+                    <Textarea rows={4} value={form.humanHandoffPolicy} onChange={e => set('humanHandoffPolicy', e.target.value)} placeholder="Explique quando a equipe deve ser avisada e como a IA continua ate o takeover." />
+                </div>
+                <div>
+                    <FieldLabel>Definicao de bom lead</FieldLabel>
+                    <Textarea rows={4} value={form.qualificationCriteria} onChange={e => set('qualificationCriteria', e.target.value)} placeholder="Ex: lead com dor clara, urgencia e abertura para agenda ou proposta." />
+                </div>
+                <div>
+                    <FieldLabel>Politica de agenda</FieldLabel>
+                    <Textarea rows={4} value={form.agendaPolicy} onChange={e => set('agendaPolicy', e.target.value)} placeholder="Explique quando vale oferecer agenda, demo ou call comercial." />
+                </div>
+                <div className="md:col-span-2">
+                    <FieldLabel>Coisas que a IA nunca deve dizer</FieldLabel>
+                    <Textarea rows={3} value={form.restrictions} onChange={e => set('restrictions', e.target.value)} placeholder="Ex: nao prometer desconto, nao mencionar concorrentes, nao soar defensiva..." />
+                </div>
             </div>
             <NextBtn onClick={next} />
         </div>
@@ -874,10 +976,14 @@ function StepContent({ step, form, set, toggleArr, next, loading, go, files, set
                         onClick={async () => {
                             setImprovementSending(true);
                             try {
-                                await fetch('/api/ia-config', {
-                                    method: 'PATCH',
+                                await fetch('/api/company-profile/feedback', {
+                                    method: 'POST',
                                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.current}` },
-                                    body: JSON.stringify({ restrictions: `[${improvementSelected}]: ${improvementDetail}` })
+                                    body: JSON.stringify({
+                                        category: improvementSelected,
+                                        detail: improvementDetail,
+                                        transcript: chatMessages,
+                                    })
                                 });
                             } catch (_) { /* best-effort */ } finally {
                                 setImprovementSending(false);

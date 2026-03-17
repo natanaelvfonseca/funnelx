@@ -238,6 +238,16 @@ export function KanbanCard({
                                 </span>
                             )}
 
+                            {intelligence?.needs_human_attention && (
+                                <span
+                                    className="flex flex-shrink-0 items-center gap-1 rounded border border-red-500/25 bg-red-500/10 px-1.5 py-0.5 text-[9px] font-bold text-red-500"
+                                    title={intelligence.human_attention_reason || 'Lead com atencao humana prioritaria'}
+                                >
+                                    <Sparkles size={8} />
+                                    ATENCAO HUMANA
+                                </span>
+                            )}
+
                             {lead.hasAiSummary && (
                                 <span
                                     title="A IA ja gerou um resumo operacional para este lead"
@@ -290,6 +300,14 @@ export function KanbanCard({
                                         title={intelligence.top_objection}
                                     >
                                         Objecao: {intelligence.top_objection}
+                                    </span>
+                                )}
+                                {intelligence.human_attention_reason && (
+                                    <span
+                                        className="max-w-[120px] truncate rounded-full border border-red-500/20 bg-red-500/10 px-1.5 py-0.5 text-[9px] font-medium text-red-400"
+                                        title={intelligence.human_attention_reason}
+                                    >
+                                        {intelligence.human_attention_reason}
                                     </span>
                                 )}
                             </div>

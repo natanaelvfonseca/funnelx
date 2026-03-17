@@ -26,6 +26,7 @@ import { cn } from '../../utils/cn';
 import AgentEditModal from '../../components/agents/AgentEditModal';
 import { agentTemplates } from '../../data/agentTemplates';
 import { getProfileBySlug } from '../../data/industryProfiles';
+import type { CompanyProfileData } from '../../lib/companyProfile';
 
 interface Agent {
     id: string;
@@ -35,19 +36,6 @@ interface Agent {
     created_at: string;
     whatsapp_instance_name?: string;
     whatsapp_instance_status?: string;
-}
-
-interface CompanyData {
-    companyName: string;
-    companyProduct: string;
-    targetAudience: string;
-    voiceTone: string;
-    unknownBehavior: string;
-    restrictions: string;
-    agentName: string;
-    revenueGoal: string;
-    agentObjective: string;
-    productPrice: string;
 }
 
 type AgentStatus = Agent['status'];
@@ -183,7 +171,7 @@ export function MyAIs() {
 
     const [createStep, setCreateStep] = useState<'choose' | 'form'>('choose');
     const [createMode, setCreateMode] = useState<'scratch' | 'company' | null>(null);
-    const [companyData, setCompanyData] = useState<CompanyData | null>(null);
+    const [companyData, setCompanyData] = useState<CompanyProfileData | null>(null);
     const [isLoadingCompanyData, setIsLoadingCompanyData] = useState(false);
     const [hasCompanyData, setHasCompanyData] = useState<boolean | null>(null);
 
@@ -306,39 +294,6 @@ export function MyAIs() {
         setIsCreating(true);
 
         try {
-            let systemPrompt = '';
-
-            if (createMode === 'company' && companyData) {
-                const objectiveText =
-                    companyData.agentObjective === 'fechar_venda'
-                        ? 'fechar vendas diretamente no WhatsApp'
-                        : companyData.agentObjective === 'qualificar_agendar'
-                            ? 'qualificar leads e agendar reunioes'
-                            : 'aquecer o lead e transferir para um vendedor humano';
-
-                const unknownText =
-                    companyData.unknownBehavior === 'transferir_humano'
-                        ? 'Transfira imediatamente para um humano.'
-                        : companyData.unknownBehavior === 'pedir_contato'
-                            ? 'Peca o contato para retorno em breve.'
-                            : companyData.unknownBehavior || 'Informe que vai verificar e retornar.';
-
-                systemPrompt = `Voce e ${companyData.agentName || newName}, assistente virtual da empresa ${companyData.companyName}.
-
-OBJETIVO PRINCIPAL: ${objectiveText}.
-
-PRODUTO / SERVICO: ${companyData.companyProduct || 'Nao informado'}.
-PRECO MEDIO: ${companyData.productPrice ? 'R$ ' + companyData.productPrice : 'Nao informado'}.
-DOR DO CLIENTE / PUBLICO-ALVO: ${companyData.targetAudience || 'Nao informado'}.
-ESTILO DE COMUNICACAO: ${companyData.voiceTone || 'Consultiva'}.
-QUANDO NAO SOUBER RESPONDER: ${unknownText}
-${companyData.restrictions ? 'RESTRICOES: ' + companyData.restrictions : ''}
-
-Seja sempre proativo, orientado a resultados, e conduza o cliente em direcao ao fechamento.`;
-            } else {
-                systemPrompt = `Voce e um agente especializado em ${newType}. Seja util, claro e orientado ao objetivo do usuario.`;
-            }
-
             const res = await fetch('/api/agents', {
                 method: 'POST',
                 headers: {
@@ -348,8 +303,9 @@ Seja sempre proativo, orientado a resultados, e conduza o cliente em direcao ao 
                 body: JSON.stringify({
                     name: newName,
                     type: newType,
-                    system_prompt: systemPrompt,
-                    model_config: {},
+                    system_prompt: createMode === 'company' ? undefined : `Voce e um agente especializado em ${newType}. Seja util, claro e orientado ao objetivo do usuario.`,
+                    use_company_profile: createMode === 'company',
+                    model_config: { model: 'gpt-4o-mini', temperature: 0.45 },
                 }),
             });
 

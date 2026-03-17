@@ -116,6 +116,639 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+const KOGNA_PLAYBOOK_VERSION = "kogna-ai-core-2.1";
+
+function safeJsonParse(raw, fallback) {
+  if (raw === null || raw === undefined || raw === "") return fallback;
+  if (typeof raw === "object") return raw;
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function uniqueStrings(values = []) {
+  return [...new Set((Array.isArray(values) ? values : []).map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function normalizeStringList(value) {
+  if (Array.isArray(value)) return uniqueStrings(value);
+  if (typeof value === "string") {
+    return uniqueStrings(
+      value
+        .split(/\r?\n|,|;/)
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    );
+  }
+  return [];
+}
+
+function createDefaultCompanyProfile() {
+  return {
+    companyName: "",
+    companyProduct: "",
+    targetAudience: "",
+    customerPain: "",
+    customerDesires: "",
+    differentiators: "",
+    industry: "",
+    industryDetail: "",
+    channels: [],
+    salesCycle: "",
+    revenueGoal: "",
+    productPrice: "",
+    agentName: "",
+    agentObjective: "",
+    voiceTone: "",
+    unknownBehavior: "",
+    humanHandoffPolicy: "",
+    restrictions: "",
+    buyingSignals: "",
+    qualificationCriteria: "",
+    objectionHandling: "",
+    idealNextStep: "",
+    agendaPolicy: "",
+    advancedInstructions: "",
+    responsePlaybook: null,
+    qualificationStrategy: null,
+    offerStrategy: null,
+    handoffStrategy: null,
+    objectionPlaybook: [],
+    improvementFeedback: [],
+    testTranscript: [],
+    playbookVersion: null,
+    lastPlaybookGeneratedAt: null,
+  };
+}
+
+function normalizeObjectionPlaybookItem(item = {}, index = 0) {
+  const fallbackId = `obj_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    id: String(item.id || fallbackId),
+    label: String(item.label || "").trim(),
+    signals: normalizeStringList(item.signals),
+    context: String(item.context || "").trim(),
+    recommended_approach: String(item.recommended_approach || "").trim(),
+    allowed_arguments: normalizeStringList(item.allowed_arguments),
+    avoid_phrases: normalizeStringList(item.avoid_phrases),
+    cta_after_resolution: String(item.cta_after_resolution || "").trim(),
+    priority: Number.isFinite(Number(item.priority)) ? Number(item.priority) : index + 1,
+    is_active: item.is_active !== false,
+  };
+}
+
+function normalizeImprovementFeedbackEntry(entry = {}) {
+  return {
+    id: String(entry.id || `feedback_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
+    category: String(entry.category || "melhoria_geral").trim(),
+    detail: String(entry.detail || "").trim(),
+    created_at: entry.created_at || new Date().toISOString(),
+  };
+}
+
+function normalizeTestTranscriptEntry(entry = {}) {
+  return {
+    role: entry.role === "assistant" ? "assistant" : "user",
+    text: String(entry.text || entry.content || "").trim(),
+    created_at: entry.created_at || new Date().toISOString(),
+  };
+}
+
+function buildDefaultObjectionPlaybook(profile) {
+  const items = [];
+  const rawSignals = normalizeStringList(profile.customerPain);
+  const rawDifferentiators = normalizeStringList(profile.differentiators);
+
+  if (rawSignals.length > 0) {
+    items.push({
+      label: "Prioridade e timing",
+      signals: rawSignals.slice(0, 4),
+      context: profile.customerPain || "O lead ainda nao enxerga urgencia suficiente para agir agora.",
+      recommended_approach: "Conecte a dor principal ao custo de nao agir e mostre um proximo passo simples.",
+      allowed_arguments: rawDifferentiators.length > 0 ? rawDifferentiators.slice(0, 4) : ["Use prova, clareza e orientacao para proximo passo."],
+      avoid_phrases: ["Se quiser", "Qualquer coisa me chama", "Sem pressa"],
+      cta_after_resolution: profile.idealNextStep || "Conduza para o proximo passo mais facil da jornada.",
+      priority: 1,
+      is_active: true,
+    });
+  }
+
+  if (profile.productPrice) {
+    items.push({
+      label: "Preco",
+      signals: ["caro", "preco", "valor", "orcamento", "desconto"],
+      context: "O lead esta avaliando se o retorno compensa o investimento.",
+      recommended_approach: "Reposicione o valor, conecte o ticket ao resultado e ofereca um proximo passo consultivo.",
+      allowed_arguments: [
+        `Ticket medio: R$ ${profile.productPrice}`,
+        profile.differentiators || "Destaque diferenciais e ROI concreto.",
+      ],
+      avoid_phrases: ["E barato", "Confia", "Depois voce ve"],
+      cta_after_resolution: profile.idealNextStep || "Convide para continuar com a melhor opcao para o contexto do lead.",
+      priority: 2,
+      is_active: true,
+    });
+  }
+
+  return items.map((item, index) => normalizeObjectionPlaybookItem(item, index)).filter((item) => item.label);
+}
+
+function buildFallbackOperationalPlaybook(profile, feedbackEntries = []) {
+  const objectionPlaybook = (profile.objectionPlaybook || []).length > 0
+    ? profile.objectionPlaybook.map((item, index) => normalizeObjectionPlaybookItem(item, index)).filter((item) => item.label)
+    : buildDefaultObjectionPlaybook(profile);
+
+  const recentFeedback = feedbackEntries.slice(-3).map((entry) => entry.detail).filter(Boolean);
+
+  return {
+    response_playbook: {
+      promise: `Transformar conversas de WhatsApp em oportunidade e receita para ${profile.companyName || "a empresa"}.`,
+      opening_style: "Seja ativo, contextual e evite abrir de forma passiva. Entre direto no problema, valor ou proximo passo.",
+      principles: [
+        "Nao use saudacao generica se ja houver contexto na conversa.",
+        "Conduza o proximo passo da venda de forma clara.",
+        "Adapte o tom ao negocio, ao lead e ao estagio.",
+        "Nao repita perguntas ja respondidas.",
+        "Quando houver contexto de produto, use beneficio, imagem, oferta ou CTA operacional.",
+      ],
+      recent_feedback: recentFeedback,
+    },
+    qualification_strategy: {
+      icp: profile.targetAudience || "Identificar fit, dor, urgencia e potencial comercial.",
+      pain_points: profile.customerPain || "Descobrir a principal dor e o impacto de nao resolver.",
+      buying_signals: profile.buyingSignals || "Pedido de preco, agenda, comparacao, urgencia e detalhes de entrega.",
+      good_lead_definition: profile.qualificationCriteria || "Lead com fit, dor clara, timing e abertura para o proximo passo.",
+      next_step: profile.idealNextStep || "Levar a conversa para uma CTA unica e executavel.",
+    },
+    offer_strategy: {
+      primary_offer: profile.companyProduct || "Apresente a principal oferta com clareza de valor.",
+      use_image_when: "Quando o lead pedir produto, comparacao, prova visual ou contexto de apresentacao.",
+      use_promotion_when: "Quando houver promocao vigente e a conversa demonstrar intencao, objecao de preco ou comparacao.",
+      benefit_anchor: profile.differentiators || "Conecte a oferta ao resultado e aos diferenciais mais fortes.",
+    },
+    handoff_strategy: {
+      policy: profile.humanHandoffPolicy || "Sinalize prioridade humana quando houver alta intencao, negociacao sensivel ou pedido explicito.",
+      continue_ai_until_takeover: true,
+      human_signal_message: "Avise internamente o time e continue conduzindo a conversa ate que alguem assuma manualmente.",
+      agenda_policy: profile.agendaPolicy || "Se houver abertura, tente agendar ou confirmar o proximo passo antes do takeover.",
+    },
+    objection_playbook: objectionPlaybook,
+    advanced_instructions: profile.advancedInstructions || "Mantenha postura comercial ativa, consultiva e orientada a receita.",
+  };
+}
+
+function sanitizePlaybookShape(playbook, fallback) {
+  const safe = playbook && typeof playbook === "object" ? playbook : {};
+  return {
+    response_playbook: safe.response_playbook || fallback.response_playbook,
+    qualification_strategy: safe.qualification_strategy || fallback.qualification_strategy,
+    offer_strategy: safe.offer_strategy || fallback.offer_strategy,
+    handoff_strategy: safe.handoff_strategy || fallback.handoff_strategy,
+    objection_playbook: Array.isArray(safe.objection_playbook) && safe.objection_playbook.length > 0
+      ? safe.objection_playbook.map((item, index) => normalizeObjectionPlaybookItem(item, index)).filter((item) => item.label)
+      : fallback.objection_playbook,
+    advanced_instructions: safe.advanced_instructions || fallback.advanced_instructions,
+  };
+}
+
+async function generateOrchestratorPlaybook(profile, { feedbackEntries = [], testTranscript = [] } = {}) {
+  const fallback = buildFallbackOperationalPlaybook(profile, feedbackEntries);
+  if (!process.env.OPENAI_API_KEY) return fallback;
+
+  try {
+    const prompt = `Voce e o Prompt Architect da Kogna Revenue OS.
+Crie um playbook operacional estruturado em JSON para uma IA de vendas via WhatsApp.
+Retorne APENAS JSON valido com os campos:
+- response_playbook
+- qualification_strategy
+- offer_strategy
+- handoff_strategy
+- objection_playbook
+- advanced_instructions
+
+Empresa:
+${JSON.stringify({
+      companyName: profile.companyName,
+      companyProduct: profile.companyProduct,
+      targetAudience: profile.targetAudience,
+      customerPain: profile.customerPain,
+      customerDesires: profile.customerDesires,
+      differentiators: profile.differentiators,
+      industry: profile.industry,
+      industryDetail: profile.industryDetail,
+      channels: profile.channels,
+      salesCycle: profile.salesCycle,
+      revenueGoal: profile.revenueGoal,
+      productPrice: profile.productPrice,
+      agentName: profile.agentName,
+      agentObjective: profile.agentObjective,
+      voiceTone: profile.voiceTone,
+      unknownBehavior: profile.unknownBehavior,
+      humanHandoffPolicy: profile.humanHandoffPolicy,
+      restrictions: profile.restrictions,
+      buyingSignals: profile.buyingSignals,
+      qualificationCriteria: profile.qualificationCriteria,
+      objectionHandling: profile.objectionHandling,
+      idealNextStep: profile.idealNextStep,
+      agendaPolicy: profile.agendaPolicy,
+      objectionPlaybook: profile.objectionPlaybook,
+    })}
+
+Feedback recente:
+${JSON.stringify(feedbackEntries.slice(-5))}
+
+Transcript de teste:
+${JSON.stringify(testTranscript.slice(-10))}
+
+Regras:
+- Respostas comerciais ativas, nunca passivas.
+- O orquestrador decide objetivo e a IA redige com liberdade controlada.
+- Se houver objecoes, transforme isso em um objection_playbook pratico.
+- Mantenha o texto em portugues do Brasil.
+- Nao crie um prompt monolitico; entregue orientacao estruturada e operacional.`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "system", content: prompt }],
+      response_format: { type: "json_object" },
+      temperature: 0.35,
+      max_tokens: 1200,
+    });
+
+    const raw = completion.choices?.[0]?.message?.content;
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return sanitizePlaybookShape(parsed, fallback);
+  } catch (err) {
+    log(`[PLAYBOOK] generateOrchestratorPlaybook fallback: ${err.message}`);
+    return fallback;
+  }
+}
+
+function mapIaConfigRowToCompanyProfile(row = {}) {
+  const profile = createDefaultCompanyProfile();
+  profile.companyName = row.company_name || row.organization_name || "";
+  profile.companyProduct = row.main_product || "";
+  profile.targetAudience = row.target_audience || "";
+  profile.customerPain = row.customer_pain || "";
+  profile.customerDesires = row.customer_desires || "";
+  profile.differentiators = row.differentiators || "";
+  profile.industry = row.industry || "";
+  profile.industryDetail = row.industry_detail || "";
+  profile.channels = uniqueStrings(safeJsonParse(row.channels, row.channels || []));
+  profile.salesCycle = row.sales_cycle || "";
+  profile.revenueGoal = row.desired_revenue || "";
+  profile.productPrice = row.product_price || "";
+  profile.agentName = row.agent_name || "";
+  profile.agentObjective = row.agent_objective || "";
+  profile.voiceTone = row.voice_tone || "";
+  profile.unknownBehavior = row.unknown_behavior || "";
+  profile.humanHandoffPolicy = row.human_handoff_policy || "";
+  profile.restrictions = row.restrictions || "";
+  profile.buyingSignals = row.buying_signals || "";
+  profile.qualificationCriteria = row.qualification_criteria || "";
+  profile.objectionHandling = row.objection_handling || "";
+  profile.idealNextStep = row.ideal_next_step || "";
+  profile.agendaPolicy = row.agenda_policy || "";
+  profile.advancedInstructions = row.advanced_instructions || "";
+  profile.responsePlaybook = safeJsonParse(row.response_playbook, row.response_playbook || null);
+  profile.qualificationStrategy = safeJsonParse(row.qualification_strategy, row.qualification_strategy || null);
+  profile.offerStrategy = safeJsonParse(row.offer_strategy, row.offer_strategy || null);
+  profile.handoffStrategy = safeJsonParse(row.handoff_strategy, row.handoff_strategy || null);
+  profile.objectionPlaybook = (safeJsonParse(row.objection_playbook, row.objection_playbook || []) || [])
+    .map((item, index) => normalizeObjectionPlaybookItem(item, index))
+    .filter((item) => item.label);
+  profile.improvementFeedback = (safeJsonParse(row.improvement_feedback, row.improvement_feedback || []) || [])
+    .map((entry) => normalizeImprovementFeedbackEntry(entry))
+    .filter((entry) => entry.detail);
+  profile.testTranscript = (safeJsonParse(row.test_transcript, row.test_transcript || []) || [])
+    .map((entry) => normalizeTestTranscriptEntry(entry))
+    .filter((entry) => entry.text);
+  profile.playbookVersion = row.playbook_version || null;
+  profile.lastPlaybookGeneratedAt = row.last_playbook_generated_at || null;
+  return profile;
+}
+
+async function getCanonicalCompanyProfile({ orgId, userId }) {
+  let row = null;
+
+  if (orgId) {
+    const byOrg = await pool.query(
+      `SELECT ic.*, o.name AS organization_name
+         FROM ia_configs ic
+         LEFT JOIN organizations o ON o.id = ic.organization_id
+        WHERE ic.organization_id = $1
+        ORDER BY ic.updated_at DESC NULLS LAST, ic.created_at DESC NULLS LAST
+        LIMIT 1`,
+      [orgId],
+    );
+    row = byOrg.rows[0] || null;
+  }
+
+  if (!row && userId) {
+    const byUser = await pool.query(
+      `SELECT ic.*, o.name AS organization_name
+         FROM ia_configs ic
+         LEFT JOIN organizations o ON o.id = ic.organization_id
+        WHERE ic.user_id = $1
+        ORDER BY ic.updated_at DESC NULLS LAST, ic.created_at DESC NULLS LAST
+        LIMIT 1`,
+      [userId],
+    );
+    row = byUser.rows[0] || null;
+  }
+
+  if (!row) {
+    const empty = createDefaultCompanyProfile();
+    if (orgId) {
+      const orgRes = await pool.query("SELECT name FROM organizations WHERE id = $1", [orgId]).catch(() => ({ rows: [] }));
+      empty.companyName = orgRes.rows[0]?.name || "";
+    }
+    return empty;
+  }
+
+  return mapIaConfigRowToCompanyProfile(row);
+}
+
+async function upsertCanonicalCompanyProfile({
+  orgId,
+  userId,
+  payload = {},
+  regeneratePlaybook = true,
+}) {
+  const existing = await getCanonicalCompanyProfile({ orgId, userId });
+  const nextProfile = {
+    ...existing,
+    ...payload,
+  };
+
+  nextProfile.companyName = String(nextProfile.companyName || "").trim();
+  nextProfile.companyProduct = String(nextProfile.companyProduct || "").trim();
+  nextProfile.targetAudience = String(nextProfile.targetAudience || "").trim();
+  nextProfile.customerPain = String(nextProfile.customerPain || "").trim();
+  nextProfile.customerDesires = String(nextProfile.customerDesires || "").trim();
+  nextProfile.differentiators = String(nextProfile.differentiators || "").trim();
+  nextProfile.industry = String(nextProfile.industry || "").trim();
+  nextProfile.industryDetail = String(nextProfile.industryDetail || "").trim();
+  nextProfile.channels = normalizeStringList(nextProfile.channels);
+  nextProfile.salesCycle = String(nextProfile.salesCycle || "").trim();
+  nextProfile.revenueGoal = String(nextProfile.revenueGoal || "").trim();
+  nextProfile.productPrice = String(nextProfile.productPrice || "").trim();
+  nextProfile.agentName = String(nextProfile.agentName || "").trim();
+  nextProfile.agentObjective = String(nextProfile.agentObjective || "").trim();
+  nextProfile.voiceTone = String(nextProfile.voiceTone || "").trim();
+  nextProfile.unknownBehavior = String(nextProfile.unknownBehavior || "").trim();
+  nextProfile.humanHandoffPolicy = String(nextProfile.humanHandoffPolicy || "").trim();
+  nextProfile.restrictions = String(nextProfile.restrictions || "").trim();
+  nextProfile.buyingSignals = String(nextProfile.buyingSignals || "").trim();
+  nextProfile.qualificationCriteria = String(nextProfile.qualificationCriteria || "").trim();
+  nextProfile.objectionHandling = String(nextProfile.objectionHandling || "").trim();
+  nextProfile.idealNextStep = String(nextProfile.idealNextStep || "").trim();
+  nextProfile.agendaPolicy = String(nextProfile.agendaPolicy || "").trim();
+  nextProfile.advancedInstructions = String(nextProfile.advancedInstructions || "").trim();
+  nextProfile.objectionPlaybook = (Array.isArray(nextProfile.objectionPlaybook) ? nextProfile.objectionPlaybook : [])
+    .map((item, index) => normalizeObjectionPlaybookItem(item, index))
+    .filter((item) => item.label);
+  nextProfile.improvementFeedback = (Array.isArray(nextProfile.improvementFeedback) ? nextProfile.improvementFeedback : [])
+    .map((entry) => normalizeImprovementFeedbackEntry(entry))
+    .filter((entry) => entry.detail);
+  nextProfile.testTranscript = (Array.isArray(nextProfile.testTranscript) ? nextProfile.testTranscript : [])
+    .map((entry) => normalizeTestTranscriptEntry(entry))
+    .filter((entry) => entry.text);
+
+  const generatedPlaybook = regeneratePlaybook
+    ? await generateOrchestratorPlaybook(nextProfile, {
+      feedbackEntries: nextProfile.improvementFeedback,
+      testTranscript: nextProfile.testTranscript,
+    })
+    : sanitizePlaybookShape({
+      response_playbook: nextProfile.responsePlaybook,
+      qualification_strategy: nextProfile.qualificationStrategy,
+      offer_strategy: nextProfile.offerStrategy,
+      handoff_strategy: nextProfile.handoffStrategy,
+      objection_playbook: nextProfile.objectionPlaybook,
+      advanced_instructions: nextProfile.advancedInstructions,
+    }, buildFallbackOperationalPlaybook(nextProfile, nextProfile.improvementFeedback));
+
+  nextProfile.responsePlaybook = generatedPlaybook.response_playbook;
+  nextProfile.qualificationStrategy = generatedPlaybook.qualification_strategy;
+  nextProfile.offerStrategy = generatedPlaybook.offer_strategy;
+  nextProfile.handoffStrategy = generatedPlaybook.handoff_strategy;
+  nextProfile.objectionPlaybook = generatedPlaybook.objection_playbook;
+  nextProfile.advancedInstructions = generatedPlaybook.advanced_instructions || nextProfile.advancedInstructions;
+  nextProfile.playbookVersion = KOGNA_PLAYBOOK_VERSION;
+  nextProfile.lastPlaybookGeneratedAt = new Date().toISOString();
+
+  if (orgId && nextProfile.companyName) {
+    await pool.query(`UPDATE organizations SET name = $1 WHERE id = $2`, [nextProfile.companyName, orgId]).catch(() => { });
+  }
+
+  const values = [
+    orgId,
+    userId,
+    nextProfile.companyName || null,
+    nextProfile.agentName || null,
+    nextProfile.companyProduct || null,
+    nextProfile.revenueGoal || null,
+    nextProfile.agentObjective || null,
+    nextProfile.unknownBehavior || null,
+    nextProfile.voiceTone || null,
+    nextProfile.restrictions || null,
+    nextProfile.customerPain || null,
+    nextProfile.productPrice || null,
+    nextProfile.targetAudience || null,
+    nextProfile.customerDesires || null,
+    nextProfile.differentiators || null,
+    nextProfile.industry || null,
+    nextProfile.industryDetail || null,
+    JSON.stringify(nextProfile.channels || []),
+    nextProfile.salesCycle || null,
+    nextProfile.humanHandoffPolicy || null,
+    nextProfile.buyingSignals || null,
+    nextProfile.qualificationCriteria || null,
+    nextProfile.objectionHandling || null,
+    nextProfile.idealNextStep || null,
+    nextProfile.agendaPolicy || null,
+    nextProfile.advancedInstructions || null,
+    JSON.stringify(nextProfile.responsePlaybook || {}),
+    JSON.stringify(nextProfile.qualificationStrategy || {}),
+    JSON.stringify(nextProfile.offerStrategy || {}),
+    JSON.stringify(nextProfile.handoffStrategy || {}),
+    JSON.stringify(nextProfile.objectionPlaybook || []),
+    JSON.stringify(nextProfile.improvementFeedback || []),
+    JSON.stringify(nextProfile.testTranscript || []),
+    nextProfile.playbookVersion,
+    nextProfile.lastPlaybookGeneratedAt,
+  ];
+
+  const updateRes = await pool.query(
+    `UPDATE ia_configs SET
+       user_id = $2,
+       company_name = $3,
+       agent_name = $4,
+       main_product = $5,
+       desired_revenue = $6,
+       agent_objective = $7,
+       unknown_behavior = $8,
+       voice_tone = $9,
+       restrictions = $10,
+       customer_pain = $11,
+       product_price = $12,
+       target_audience = $13,
+       customer_desires = $14,
+       differentiators = $15,
+       industry = $16,
+       industry_detail = $17,
+       channels = $18::jsonb,
+       sales_cycle = $19,
+       human_handoff_policy = $20,
+       buying_signals = $21,
+       qualification_criteria = $22,
+       objection_handling = $23,
+       ideal_next_step = $24,
+       agenda_policy = $25,
+       advanced_instructions = $26,
+       response_playbook = $27::jsonb,
+       qualification_strategy = $28::jsonb,
+       offer_strategy = $29::jsonb,
+       handoff_strategy = $30::jsonb,
+       objection_playbook = $31::jsonb,
+       improvement_feedback = $32::jsonb,
+       test_transcript = $33::jsonb,
+       playbook_version = $34,
+       last_playbook_generated_at = $35::timestamptz,
+       updated_at = NOW()
+     WHERE organization_id = $1`,
+    values,
+  );
+
+  if (updateRes.rowCount === 0) {
+    await pool.query(
+      `INSERT INTO ia_configs (
+         organization_id, user_id, company_name, agent_name, main_product, desired_revenue,
+         agent_objective, unknown_behavior, voice_tone, restrictions, customer_pain, product_price,
+         target_audience, customer_desires, differentiators, industry, industry_detail, channels,
+         sales_cycle, human_handoff_policy, buying_signals, qualification_criteria, objection_handling,
+         ideal_next_step, agenda_policy, advanced_instructions, response_playbook,
+         qualification_strategy, offer_strategy, handoff_strategy, objection_playbook,
+         improvement_feedback, test_transcript, playbook_version, last_playbook_generated_at
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6,
+         $7, $8, $9, $10, $11, $12,
+         $13, $14, $15, $16, $17, $18::jsonb,
+         $19, $20, $21, $22, $23,
+         $24, $25, $26, $27::jsonb,
+         $28::jsonb, $29::jsonb, $30::jsonb, $31::jsonb,
+         $32::jsonb, $33::jsonb, $34, $35::timestamptz
+       )`,
+      values,
+    );
+  }
+
+  return nextProfile;
+}
+
+async function appendCompanyProfileFeedback({ orgId, userId, category, detail, transcript = [] }) {
+  const current = await getCanonicalCompanyProfile({ orgId, userId });
+  const nextFeedback = [
+    ...(current.improvementFeedback || []),
+    normalizeImprovementFeedbackEntry({ category, detail }),
+  ].slice(-25);
+  const nextTranscript = transcript.length > 0
+    ? transcript.map((entry) => normalizeTestTranscriptEntry(entry)).slice(-30)
+    : current.testTranscript;
+
+  return upsertCanonicalCompanyProfile({
+    orgId,
+    userId,
+    payload: {
+      ...current,
+      improvementFeedback: nextFeedback,
+      testTranscript: nextTranscript,
+    },
+    regeneratePlaybook: true,
+  });
+}
+
+function selectRelevantObjection(objectionPlaybook = [], userText = "", explicitObjection = "") {
+  const haystack = `${explicitObjection} ${userText}`.toLowerCase();
+  if (!haystack.trim()) return null;
+
+  const ranked = objectionPlaybook
+    .filter((item) => item.is_active !== false)
+    .map((item) => {
+      const label = String(item.label || "").toLowerCase();
+      const signals = normalizeStringList(item.signals).map((signal) => signal.toLowerCase());
+      const score =
+        (label && haystack.includes(label) ? 3 : 0) +
+        signals.reduce((acc, signal) => acc + (signal && haystack.includes(signal) ? 2 : 0), 0);
+      return { item, score };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.item.priority - b.item.priority);
+
+  return ranked[0]?.item || null;
+}
+
+function composeAgentSystemPrompt({
+  profile,
+  agentName,
+  agentType,
+  customInstructions = "",
+}) {
+  const playbook = buildFallbackOperationalPlaybook(profile, profile.improvementFeedback || []);
+  const objectionSummary = (profile.objectionPlaybook || playbook.objection_playbook || [])
+    .slice(0, 3)
+    .map((item) => `${item.label}: ${item.recommended_approach}`)
+    .join("\n");
+
+  return `Voce e ${agentName || profile.agentName || "um agente da Kogna"}, agente ${agentType || "comercial"} da empresa ${profile.companyName || "cliente Kogna"}.
+
+Missao principal: ${profile.agentObjective || "gerar avancos comerciais no WhatsApp"}.
+Oferta principal: ${profile.companyProduct || "entender a oferta e conduzir o proximo passo"}.
+ICP / publico ideal: ${profile.targetAudience || "descobrir o fit ideal ao longo da conversa"}.
+Tom de voz: ${profile.voiceTone || "consultivo"}.
+Quando nao souber: ${profile.unknownBehavior || "ganhe contexto e ofereca proximo passo seguro"}.
+Politica de humano: ${profile.humanHandoffPolicy || "sinalize prioridade humana, mas continue apoiando ate o takeover"}.
+Regras de resposta: ${(playbook.response_playbook?.principles || []).join(" | ")}
+Playbook de objecoes:
+${objectionSummary || "Reposicione valor, dor e proximo passo com objetividade."}
+${profile.restrictions ? `Nunca diga: ${profile.restrictions}` : ""}
+${customInstructions ? `Instrucao complementar especifica deste agente: ${customInstructions}` : ""}`.trim();
+}
+
+function buildPreviewDiagnostics(message, reply) {
+  const userText = String(message || "").toLowerCase();
+  const assistantText = String(reply || "").toLowerCase();
+  const qualitySignals = [];
+  const suggestedImprovements = [];
+  const objectionWeaknesses = [];
+
+  if (assistantText.includes("como posso ajudar")) {
+    qualitySignals.push("abertura_passiva");
+    suggestedImprovements.push("Entrar mais ativo no contexto, evitando abertura generica.");
+  }
+  if ((userText.includes("preco") || userText.includes("valor")) && !assistantText.includes("r$")) {
+    qualitySignals.push("contexto_comercial_raso");
+    suggestedImprovements.push("Quando houver pedido de preco, posicionar valor e proximo passo com mais clareza.");
+  }
+  if ((userText.includes("caro") || userText.includes("concorrente") || userText.includes("pensar")) && assistantText.length < 100) {
+    objectionWeaknesses.push("Resposta curta demais para uma objecao explicita.");
+  }
+  if (!assistantText.includes("?")) {
+    suggestedImprovements.push("Encerrar com CTA ou pergunta unica quando fizer sentido.");
+  }
+
+  return {
+    qualitySignals: uniqueStrings(qualitySignals),
+    suggestedImprovements: uniqueStrings(suggestedImprovements),
+    objectionWeaknesses: uniqueStrings(objectionWeaknesses),
+    orchestratorDraftVersion: KOGNA_PLAYBOOK_VERSION,
+  };
+}
+
 // Resilient Connection Check with SSL fallback
 const initPool = async () => {
   try {
@@ -1976,6 +2609,7 @@ async function updateLeadMemory(orgId, leadId, intent, extractedMemory) {
       coalesce('purchase_moment', extractedMemory.purchase_moment);
       coalesce('decision_role', extractedMemory.decision_role);
       coalesce('main_objection', extractedMemory.main_objection);
+      coalesce('top_objection', extractedMemory.main_objection);
       coalesce('pain_point', extractedMemory.pain_point);
       // Semantic signals â€” overwrite each turn (reflects current state)
       setSignal('lead_interested', extractedMemory.lead_interested);
@@ -2090,7 +2724,8 @@ async function resolveLeadConversationContext(orgId, leadIdentifier) {
   let lead = null;
 
   const leadByIdRes = await pool.query(
-    `SELECT id, name, phone, mobile_phone, status, score, temperature, last_ia_briefing
+    `SELECT id, name, phone, mobile_phone, status, score, temperature, last_ia_briefing,
+            needs_human_attention, human_attention_reason, human_attention_since, top_objection
      FROM leads
      WHERE organization_id = $1 AND id = $2
      LIMIT 1`,
@@ -2114,7 +2749,8 @@ async function resolveLeadConversationContext(orgId, leadIdentifier) {
 
   if (!lead && digits) {
     const leadByPhoneRes = await pool.query(
-      `SELECT id, name, phone, mobile_phone, status, score, temperature, last_ia_briefing
+      `SELECT id, name, phone, mobile_phone, status, score, temperature, last_ia_briefing,
+              needs_human_attention, human_attention_reason, human_attention_since, top_objection
        FROM leads
        WHERE organization_id = $1
          AND (
@@ -2354,15 +2990,52 @@ const STAGE_PROMPTS = {
  * @param {string} options.currentTime - Formatted time string
  * @returns {string} Complete system prompt
  */
-function buildSystemPrompt({ agent, stage, knowledgeBase, currentDate, currentTime, activeAgent }) {
+function buildSystemPrompt({
+  agent,
+  stage,
+  knowledgeBase,
+  currentDate,
+  currentTime,
+  activeAgent,
+  companyProfile,
+  leadContext,
+  activeObjection,
+}) {
   const stageConf = STAGE_PROMPTS[stage] || STAGE_PROMPTS['qualificacao'];
+  const profile = companyProfile || createDefaultCompanyProfile();
+  const responsePlaybook = profile.responsePlaybook || buildFallbackOperationalPlaybook(profile, profile.improvementFeedback || []).response_playbook;
+  const qualificationStrategy = profile.qualificationStrategy || {};
+  const offerStrategy = profile.offerStrategy || {};
+  const handoffStrategy = profile.handoffStrategy || {};
+  const advancedInstructions = agent.advanced_instructions || profile.advancedInstructions || agent.system_prompt || '';
 
   // â”€â”€ 1. Identity Layer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let prompt = `VocÃª Ã© uma IA de vendas de alta performance via WhatsApp.
 Data: ${currentDate} | Hora: ${currentTime} (BrasÃ­lia)
 
 [IDENTIDADE E VOZ]
-${agent.system_prompt || 'VocÃª Ã© um assistente virtual prestativo e profissional.'}`;
+Empresa: ${profile.companyName || 'Operacao Kogna'}
+Oferta principal: ${profile.companyProduct || 'Conduza a conversa para valor e proximo passo.'}
+ICP: ${profile.targetAudience || 'Descubra fit, dor e timing do lead.'}
+Dor central: ${profile.customerPain || 'Descobrir a principal dor e o impacto comercial.'}
+Diferenciais: ${profile.differentiators || 'Conecte clareza, valor e proximo passo.'}
+Tom: ${profile.voiceTone || 'Consultivo'}
+Objetivo comercial: ${profile.agentObjective || 'Gerar avancos de receita via WhatsApp.'}
+Comportamento fora de escopo: ${profile.unknownBehavior || 'Se nao souber, ganhe contexto e ofereca um proximo passo seguro.'}
+
+[PLAYBOOK CENTRAL]
+Promessa comercial: ${responsePlaybook.promise || 'Organize a conversa para gerar oportunidade real.'}
+Estilo de abertura: ${responsePlaybook.opening_style || 'Entre de forma ativa, contextual e objetiva.'}
+Principios:
+${(responsePlaybook.principles || [
+    'Nao responda de forma passiva.',
+    'Conduza o proximo passo com clareza.',
+    'Adapte o tom ao negocio e ao lead.',
+    'Nao repita perguntas ja respondidas.',
+  ]).map((item) => `• ${item}`).join('\n')}
+
+[INSTRUCOES AVANCADAS]
+${advancedInstructions || 'Use contexto real do negocio, do lead e do estagio para responder.'}`;
 
   // â”€â”€ 1b. Agent Persona Block â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (activeAgent && activeAgent.key !== 'analyst') {
@@ -2387,6 +3060,51 @@ ${stageConf.actions.map(a => `â€¢ ${a}`).join('\n')}
 
 InformaÃ§Ãµes a coletar: ${stageConf.collect.join(', ')}
 PrÃ³ximo passo: ${stageConf.next_step}`;
+
+  if (profile.productPrice || offerStrategy.primary_offer || offerStrategy.benefit_anchor) {
+    prompt += `
+
+[CONTEXTO COMERCIAL DA OFERTA]
+Preco / ticket: ${profile.productPrice ? `R$ ${profile.productPrice}` : 'Nao informado'}
+Oferta principal: ${offerStrategy.primary_offer || profile.companyProduct || 'Nao informado'}
+Beneficio ancora: ${offerStrategy.benefit_anchor || profile.differentiators || 'Conecte valor, contexto e proximo passo.'}
+Quando usar imagem ou catalogo: ${offerStrategy.use_image_when || 'Quando o lead pedir produto, comparacao ou contexto visual.'}
+Quando usar promocao: ${offerStrategy.use_promotion_when || 'Quando houver intencao, objecao de preco ou promocao vigente.'}`;
+  }
+
+  if (qualificationStrategy.icp || qualificationStrategy.pain_points || qualificationStrategy.buying_signals) {
+    prompt += `
+
+[QUALIFICACAO E PRIORIDADE]
+ICP / fit: ${qualificationStrategy.icp || profile.targetAudience || 'Descobrir se o lead tem fit com a operacao.'}
+Dor a aprofundar: ${qualificationStrategy.pain_points || profile.customerPain || 'Entender a principal dor.'}
+Sinais de compra: ${qualificationStrategy.buying_signals || profile.buyingSignals || 'Pedidos de preco, agenda, comparacao, urgencia e detalhes de entrega.'}
+Definicao de bom lead: ${qualificationStrategy.good_lead_definition || profile.qualificationCriteria || 'Lead com fit, dor clara e abertura para proximo passo.'}
+CTA preferida: ${qualificationStrategy.next_step || profile.idealNextStep || 'Levar o lead para o proximo passo mais simples e valioso.'}`;
+  }
+
+  if (leadContext) {
+    prompt += `
+
+[CONTEXTO VIVO DO LEAD]
+Temperatura: ${leadContext.temperature || leadContext.last_temperature || 'Sem leitura'}
+Score: ${leadContext.score || leadContext.intent_score || 0}
+Resumo: ${leadContext.lead_summary || leadContext.last_ia_briefing || 'Sem resumo ainda'}
+Recomendacao: ${leadContext.next_recommendation || 'Conduza o proximo passo com uma CTA unica.'}
+Sinal humano: ${leadContext.needs_human_attention ? `Prioridade humana ativa desde ${leadContext.human_attention_since || 'agora'} por ${leadContext.human_attention_reason || 'alta intencao comercial'}` : 'Sem takeover necessario neste turno.'}`;
+  }
+
+  if (activeObjection) {
+    prompt += `
+
+[OBJECAO ATIVA]
+Objeção: ${activeObjection.label}
+Contexto: ${activeObjection.context || 'O lead levantou uma objecao relevante.'}
+Abordagem recomendada: ${activeObjection.recommended_approach || 'Reposicione valor e reduza friccao.'}
+Argumentos permitidos: ${(activeObjection.allowed_arguments || []).join(', ') || 'Use fatos, contexto e prova.'}
+Evite dizer: ${(activeObjection.avoid_phrases || []).join(', ') || 'Evite soar vago, passivo ou defensivo.'}
+CTA apos contornar: ${activeObjection.cta_after_resolution || 'Leve para o proximo passo mais simples.'}`;
+  }
 
   // â”€â”€ 3. Knowledge Base (conditional) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (knowledgeBase) {
@@ -2419,10 +3137,19 @@ ApÃ³s confirmaÃ§Ã£o use confirmar_agendamento com o UUID exato do vendedor
 [REGRAS INVIOLÃVEIS]
 â€¢ NUNCA revele que Ã© uma IA. Mantenha a persona 100%.
 â€¢ NUNCA faÃ§a mais de 1 pergunta por mensagem.
-â€¢ TODA mensagem deve terminar com uma pergunta ou CTA claro.
+â€¢ Evite aberturas passivas como "Oi, como posso ajudar?". Entre com contexto, valor ou proximo passo.
+â€¢ TODA mensagem deve terminar com uma pergunta ou CTA claro quando fizer sentido comercial.
 â€¢ Textos escaneavÃ©is: mÃ¡x 3 linhas por parÃ¡grafo. Use *negrito* para CTAs.
 â€¢ Adapte o tom: se o lead for curto, seja curto. Se descontraÃ­do, acompanhe.
 â€¢ NUNCA invente dados. Se nÃ£o souber, siga o comportamento padrÃ£o da identidade.`;
+
+  if (handoffStrategy.policy || handoffStrategy.human_signal_message) {
+    prompt += `
+
+[OPERACAO HUMANA]
+${handoffStrategy.policy || 'Sinalize prioridade humana quando houver calor comercial alto.'}
+${handoffStrategy.human_signal_message || 'Nao silencie a conversa: continue conduzindo ate takeover manual real.'}`;
+  }
 
   return prompt;
 }
@@ -3193,8 +3920,75 @@ const ensureGuidedTourColumns = async () => {
   }
 };
 
+const ensureKognaAICoreTables = async () => {
+  try {
+    log("[SYSTEM] Ensuring Kogna AI Core 2.1 columns...");
+    const iaConfigAlterations = [
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS target_audience TEXT`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS customer_desires TEXT`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS differentiators TEXT`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS industry TEXT`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS industry_detail TEXT`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS channels JSONB DEFAULT '[]'::jsonb`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS sales_cycle TEXT`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS human_handoff_policy TEXT`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS buying_signals TEXT`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS qualification_criteria TEXT`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS objection_handling TEXT`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS ideal_next_step TEXT`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS agenda_policy TEXT`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS advanced_instructions TEXT`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS response_playbook JSONB DEFAULT '{}'::jsonb`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS qualification_strategy JSONB DEFAULT '{}'::jsonb`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS offer_strategy JSONB DEFAULT '{}'::jsonb`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS handoff_strategy JSONB DEFAULT '{}'::jsonb`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS objection_playbook JSONB DEFAULT '[]'::jsonb`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS improvement_feedback JSONB DEFAULT '[]'::jsonb`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS test_transcript JSONB DEFAULT '[]'::jsonb`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS playbook_version TEXT`,
+      `ALTER TABLE ia_configs ADD COLUMN IF NOT EXISTS last_playbook_generated_at TIMESTAMPTZ`,
+    ];
+
+    for (const statement of iaConfigAlterations) {
+      await pool.query(statement).catch(() => { });
+    }
+
+    const leadAlterations = [
+      `ALTER TABLE leads ADD COLUMN IF NOT EXISTS needs_human_attention BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE leads ADD COLUMN IF NOT EXISTS human_attention_reason TEXT`,
+      `ALTER TABLE leads ADD COLUMN IF NOT EXISTS human_attention_since TIMESTAMPTZ`,
+      `ALTER TABLE leads ADD COLUMN IF NOT EXISTS top_objection TEXT`,
+    ];
+
+    for (const statement of leadAlterations) {
+      await pool.query(statement).catch(() => { });
+    }
+
+    const memoryAlterations = [
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS needs_human_attention BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS human_attention_reason TEXT`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS human_attention_since TIMESTAMPTZ`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS handoff_recommendation TEXT`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS human_attention_score INT DEFAULT 0`,
+      `ALTER TABLE lead_memory ADD COLUMN IF NOT EXISTS top_objection TEXT`,
+    ];
+
+    for (const statement of memoryAlterations) {
+      await pool.query(statement).catch(() => { });
+    }
+
+    await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS advanced_instructions TEXT`).catch(() => { });
+    await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS knowledge_summary TEXT`).catch(() => { });
+
+    log("[SYSTEM] Kogna AI Core 2.1 columns verified.");
+  } catch (err) {
+    log("[ERROR] ensureKognaAICoreTables: " + err.message);
+  }
+};
+
 // Inicia as conexÃµes e migraÃ§Ãµes em segundo plano para nÃ£o travar o boot da Vercel
 initPool().then(() => {
+  ensureKognaAICoreTables();
   ensureLeadsColumns();
   setTimeout(ensureMessageBuffer, 3000);
   setTimeout(ensureRevenueOSColumns, 5000); // Revenue OS: ensure intent_label, last_ia_briefing, assigned_to
@@ -3421,8 +4215,13 @@ app.get("/api/chat-context/:instanceName/:jid", verifyJWT, async (req, res) => {
     }
 
     // 3. Find Lead Info
+    let leadId = null;
     let leadScore = 0;
     let leadTemperature = "Frio";
+    let needsHumanAttention = false;
+    let humanAttentionReason = null;
+    let humanAttentionSince = null;
+    let topObjection = null;
     if (agentId) {
       const orgRes = await pool.query(
         "SELECT organization_id FROM agents WHERE id = $1",
@@ -3432,17 +4231,25 @@ app.get("/api/chat-context/:instanceName/:jid", verifyJWT, async (req, res) => {
 
       if (orgId) {
         const leadRes = await pool.query(
-          "SELECT score, temperature FROM leads WHERE organization_id = $1 AND (phone LIKE $2 OR mobile_phone LIKE $2) LIMIT 1",
+          `SELECT id, score, temperature, needs_human_attention, human_attention_reason, human_attention_since, top_objection
+             FROM leads
+            WHERE organization_id = $1 AND (phone LIKE $2 OR mobile_phone LIKE $2)
+            LIMIT 1`,
           [orgId, `%${jid.split("@")[0]}%`],
         );
         if (leadRes.rows.length > 0) {
+          leadId = leadRes.rows[0].id || null;
           leadScore = leadRes.rows[0].score || 0;
           leadTemperature = leadRes.rows[0].temperature || "Frio";
+          needsHumanAttention = leadRes.rows[0].needs_human_attention || false;
+          humanAttentionReason = leadRes.rows[0].human_attention_reason || null;
+          humanAttentionSince = leadRes.rows[0].human_attention_since || null;
+          topObjection = leadRes.rows[0].top_objection || null;
         }
       }
     }
 
-    res.json({ agentId, isPaused, leadScore, leadTemperature });
+    res.json({ agentId, isPaused, leadId, leadScore, leadTemperature, needsHumanAttention, humanAttentionReason, humanAttentionSince, topObjection });
   } catch (err) {
     log(`GET /api/chat-context error: ${err.message}`);
     res.status(500).json({ error: "Internal server error" });
@@ -3501,32 +4308,47 @@ app.post("/api/chat-context/bulk/:instanceName", verifyJWT, async (req, res) => 
 // POST /api/chats/toggle-pause - Toggle AI pause
 app.post("/api/chats/toggle-pause", verifyJWT, async (req, res) => {
   try {
-    const { instanceName, jid, isPaused } = req.body;
+    const { instanceName, jid, isPaused, agentId: rawAgentId, remoteJid } = req.body;
+    let agentId = rawAgentId || null;
+    const targetJid = remoteJid || jid;
 
-    // Find agent
-    const agentRes = await pool.query(
-      `SELECT a.id FROM agents a
-             JOIN whatsapp_instances wi ON a.whatsapp_instance_id = wi.id
-             WHERE wi.instance_name = $1`,
-      [instanceName],
-    );
+    if (!targetJid) {
+      return res.status(400).json({ error: "remoteJid is required" });
+    }
 
-    const agentId = agentRes.rows[0]?.id;
-    if (!agentId)
-      return res
-        .status(404)
-        .json({ error: "Agent not found for this instance" });
+    if (!agentId) {
+      const agentRes = await pool.query(
+        `SELECT a.id FROM agents a
+               JOIN whatsapp_instances wi ON a.whatsapp_instance_id = wi.id
+               WHERE wi.instance_name = $1`,
+        [instanceName],
+      );
+      agentId = agentRes.rows[0]?.id || null;
+    }
 
-    // Upsert session
+    if (!agentId) {
+      return res.status(404).json({ error: "Agent not found for this conversation" });
+    }
+
+    let nextPausedState = typeof isPaused === "boolean" ? isPaused : true;
+    if (typeof isPaused !== "boolean") {
+      const sessionRes = await pool.query(
+        "SELECT is_paused FROM chat_sessions WHERE agent_id = $1 AND remote_jid = $2",
+        [agentId, targetJid],
+      );
+      nextPausedState =
+        sessionRes.rows.length > 0 ? !sessionRes.rows[0].is_paused : true;
+    }
+
     await pool.query(
       `INSERT INTO chat_sessions (agent_id, remote_jid, is_paused) 
              VALUES ($1, $2, $3)
              ON CONFLICT (agent_id, remote_jid) 
              DO UPDATE SET is_paused = $3, updated_at = NOW()`,
-      [agentId, jid, isPaused],
+      [agentId, targetJid, nextPausedState],
     );
 
-    res.json({ success: true, isPaused });
+    res.json({ success: true, isPaused: nextPausedState });
   } catch (err) {
     log(`POST /api/chats/toggle-pause error: ${err.message}`);
     res.status(500).json({ error: "Internal server error" });
@@ -3557,40 +4379,59 @@ async function getAgentKnowledge(trainingFiles) {
     return "";
   }
 
-  let combinedText = "\n\nBASE DE CONHECIMENTO DISPONÃVEL:\n";
+  let combinedText = "\n\nBASE DE CONHECIMENTO DISPONIVEL:\n";
 
   for (const file of files) {
-    const filePath = path.resolve(file.path);
-    log(`[RAG] Processing file: ${file.originalName} at ${filePath}`);
-
-    if (!fs.existsSync(filePath)) {
-      log(`[RAG] File not found: ${filePath}`);
-      continue;
-    }
-
     try {
-      if (file.mimeType === "application/pdf" || file.path.endsWith(".pdf")) {
-        log(`[RAG] Parsing PDF: ${file.originalName}`);
-        const dataBuffer = fs.readFileSync(filePath);
+      const fileName = file.originalName || file.filename || file.name || "arquivo";
+      const mimeType = file.mimeType || file.mimetype || "";
+      const hasInlineContent = typeof file.content === "string" && file.content.length > 0;
+      const hasResolvedPath = typeof file.path === "string" && file.path.length > 0;
+      let textContent = "";
 
-        let data;
-        try {
-          // Lazy load pdf-parse to avoid binary/environment issues on Vercel/startup
-          const pdf = require("pdf-parse");
-          data = await pdf(dataBuffer);
-        } catch (err) {
-          log(`[RAG] Error loading/executing pdf-parse: ${err.message}`);
-          throw err;
+      if (hasInlineContent) {
+        const buffer = Buffer.from(file.content, "base64");
+        if (mimeType.includes("pdf") || /\.pdf$/i.test(fileName)) {
+          try {
+            const pdf = require("pdf-parse");
+            const parsed = await pdf(buffer);
+            textContent = parsed?.text || "";
+          } catch (err) {
+            log(`[RAG] Inline PDF parse failed for ${fileName}: ${err.message}`);
+          }
+        } else {
+          textContent = buffer.toString("utf8");
         }
-      } else if (file.mimeType === "text/plain" || file.path.endsWith(".txt")) {
-        log(`[RAG] Reading TXT: ${file.originalName}`);
-        const content = fs.readFileSync(filePath, "utf8");
-        combinedText += `\n--- Arquivo: ${file.originalName} ---\n${content}\n`;
+      } else if (hasResolvedPath) {
+        const filePath = path.resolve(file.path);
+        log(`[RAG] Processing file path: ${fileName} at ${filePath}`);
+        if (!fs.existsSync(filePath)) {
+          log(`[RAG] File not found: ${filePath}`);
+          continue;
+        }
+        if (mimeType.includes("pdf") || filePath.endsWith(".pdf")) {
+          try {
+            const pdf = require("pdf-parse");
+            const parsed = await pdf(fs.readFileSync(filePath));
+            textContent = parsed?.text || "";
+          } catch (err) {
+            log(`[RAG] File PDF parse failed for ${fileName}: ${err.message}`);
+          }
+        } else {
+          textContent = fs.readFileSync(filePath, "utf8");
+        }
+      }
+
+      if (textContent && textContent.trim()) {
+        combinedText += `\n--- Arquivo: ${fileName} ---\n${textContent.trim()}\n`;
+        if (!file.extractedText) {
+          file.extractedText = textContent.trim();
+        }
       } else {
-        log(`[RAG] Unsupported file type: ${file.mimeType} / ${file.path}`);
+        log(`[RAG] Unsupported or empty file content for ${fileName}`);
       }
     } catch (err) {
-      log(`[RAG] Error reading file ${file.originalName}: ${err.message}`);
+      log(`[RAG] Error reading file ${file.originalName || file.filename || "arquivo"}: ${err.message}`);
     }
   }
 
@@ -3718,20 +4559,55 @@ app.post('/api/onboarding/preview-ai', onboardingPreviewLimiter, async (req, res
     }
 
     const ctx = onboarding_context || {};
-    const systemPrompt = `VocÃª Ã© ${ctx.aiName || 'uma IA de vendas'}, assistente da empresa ${ctx.companyName || 'nossa empresa'}.
+    const previewProfile = {
+      ...createDefaultCompanyProfile(),
+      companyName: ctx.companyName || "",
+      companyProduct: ctx.mainProduct || "",
+      targetAudience: Array.isArray(ctx.targetAudience) ? ctx.targetAudience.join(', ') : (ctx.targetAudience || ""),
+      customerPain: ctx.customerPain || "",
+      customerDesires: ctx.customerDesires || "",
+      differentiators: ctx.differentiators || "",
+      industry: ctx.industry || "",
+      voiceTone: ctx.voiceTone || "",
+      agentName: ctx.aiName || "",
+      agentObjective: ctx.agentObjective || "",
+      restrictions: ctx.restrictions || "",
+      humanHandoffPolicy: ctx.humanHandoffPolicy || "",
+      objectionHandling: ctx.objectionHandling || "",
+      idealNextStep: ctx.idealNextStep || "",
+      productPrice: ctx.productPrice || "",
+      objectionPlaybook: Array.isArray(ctx.objectionPlaybook)
+        ? ctx.objectionPlaybook
+        : normalizeStringList(ctx.objections).map((label, index) => ({
+          label,
+          signals: [label],
+          recommended_approach: ctx.objectionHandling || "Reposicione valor e conduza o proximo passo.",
+          cta_after_resolution: ctx.idealNextStep || "Leve a conversa para o proximo passo comercial.",
+          priority: index + 1,
+        })),
+    };
 
-Seu objetivo: ${ctx.agentObjective === 'fechar_venda' ? 'fechar vendas diretamente no WhatsApp' : ctx.agentObjective === 'qualificar_agendar' ? 'qualificar leads e agendar reuniÃµes' : 'aquecer o lead e transferir para um vendedor humano'}.
+    const previewPlaybook = buildFallbackOperationalPlaybook(previewProfile, []);
+    const systemPrompt = `Voce e ${ctx.aiName || 'uma IA de vendas'}, assistente da empresa ${ctx.companyName || 'nossa empresa'}.
 
-Produto/ServiÃ§o: ${ctx.mainProduct || 'nossos produtos'}
-PÃºblico-alvo: ${ctx.targetAudience?.join(' e ') || 'clientes em geral'}
+Seu objetivo comercial: ${ctx.agentObjective === 'fechar_venda' ? 'fechar vendas diretamente no WhatsApp' : ctx.agentObjective === 'qualificar_agendar' ? 'qualificar leads e agendar reunioes' : 'qualificar, aquecer e direcionar para um vendedor quando fizer sentido'}.
+
+Produto/Servico: ${ctx.mainProduct || 'nossos produtos'}
+ICP / publico ideal: ${Array.isArray(ctx.targetAudience) ? ctx.targetAudience.join(', ') : (ctx.targetAudience || 'clientes em geral')}
+Dor principal: ${ctx.customerPain || 'descobrir a dor central do lead'}
+Diferenciais: ${ctx.differentiators || 'conectar valor, clareza e proximo passo'}
 Tom de voz: ${ctx.voiceTone || 'consultivo'}
 Mercado: ${ctx.industry || 'geral'}
-${ctx.restrictions ? `\nNUNCA diga: ${ctx.restrictions}` : ''}
+Playbook de resposta: ${(previewPlaybook.response_playbook?.principles || []).join(' | ')}
+Objecoes: ${(previewPlaybook.objection_playbook || []).map((item) => `${item.label}: ${item.recommended_approach}`).join(' | ') || 'Se houver objecao, reposicione valor e conduza o proximo passo.'}
+${ctx.restrictions ? `\nNunca diga: ${ctx.restrictions}` : ''}
 
----
-IMPORTANTE: VocÃª estÃ¡ sendo testado pelo dono da empresa. Demonstre o potencial real da IA.
-Seja natural, fluido, em portuguÃªs brasileiro. Lembre-se SEMPRE do contexto anterior da conversa.
-MÃ¡ximo 3 parÃ¡grafos por resposta.`;
+IMPORTANTE:
+- Este e um teste com o dono da operacao. Mostre o potencial da Kogna.
+- Nao responda de forma passiva como "Oi, como posso ajudar?".
+- Entre com contexto, valor ou proximo passo.
+- Seja natural, comercial e em portugues do Brasil.
+- Maximo 3 paragrafos curtos por resposta.`;
 
     // Build messages with full conversation history for memory
     const messages = [{ role: 'system', content: systemPrompt }];
@@ -3767,6 +4643,23 @@ MÃ¡ximo 3 parÃ¡grafos por resposta.`;
 
     const previewUserId = getOptionalUserIdFromAuthHeader(req);
     if (previewUserId) {
+      const previewOrgId = await getOrganizationIdForUser(previewUserId).catch(() => null);
+      if (previewOrgId) {
+        const currentProfile = await getCanonicalCompanyProfile({ orgId: previewOrgId, userId: previewUserId }).catch(() => createDefaultCompanyProfile());
+        const nextTranscript = [
+          ...(currentProfile.testTranscript || []),
+          normalizeTestTranscriptEntry({ role: 'user', text: message }),
+          normalizeTestTranscriptEntry({ role: 'assistant', text: reply }),
+        ].slice(-30);
+        await upsertCanonicalCompanyProfile({
+          orgId: previewOrgId,
+          userId: previewUserId,
+          payload: { ...currentProfile, testTranscript: nextTranscript },
+          regeneratePlaybook: false,
+        }).catch((profileErr) => {
+          log('[ONBOARDING-PREVIEW] transcript sync error: ' + profileErr.message);
+        });
+      }
       await runAdminEventAutomations('ai_tested', {
         userId: previewUserId,
         eventKey: `ai_tested:${previewUserId}`,
@@ -3779,8 +4672,15 @@ MÃ¡ximo 3 parÃ¡grafos por resposta.`;
       });
     }
 
+    const diagnostics = buildPreviewDiagnostics(message, reply);
     const limitReached = newCount >= MAX_MSGS;
-    res.json({ reply, messagesUsed: newCount, messagesLeft: Math.max(0, MAX_MSGS - newCount), limitReached });
+    res.json({
+      reply,
+      messagesUsed: newCount,
+      messagesLeft: Math.max(0, MAX_MSGS - newCount),
+      limitReached,
+      ...diagnostics,
+    });
   } catch (err) {
     log('[ONBOARDING-PREVIEW] Error: ' + err.message);
     res.status(500).json({ error: 'Erro ao processar mensagem: ' + err.message });
@@ -3794,9 +4694,11 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
     const {
       name, email, phone, password,
       agentObjective, industry, industryDetail,
-      companyName, aiName, mainProduct, customerPain, productPrice,
+      companyName, aiName, mainProduct, customerPain, customerDesires, differentiators, productPrice,
       targetAudience, channels, salesCycle, revenueGoal,
       unknownBehavior, voiceTone, restrictions,
+      humanHandoffPolicy, buyingSignals, qualificationCriteria, objectionHandling, idealNextStep, agendaPolicy,
+      objectionPlaybook, objections,
       referral_code
     } = req.body;
 
@@ -3850,65 +4752,77 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
     if (phone) pool.query(`UPDATE users SET personal_phone=$1 WHERE id=$2`, [phone, user.id]).catch(() => { });
 
     // â”€â”€ Optional: save AI config (best-effort) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const agentObjectiveText =
-      agentObjective === 'fechar_venda' ? 'Fechar vendas diretamente no WhatsApp' :
-        agentObjective === 'qualificar_agendar' ? 'Qualificar leads e agendar reuniÃ£o' :
-          'Aquecer o lead e transferir para vendedor humano';
+    const seededObjectionPlaybook = Array.isArray(objectionPlaybook) && objectionPlaybook.length > 0
+      ? objectionPlaybook
+      : normalizeStringList(objections).map((label, index) => ({
+        label,
+        signals: [label],
+        recommended_approach: objectionHandling || 'Reposicione valor, contexto e proximo passo com clareza.',
+        cta_after_resolution: idealNextStep || 'Conduza para o proximo passo mais simples da jornada.',
+        priority: index + 1,
+      }));
 
     try {
-      // Try UPDATE first (works whether or not there's a unique constraint)
-      const updateRes = await pool.query(
-        `UPDATE ia_configs SET
-           user_id=$2, company_name=$3, agent_name=$4, main_product=$5, desired_revenue=$6,
-           agent_objective=$7, unknown_behavior=$8, voice_tone=$9, restrictions=$10,
-           customer_pain=$11, product_price=$12
-         WHERE organization_id=$1`,
-        [org.id, user.id, companyName, aiName, mainProduct, revenueGoal,
-          agentObjective, unknownBehavior, voiceTone, restrictions || '',
-        customerPain || '', productPrice || '']
-      );
-      if (updateRes.rowCount === 0) {
-        // No existing row â€” INSERT
-        await pool.query(
-          `INSERT INTO ia_configs (organization_id, user_id, company_name, agent_name, main_product, desired_revenue,
-            agent_objective, unknown_behavior, voice_tone, restrictions, customer_pain, product_price)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-          [org.id, user.id, companyName, aiName, mainProduct, revenueGoal,
-            agentObjective, unknownBehavior, voiceTone, restrictions || '',
-          customerPain || '', productPrice || '']
-        );
-      }
+      await ensureKognaAICoreTables();
+      await upsertCanonicalCompanyProfile({
+        orgId: org.id,
+        userId: user.id,
+        payload: {
+          companyName,
+          agentName: aiName,
+          companyProduct: mainProduct,
+          revenueGoal,
+          agentObjective,
+          unknownBehavior,
+          voiceTone,
+          restrictions: restrictions || "",
+          customerPain: customerPain || "",
+          customerDesires: customerDesires || "",
+          differentiators: differentiators || "",
+          productPrice: productPrice || "",
+          targetAudience: Array.isArray(targetAudience) ? targetAudience.join(', ') : targetAudience || "",
+          industry: industry || "",
+          industryDetail: industryDetail || "",
+          channels: channels || [],
+          salesCycle: salesCycle || "",
+          humanHandoffPolicy: humanHandoffPolicy || "",
+          buyingSignals: buyingSignals || "",
+          qualificationCriteria: qualificationCriteria || "",
+          objectionHandling: objectionHandling || "",
+          idealNextStep: idealNextStep || "",
+          agendaPolicy: agendaPolicy || "",
+          objectionPlaybook: seededObjectionPlaybook,
+        },
+        regeneratePlaybook: true,
+      });
       log(`[ONBOARDING-V2] ia_configs saved for org ${org.id}`);
     } catch (iaErr) {
       log('[ONBOARDING-V2] ia_configs save failed: ' + iaErr.message);
     }
 
     // â”€â”€ Optional: create first agent (best-effort) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    let createdAgentId = null;
     try {
-      // Build a rich system prompt from all onboarding context
-      const systemPrompt = `VocÃª Ã© ${aiName || 'uma IA de vendas'}, assistente virtual da empresa ${companyName}.
+      const profile = await getCanonicalCompanyProfile({ orgId: org.id, userId: user.id });
+      const systemPrompt = composeAgentSystemPrompt({
+        profile,
+        agentName: aiName || 'Agente IA',
+        agentType: 'sdr',
+      });
 
-OBJETIVO PRINCIPAL: ${agentObjectiveText}.
-
-PRODUTO / SERVIÃ‡O: ${mainProduct || 'NÃ£o informado'}.
-PREÃ‡O MÃ‰DIO: ${productPrice ? 'R$ ' + productPrice : 'NÃ£o informado'}.
-DOR DO CLIENTE: ${customerPain || 'NÃ£o informado'}.
-PÃšBLICO-ALVO: ${(targetAudience || []).join(', ') || 'NÃ£o informado'}.
-MERCADO: ${industry || 'geral'}${industryDetail ? ' â€” ' + industryDetail : ''}.
-CANAIS DE AQUISIÃ‡ÃƒO: ${(channels || []).join(', ') || 'NÃ£o informado'}.
-CICLO DE VENDA: ${salesCycle || 'NÃ£o informado'}.
-META MENSAL: ${revenueGoal ? 'R$ ' + revenueGoal : 'NÃ£o informado'}.
-ESTILO DE COMUNICAÃ‡ÃƒO: ${voiceTone || 'Consultiva'}.
-QUANDO NÃƒO SOUBER RESPONDER: ${unknownBehavior === 'transferir_humano' ? 'Transfira imediatamente para um humano.' : unknownBehavior === 'pedir_contato' ? 'PeÃ§a o contato para retorno em breve.' : 'Informe que vai verificar e retornar.'}.
-${restrictions ? 'RESTRIÃ‡Ã•ES: ' + restrictions : ''}
-
-Seja sempre proativo, orientado a resultados, e conduza o cliente em direÃ§Ã£o ao fechamento.`;
-
-      await pool.query(
-        `INSERT INTO agents (organization_id, name, type, status, system_prompt)
-         VALUES ($1, $2, 'sdr', 'active', $3)`,
-        [org.id, aiName || 'Agente IA', systemPrompt]
+      const agentInsert = await pool.query(
+        `INSERT INTO agents (organization_id, name, type, status, system_prompt, advanced_instructions, model_config)
+         VALUES ($1, $2, 'sdr', 'active', $3, $4, $5)
+         RETURNING id`,
+        [
+          org.id,
+          aiName || 'Agente IA',
+          systemPrompt,
+          profile.advancedInstructions || null,
+          JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.45 }),
+        ]
       );
+      createdAgentId = agentInsert.rows[0]?.id || null;
       log(`[ONBOARDING-V2] Agent created for org ${org.id}`);
     } catch (agentErr) {
       log('[ONBOARDING-V2] agent insert skipped: ' + agentErr.message);
@@ -3929,7 +4843,7 @@ Seja sempre proativo, orientado a resultados, e conduza o cliente em direÃ§Ã�
     ]);
 
     log(`[ONBOARDING-V2] New account created: ${email} (org: ${org.id})`);
-    res.status(201).json({ token, user: { ...safeUser, organization: org }, role: 'user' });
+    res.status(201).json({ token, user: { ...safeUser, organization: org }, role: 'user', agentId: createdAgentId });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => { });
     log('[ONBOARDING-V2] register-and-save error: ' + err.message);
@@ -3946,39 +4860,11 @@ Seja sempre proativo, orientado a resultados, e conduza o cliente em direÃ§Ã�
 // GET /api/company-data â€” returns ia_configs mapped to CompanyData shape (used by MyAIs)
 app.get('/api/company-data', verifyJWT, async (req, res) => {
   try {
-    const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
-    const orgId = orgRes.rows[0]?.organization_id;
+    await ensureKognaAICoreTables();
+    const orgId = await getOrganizationIdForUser(req.userId);
     if (!orgId) return res.status(400).json({ error: 'No organization' });
-
-    let r = await pool.query(
-      `SELECT company_name, agent_name, main_product, desired_revenue, agent_objective,
-              unknown_behavior, voice_tone, restrictions, customer_pain, product_price
-       FROM ia_configs WHERE organization_id = $1 ORDER BY created_at DESC LIMIT 1`,
-      [orgId]
-    );
-    // Fallback: some rows may have been saved by user_id only (legacy)
-    if (r.rows.length === 0) {
-      r = await pool.query(
-        `SELECT company_name, agent_name, main_product, desired_revenue, agent_objective,
-                unknown_behavior, voice_tone, restrictions, customer_pain, product_price
-         FROM ia_configs WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
-        [req.userId]
-      );
-    }
-    if (r.rows.length === 0) return res.json(null);
-    const d = r.rows[0];
-    res.json({
-      companyName: d.company_name || '',
-      companyProduct: d.main_product || '',
-      targetAudience: d.customer_pain || '',
-      voiceTone: d.voice_tone || '',
-      unknownBehavior: d.unknown_behavior || '',
-      restrictions: d.restrictions || '',
-      agentName: d.agent_name || '',
-      revenueGoal: d.desired_revenue || '',
-      agentObjective: d.agent_objective || '',
-      productPrice: d.product_price || '',
-    });
+    const profile = await getCanonicalCompanyProfile({ orgId, userId: req.userId });
+    res.json(profile);
   } catch (err) {
     log('[COMPANY-DATA] GET error: ' + err.message);
     res.status(500).json({ error: 'Erro ao buscar dados da empresa.' });
@@ -3988,57 +4874,182 @@ app.get('/api/company-data', verifyJWT, async (req, res) => {
 // PUT /api/company-profile â€” saves ia_configs for the org
 app.put('/api/company-profile', verifyJWT, async (req, res) => {
   try {
-    const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
-    const orgId = orgRes.rows[0]?.organization_id;
+    await ensureKognaAICoreTables();
+    const orgId = await getOrganizationIdForUser(req.userId);
     if (!orgId) return res.status(400).json({ error: 'No organization' });
-
-    const { companyName, companyProduct, targetAudience, voiceTone, unknownBehavior, restrictions, agentName, revenueGoal, agentObjective, productPrice } = req.body;
-
-    // UPDATE existing row first, INSERT if not found
-    const updateRes = await pool.query(
-      `UPDATE ia_configs SET
-         user_id=$2, company_name=$3, agent_name=$4, main_product=$5, desired_revenue=$6,
-         agent_objective=$7, unknown_behavior=$8, voice_tone=$9, restrictions=$10,
-         customer_pain=$11, product_price=$12
-       WHERE organization_id=$1`,
-      [orgId, req.userId, companyName, agentName, companyProduct, revenueGoal,
-        agentObjective, unknownBehavior, voiceTone, restrictions,
-        targetAudience, productPrice]
-    );
-    if (updateRes.rowCount === 0) {
-      await pool.query(
-        `INSERT INTO ia_configs (organization_id, user_id, company_name, agent_name, main_product,
-           desired_revenue, agent_objective, unknown_behavior, voice_tone, restrictions,
-           customer_pain, product_price)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-        [orgId, req.userId, companyName, agentName, companyProduct, revenueGoal,
-          agentObjective, unknownBehavior, voiceTone, restrictions,
-          targetAudience, productPrice]
-      );
-    }
-    res.json({ success: true });
+    const profile = await upsertCanonicalCompanyProfile({
+      orgId,
+      userId: req.userId,
+      payload: req.body || {},
+      regeneratePlaybook: true,
+    });
+    res.json({ success: true, profile });
   } catch (err) {
     log('[COMPANY-PROFILE] PUT error: ' + err.message);
     res.status(500).json({ error: 'Erro ao salvar perfil da empresa.' });
   }
 });
 
-// PATCH /api/ia-config â€” appends improvement note to restrictions
+app.post('/api/company-profile/feedback', verifyJWT, async (req, res) => {
+  try {
+    await ensureKognaAICoreTables();
+    const orgId = await getOrganizationIdForUser(req.userId);
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+    const { category, detail, transcript } = req.body || {};
+    if (!detail) return res.status(400).json({ error: 'Feedback detail is required.' });
+    const profile = await appendCompanyProfileFeedback({
+      orgId,
+      userId: req.userId,
+      category,
+      detail,
+      transcript: Array.isArray(transcript) ? transcript : [],
+    });
+    res.json({ success: true, profile });
+  } catch (err) {
+    log('[COMPANY-PROFILE] feedback error: ' + err.message);
+    res.status(500).json({ error: 'Erro ao salvar melhoria.' });
+  }
+});
+
+app.post('/api/company-profile/regenerate-playbook', verifyJWT, async (req, res) => {
+  try {
+    await ensureKognaAICoreTables();
+    const orgId = await getOrganizationIdForUser(req.userId);
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+    const current = await getCanonicalCompanyProfile({ orgId, userId: req.userId });
+    const profile = await upsertCanonicalCompanyProfile({
+      orgId,
+      userId: req.userId,
+      payload: current,
+      regeneratePlaybook: true,
+    });
+    res.json({ success: true, profile });
+  } catch (err) {
+    log('[COMPANY-PROFILE] regenerate-playbook error: ' + err.message);
+    res.status(500).json({ error: 'Erro ao regenerar playbook.' });
+  }
+});
+
+// PATCH /api/ia-config â€” compatibility wrapper for structured feedback
 app.patch('/api/ia-config', verifyJWT, async (req, res) => {
   try {
-    const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
-    const orgId = orgRes.rows[0]?.organization_id;
+    await ensureKognaAICoreTables();
+    const orgId = await getOrganizationIdForUser(req.userId);
     if (!orgId) return res.status(400).json({ error: 'No organization' });
-    const { restrictions } = req.body;
-    if (!restrictions) return res.json({ success: true });
-    await pool.query(
-      `UPDATE ia_configs SET restrictions = COALESCE(restrictions || E'\\n', '') || $1 WHERE organization_id = $2`,
-      [restrictions, orgId]
-    );
-    res.json({ success: true });
+    const { restrictions, category, detail, transcript } = req.body || {};
+    const feedbackDetail = detail || restrictions;
+    if (!feedbackDetail) return res.json({ success: true });
+    const profile = await appendCompanyProfileFeedback({
+      orgId,
+      userId: req.userId,
+      category: category || 'melhoria_onboarding',
+      detail: feedbackDetail,
+      transcript: Array.isArray(transcript) ? transcript : [],
+    });
+    res.json({ success: true, profile });
   } catch (err) {
     log('[IA-CONFIG] PATCH error: ' + err.message);
     res.status(500).json({ error: 'Erro ao salvar melhoria.' });
+  }
+});
+
+app.get('/api/objections', verifyJWT, async (req, res) => {
+  try {
+    await ensureKognaAICoreTables();
+    const orgId = await getOrganizationIdForUser(req.userId);
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+    const profile = await getCanonicalCompanyProfile({ orgId, userId: req.userId });
+    res.json(profile.objectionPlaybook || []);
+  } catch (err) {
+    log('[OBJECTIONS] GET error: ' + err.message);
+    res.status(500).json({ error: 'Erro ao buscar objecoes.' });
+  }
+});
+
+app.post('/api/objections', verifyJWT, async (req, res) => {
+  try {
+    await ensureKognaAICoreTables();
+    const orgId = await getOrganizationIdForUser(req.userId);
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+    const profile = await getCanonicalCompanyProfile({ orgId, userId: req.userId });
+    const nextItems = [
+      ...(profile.objectionPlaybook || []),
+      normalizeObjectionPlaybookItem(req.body || {}, (profile.objectionPlaybook || []).length),
+    ].filter((item) => item.label);
+    const updated = await upsertCanonicalCompanyProfile({
+      orgId,
+      userId: req.userId,
+      payload: { ...profile, objectionPlaybook: nextItems },
+      regeneratePlaybook: true,
+    });
+    res.status(201).json(updated.objectionPlaybook);
+  } catch (err) {
+    log('[OBJECTIONS] POST error: ' + err.message);
+    res.status(500).json({ error: 'Erro ao criar objecao.' });
+  }
+});
+
+app.put('/api/objections/:id', verifyJWT, async (req, res) => {
+  try {
+    await ensureKognaAICoreTables();
+    const orgId = await getOrganizationIdForUser(req.userId);
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+    const profile = await getCanonicalCompanyProfile({ orgId, userId: req.userId });
+    const nextItems = (profile.objectionPlaybook || []).map((item, index) =>
+      item.id === req.params.id ? normalizeObjectionPlaybookItem({ ...item, ...(req.body || {}), id: item.id }, index) : item,
+    );
+    const updated = await upsertCanonicalCompanyProfile({
+      orgId,
+      userId: req.userId,
+      payload: { ...profile, objectionPlaybook: nextItems },
+      regeneratePlaybook: true,
+    });
+    res.json(updated.objectionPlaybook);
+  } catch (err) {
+    log('[OBJECTIONS] PUT error: ' + err.message);
+    res.status(500).json({ error: 'Erro ao atualizar objecao.' });
+  }
+});
+
+app.patch('/api/objections/:id/toggle', verifyJWT, async (req, res) => {
+  try {
+    await ensureKognaAICoreTables();
+    const orgId = await getOrganizationIdForUser(req.userId);
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+    const profile = await getCanonicalCompanyProfile({ orgId, userId: req.userId });
+    const nextItems = (profile.objectionPlaybook || []).map((item) =>
+      item.id === req.params.id ? { ...item, is_active: req.body?.is_active ?? !item.is_active } : item,
+    );
+    const updated = await upsertCanonicalCompanyProfile({
+      orgId,
+      userId: req.userId,
+      payload: { ...profile, objectionPlaybook: nextItems },
+      regeneratePlaybook: true,
+    });
+    res.json(updated.objectionPlaybook);
+  } catch (err) {
+    log('[OBJECTIONS] TOGGLE error: ' + err.message);
+    res.status(500).json({ error: 'Erro ao ativar/inativar objecao.' });
+  }
+});
+
+app.delete('/api/objections/:id', verifyJWT, async (req, res) => {
+  try {
+    await ensureKognaAICoreTables();
+    const orgId = await getOrganizationIdForUser(req.userId);
+    if (!orgId) return res.status(400).json({ error: 'No organization' });
+    const profile = await getCanonicalCompanyProfile({ orgId, userId: req.userId });
+    const nextItems = (profile.objectionPlaybook || []).filter((item) => item.id !== req.params.id);
+    const updated = await upsertCanonicalCompanyProfile({
+      orgId,
+      userId: req.userId,
+      payload: { ...profile, objectionPlaybook: nextItems },
+      regeneratePlaybook: true,
+    });
+    res.json(updated.objectionPlaybook);
+  } catch (err) {
+    log('[OBJECTIONS] DELETE error: ' + err.message);
+    res.status(500).json({ error: 'Erro ao excluir objecao.' });
   }
 });
 
@@ -4057,7 +5068,9 @@ app.get('/api/agents', verifyJWT, async (req, res) => {
               COALESCE(a.type, 'sdr') AS type,
               COALESCE(a.status, 'active') AS status,
               a.system_prompt,
+              a.advanced_instructions,
               a.model_config,
+              a.training_files,
               a.whatsapp_instance_id,
               a.created_at,
               wi.instance_name AS whatsapp_instance_name,
@@ -4078,17 +5091,32 @@ app.get('/api/agents', verifyJWT, async (req, res) => {
 // POST /api/agents â€” create a new agent
 app.post('/api/agents', verifyJWT, async (req, res) => {
   try {
+    await ensureKognaAICoreTables();
     const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
     const orgId = orgRes.rows[0]?.organization_id;
     if (!orgId) return res.status(400).json({ error: 'No organization' });
 
-    const { name, type, system_prompt, model_config } = req.body;
+    const { name, type, system_prompt, model_config, use_company_profile, advanced_instructions } = req.body;
     if (!name) return res.status(400).json({ error: 'name Ã© obrigatÃ³rio' });
 
+    const profile = await getCanonicalCompanyProfile({ orgId, userId: req.userId });
+    const generatedPrompt = use_company_profile || !system_prompt
+      ? composeAgentSystemPrompt({
+        profile,
+        agentName: name,
+        agentType: type || 'sdr',
+        customInstructions: advanced_instructions || system_prompt || "",
+      })
+      : system_prompt;
+    const nextModelConfig = {
+      model: model_config?.model || 'gpt-4o-mini',
+      temperature: Number.isFinite(Number(model_config?.temperature)) ? Number(model_config.temperature) : 0.45,
+    };
+
     const r = await pool.query(
-      `INSERT INTO agents (organization_id, name, type, system_prompt, status)
-       VALUES ($1, $2, $3, $4, 'active') RETURNING *`,
-      [orgId, name, type || 'sdr', system_prompt || '']
+      `INSERT INTO agents (organization_id, name, type, system_prompt, advanced_instructions, model_config, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active') RETURNING *`,
+      [orgId, name, type || 'sdr', generatedPrompt || '', advanced_instructions || null, JSON.stringify(nextModelConfig)]
     );
     await runAdminEventAutomations('agent_created', {
       userId: req.userId,
@@ -7727,9 +8755,11 @@ app.put("/api/agents/:id", verifyJWT, async (req, res) => {
     name,
     type,
     system_prompt,
+    advanced_instructions,
     model_config,
     status,
     whatsapp_instance_id,
+    use_company_profile,
   } = req.body;
 
   if (!id) return res.status(400).json({ error: "Agent ID is required" });
@@ -7748,7 +8778,7 @@ app.put("/api/agents/:id", verifyJWT, async (req, res) => {
 
     // Check ownership first
     const check = await pool.query(
-      "SELECT id FROM agents WHERE id = $1 AND organization_id = $2",
+      "SELECT id, name, type FROM agents WHERE id = $1 AND organization_id = $2",
       [id, orgId],
     );
     if (check.rows.length === 0)
@@ -7771,6 +8801,11 @@ app.put("/api/agents/:id", verifyJWT, async (req, res) => {
       }
     }
 
+    const currentAgent = check.rows[0];
+    const profile = await getCanonicalCompanyProfile({ orgId, userId });
+    const effectiveName = name || currentAgent?.name;
+    const effectiveType = type || currentAgent?.type;
+
     // Build Update Query dynamic
     const fields = [];
     const values = [];
@@ -7784,13 +8819,29 @@ app.put("/api/agents/:id", verifyJWT, async (req, res) => {
       fields.push(`type = $${idx++} `);
       values.push(type);
     }
-    if (system_prompt !== undefined) {
+    if (system_prompt !== undefined || use_company_profile) {
       fields.push(`system_prompt = $${idx++} `);
-      values.push(system_prompt);
+      values.push(
+        use_company_profile
+          ? composeAgentSystemPrompt({
+            profile,
+            agentName: effectiveName,
+            agentType: effectiveType,
+            customInstructions: advanced_instructions || system_prompt || "",
+          })
+          : system_prompt
+      );
+    }
+    if (advanced_instructions !== undefined) {
+      fields.push(`advanced_instructions = $${idx++} `);
+      values.push(advanced_instructions);
     }
     if (model_config !== undefined) {
       fields.push(`model_config = $${idx++} `);
-      values.push(model_config);
+      values.push({
+        model: model_config?.model || "gpt-4o-mini",
+        temperature: Number.isFinite(Number(model_config?.temperature)) ? Number(model_config.temperature) : 0.45,
+      });
     }
     if (status) {
       fields.push(`status = $${idx++} `);
@@ -7859,6 +8910,7 @@ app.post(
         originalName: file.originalname,
         filename: Date.now() + "-" + file.originalname,
         content: file.buffer.toString("base64"),
+        extractedText: file.mimetype.includes("text") ? file.buffer.toString("utf8") : "",
         mimeType: file.mimetype,
         size: file.size,
         uploadedAt: new Date().toISOString(),
@@ -7866,9 +8918,15 @@ app.post(
 
       const updatedFiles = [...currentFiles, ...newFiles];
 
+      const knowledgeSummary = updatedFiles
+        .map((file) => file.extractedText || "")
+        .filter(Boolean)
+        .join("\n\n")
+        .slice(0, 6000);
+
       const result = await pool.query(
-        "UPDATE agents SET training_files = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
-        [JSON.stringify(updatedFiles), id],
+        "UPDATE agents SET training_files = $1, knowledge_summary = $2, updated_at = NOW() WHERE id = $3 RETURNING *",
+        [JSON.stringify(updatedFiles), knowledgeSummary || null, id],
       );
 
       log(`[DEBUG] Uploaded ${req.files.length} files for Agent ${id}`);
@@ -8003,6 +9061,10 @@ app.get('/api/leads/:leadId/memory', verifyJWT, async (req, res) => {
           recommendation: summaryData.recommendation || null,
           stage: summaryData.stage || context.state?.lead_stage || null,
           intent: summaryData.intent || context.memory?.last_intent || context.state?.last_user_intent || null,
+          needs_human_attention: context.lead?.needs_human_attention || context.memory?.needs_human_attention || false,
+          human_attention_reason: context.lead?.human_attention_reason || context.memory?.human_attention_reason || null,
+          human_attention_since: context.lead?.human_attention_since || context.memory?.human_attention_since || null,
+          top_objection: context.lead?.top_objection || context.memory?.top_objection || context.memory?.main_objection || null,
         }
         : null,
     });
@@ -13687,13 +14749,13 @@ JSON:`;
 }
 
 // â”€â”€â”€ INTELLIGENT HANDOFF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Triggered when lead score crosses 80: pauses AI, generates brief, notifies sellers
+// Triggered when lead score crosses 80: raises human attention, generates brief and notifies sellers
 
 async function triggerIntelligentHandoff(agentId, remoteJid, orgId, leadId, leadName, context, score) {
   try {
     log(`[HANDOFF] Initiating intelligent handoff for lead "${leadName}" (score ${score})`);
 
-    // 0. Send a transition message to the lead before going silent
+    // 0. Signal to the lead that a specialist may join, but keep the AI active.
     try {
       const agentRes = await pool.query(
         `SELECT a.id, v.instance_name
@@ -13705,7 +14767,7 @@ async function triggerIntelligentHandoff(agentId, remoteJid, orgId, leadId, lead
       const instanceName = agentRes.rows[0]?.instance_name;
 
       if (instanceName) {
-        const transferMsg = "Ã“timo! Vou te transferir agora para um dos nossos especialistas para continuar o atendimento. Aguarde um instante. ðŸ¤";
+        const transferMsg = "Perfeito. Ja sinalizei nosso time comercial para acompanhar este caso com mais prioridade. Enquanto isso, sigo com voce por aqui para acelerar o proximo passo.";
         await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
           method: "POST",
           headers: {
@@ -13722,23 +14784,13 @@ async function triggerIntelligentHandoff(agentId, remoteJid, orgId, leadId, lead
       }
     } catch (msgErr) {
       log(`[HANDOFF] Could not send transfer message: ${msgErr.message}`);
-      // Non-fatal â€” continue with pause and notification
+      // Non-fatal â€” continue with attention flag and notification
     }
 
-    // 1. Pause the AI for this specific chat
-    await pool.query(
-      `INSERT INTO chat_sessions (agent_id, remote_jid, is_paused)
-       VALUES ($1, $2, true)
-       ON CONFLICT (agent_id, remote_jid) DO UPDATE SET is_paused = true`,
-      [agentId, remoteJid]
-    );
-    log(`[HANDOFF] AI paused for ${remoteJid} (agent ${agentId})`);
-
-
-    // 2. Generate intelligent Lead Brief via GPT
+    // 1. Generate intelligent Lead Brief via GPT
     const briefPrompt = `VocÃª Ã© um gerente de vendas sÃªnior da Kogna Revenue OS.
 Um lead atingiu score ${score}/100, indicando alta intenÃ§Ã£o de compra e necessidade de atendimento humano.
-Baseado na conversa abaixo, crie um brief operacional conciso para o vendedor humano que vai assumir agora.
+Baseado na conversa abaixo, crie um brief operacional conciso para o vendedor humano que precisa priorizar esse lead.
 
 CONVERSA:
 ${context}
@@ -13760,16 +14812,44 @@ JSON:`;
     const brief = JSON.parse(completion.choices[0].message.content);
     log(`[HANDOFF] Lead brief generated for "${leadName}": ${JSON.stringify(brief)}`);
 
-    // 3. Store brief on the lead for retrieval in LiveChat
+    // 2. Store the human-attention signal without silencing the AI.
     await pool.query(
-      `UPDATE leads SET handoff_brief = $1, handoff_at = NOW() WHERE id = $2`,
-      [JSON.stringify(brief), leadId]
+      `UPDATE leads
+          SET handoff_brief = $1,
+              handoff_at = NOW(),
+              needs_human_attention = TRUE,
+              human_attention_reason = $2,
+              human_attention_since = NOW(),
+              top_objection = COALESCE($3, top_objection)
+        WHERE id = $4`,
+      [JSON.stringify(brief), brief.approach || brief.interest || "Lead quente requer acompanhamento humano", brief.objection || null, leadId]
     ).catch(() => {
-      // Column may not exist yet â€” non-fatal, notification still fires
-      log(`[HANDOFF] Could not store brief on lead (handoff_brief column missing?)`);
+      log(`[HANDOFF] Could not store human attention fields on lead`);
     });
 
-    // 4. Notify all org users with the full brief
+    await pool.query(
+      `UPDATE lead_memory
+          SET needs_human_attention = TRUE,
+              human_attention_reason = $1,
+              human_attention_since = NOW(),
+              handoff_recommendation = $2,
+              human_attention_score = $3,
+              top_objection = COALESCE($4, top_objection),
+              updated_at = NOW()
+        WHERE organization_id = $5 AND lead_id = $6`,
+      [
+        brief.interest || "Lead requer acompanhamento humano",
+        brief.approach || "Entre rapido, valide contexto e conduza o proximo passo.",
+        score,
+        brief.objection || null,
+        orgId,
+        leadId,
+      ],
+    ).catch(() => {
+      log(`[HANDOFF] Could not update lead_memory human attention state`);
+    });
+
+    // 3. Notify all org users with the full brief
     const usersRes = await pool.query(
       `SELECT id FROM users WHERE organization_id = $1`, [orgId]
     );
@@ -13855,15 +14935,7 @@ async function processAIResponse(
     log(`[CSE] lead=${remoteJid} intent=${userIntent}`);
     // â”€â”€ END CSE early intent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    // --- Compose stage-based system prompt ---
-    // Stage directive (CSE memory block) will be appended after Koins/user lookup below.
-    let systemPrompt = buildSystemPrompt({
-      agent,
-      stage: 'qualificacao', // Placeholder â€” replaced after CSE state loads below
-      knowledgeBase,
-      currentDate,
-      currentTime,
-    });
+    let systemPrompt = "";
 
     // 1.6 Check Koins Balance
     const userQuery = await pool.query(
@@ -13885,6 +14957,11 @@ async function processAIResponse(
       return; // Stop processing
     }
 
+    const companyProfile = await getCanonicalCompanyProfile({
+      orgId: user.organization_id,
+      userId: user.id,
+    });
+
     // â”€â”€ CSE: Load state (now user/org is available) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const cseOrgId = user.organization_id;
     const { state: cseState, memory: cseMemory } = await loadConversationState(cseOrgId, agent.id, remoteJid);
@@ -13896,7 +14973,36 @@ async function processAIResponse(
     // Rebuild systemPrompt with the real stage + active agent persona
     const activeAgent = resolveAgent(cseStage);
     log(`[MULTI-AGENT] ${activeAgent.name} handling stage=${cseStage} for lead=${remoteJid}`);
-    systemPrompt = buildSystemPrompt({ agent, stage: cseStage, knowledgeBase, currentDate, currentTime, activeAgent });
+    const leadSnapshotRes = await pool.query(
+      `SELECT id, score, temperature, last_ia_briefing, needs_human_attention,
+              human_attention_reason, human_attention_since, top_objection
+         FROM leads
+        WHERE organization_id = $1
+          AND (phone LIKE $2 OR mobile_phone LIKE $2)
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        LIMIT 1`,
+      [cseOrgId, `%${remoteJid.split("@")[0]}%`],
+    ).catch(() => ({ rows: [] }));
+    const leadContext = {
+      ...(leadSnapshotRes.rows[0] || {}),
+      ...(cseMemory || {}),
+    };
+    const activeObjection = selectRelevantObjection(
+      companyProfile.objectionPlaybook || [],
+      userText,
+      cseMemory?.main_objection || leadSnapshotRes.rows[0]?.top_objection || "",
+    );
+    systemPrompt = buildSystemPrompt({
+      agent,
+      stage: cseStage,
+      knowledgeBase,
+      currentDate,
+      currentTime,
+      activeAgent,
+      companyProfile,
+      leadContext,
+      activeObjection,
+    });
 
     // Append structured memory + semantic signals block
     systemPrompt += buildCSEStageDirective(cseStage, cseGoal, cseMemory);
@@ -14045,7 +15151,10 @@ async function processAIResponse(
     // Decide Model
     // If hasImage, MUST use gpt-4o or gpt-4o-mini (vision supported).
     // We are already using gpt-4o-mini.
-    const model = "gpt-4o-mini";
+    const model = agent.model_config?.model || "gpt-4o-mini";
+    const temperature = Number.isFinite(Number(agent.model_config?.temperature))
+      ? Math.max(0, Math.min(1.2, Number(agent.model_config.temperature)))
+      : 0.45;
 
     // Prepare messages for OpenAI
     const apiMessages = [
@@ -14068,6 +15177,7 @@ async function processAIResponse(
       const completion = await openai.chat.completions.create({
         model: model,
         messages: apiMessages,
+        temperature,
         ...(activeTools.length > 0 ? { tools: activeTools, tool_choice: toolChoice } : {}),
       });
 
@@ -15406,6 +16516,15 @@ app.get("/api/leads/:leadId/intelligence", verifyJWT, async (req, res) => {
     const score = Math.round((row.purchase_probability || 0) * 100);
     const temperature = score >= 70 ? 'quente' : score >= 40 ? 'morno' : 'frio';
 
+    const leadStatusRes = await pool.query(
+      `SELECT needs_human_attention, human_attention_reason, human_attention_since, top_objection
+         FROM leads
+        WHERE id = $1 AND organization_id = $2
+        LIMIT 1`,
+      [leadId, orgId]
+    ).catch(() => ({ rows: [] }));
+    const leadStatus = leadStatusRes.rows[0] || {};
+
     res.json({
       hasIntelligence: true,
       leadScore: score,
@@ -15415,9 +16534,13 @@ app.get("/api/leads/:leadId/intelligence", verifyJWT, async (req, res) => {
       urgency: row.urgency,
       sentiment: row.sentiment,
       objections: row.objections || [],
+      topObjection: leadStatus.top_objection || row.objections?.[0] || null,
       productInterest: row.product_interest,
       decisionMaker: row.decision_maker,
       estimatedTicket: row.estimated_ticket,
+      needsHumanAttention: leadStatus.needs_human_attention || false,
+      humanAttentionReason: leadStatus.human_attention_reason || null,
+      humanAttentionSince: leadStatus.human_attention_since || null,
       updatedAt: row.created_at
     });
   } catch (err) {
@@ -15474,10 +16597,23 @@ app.get("/api/leads/:leadId/opportunity-score", verifyJWT, async (req, res) => {
     if (!orgId) return res.status(400).json({ error: "No organization" });
 
     const result = await pool.query(`
-      SELECT score, temperature, intent, product_interest, top_objection, 
-             pipeline_stage, auto_pipeline_enabled, signals, updated_at
-      FROM opportunity_scores
-      WHERE lead_id = $1 AND organization_id = $2
+      SELECT os.score,
+             os.temperature,
+             os.intent,
+             os.product_interest,
+             os.top_objection,
+             os.pipeline_stage,
+             os.auto_pipeline_enabled,
+             os.signals,
+             os.updated_at,
+             l.needs_human_attention,
+             l.human_attention_reason,
+             l.human_attention_since
+      FROM opportunity_scores os
+      LEFT JOIN leads l
+        ON l.id = os.lead_id::uuid
+       AND l.organization_id = os.organization_id
+      WHERE os.lead_id = $1 AND os.organization_id = $2
     `, [leadId, orgId]);
 
     if (result.rows.length === 0) {
@@ -15911,6 +17047,10 @@ app.get('/api/followup/queue', verifyJWT, async (req, res) => {
         l.name AS lead_name,
         COALESCE(l.score, fq.intent_score, 0)::int AS lead_score,
         COALESCE(NULLIF(l.last_ia_briefing, ''), NULLIF(lm.lead_summary, ''), fq.detected_product_interest, 'Sem contexto adicional') AS lead_briefing,
+        l.needs_human_attention,
+        l.human_attention_reason,
+        l.human_attention_since,
+        COALESCE(l.top_objection, lm.top_objection, lm.main_objection, fq.detected_objection) AS top_objection,
         lm.lead_summary,
         lm.next_recommendation,
         v.nome AS assigned_vendor_name,
@@ -16114,6 +17254,10 @@ app.get('/api/followup/status/:jid', verifyJWT, async (req, res) => {
          l.id AS lead_id,
          l.name AS lead_name,
          l.last_ia_briefing AS lead_briefing,
+         l.needs_human_attention,
+         l.human_attention_reason,
+         l.human_attention_since,
+         COALESCE(l.top_objection, lm.top_objection, lm.main_objection, fq.detected_objection) AS top_objection,
          lm.lead_summary,
          lm.next_recommendation,
          fs.name AS sequence_name,

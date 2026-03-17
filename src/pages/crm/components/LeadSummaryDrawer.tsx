@@ -11,11 +11,15 @@ interface LeadSummaryResponse {
         next_recommendation?: string | null;
         lead_interest?: string | null;
         main_objection?: string | null;
+        top_objection?: string | null;
         pain_point?: string | null;
         company?: string | null;
         last_intent?: string | null;
         last_temperature?: string | null;
         last_agent_decision?: string | null;
+        needs_human_attention?: boolean;
+        human_attention_reason?: string | null;
+        human_attention_since?: string | null;
         updated_at?: string | null;
     } | null;
     state: {
@@ -30,12 +34,20 @@ interface LeadSummaryResponse {
         temperature?: string;
         score?: number;
         last_ia_briefing?: string | null;
+        needs_human_attention?: boolean;
+        human_attention_reason?: string | null;
+        human_attention_since?: string | null;
+        top_objection?: string | null;
     } | null;
     summary: {
         text?: string | null;
         recommendation?: string | null;
         stage?: string | null;
         intent?: string | null;
+        needs_human_attention?: boolean;
+        human_attention_reason?: string | null;
+        human_attention_since?: string | null;
+        top_objection?: string | null;
     } | null;
 }
 
@@ -50,6 +62,10 @@ interface FollowupStatusResponse {
     next_recommendation?: string | null;
     assigned_vendor_name?: string | null;
     followup_trigger_reason?: string | null;
+    needs_human_attention?: boolean;
+    human_attention_reason?: string | null;
+    human_attention_since?: string | null;
+    top_objection?: string | null;
 }
 
 const FOLLOWUP_STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -185,6 +201,10 @@ export function LeadSummaryDrawer({
     const recommendation = data?.summary?.recommendation || data?.memory?.next_recommendation || 'Continuar acompanhando a conversa e registrar o proximo passo.';
     const stage = data?.summary?.stage || data?.state?.lead_stage || lead.status;
     const intent = data?.summary?.intent || data?.memory?.last_intent || null;
+    const needsHumanAttention = data?.summary?.needs_human_attention || data?.lead?.needs_human_attention || data?.memory?.needs_human_attention || followupData?.needs_human_attention || false;
+    const humanAttentionReason = data?.summary?.human_attention_reason || data?.lead?.human_attention_reason || data?.memory?.human_attention_reason || followupData?.human_attention_reason || null;
+    const humanAttentionSince = data?.summary?.human_attention_since || data?.lead?.human_attention_since || data?.memory?.human_attention_since || followupData?.human_attention_since || null;
+    const topObjection = data?.summary?.top_objection || data?.lead?.top_objection || data?.memory?.top_objection || data?.memory?.main_objection || followupData?.top_objection || null;
     const canConvertToClient = lead.status !== 'Cliente';
     const followupBadge = followupData ? FOLLOWUP_STATUS_LABELS[followupData.status] || FOLLOWUP_STATUS_LABELS.pending : null;
     const lastContactLabel = lead.lastContact
@@ -361,6 +381,29 @@ export function LeadSummaryDrawer({
                     </section>
 
                     <section className="rounded-3xl border border-border bg-surface p-5">
+                        <div className="mb-3 flex items-center gap-2">
+                            <Sparkles size={17} className="text-red-400" />
+                            <h3 className="text-sm font-semibold text-foreground">Prioridade comercial</h3>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                            <div className="rounded-2xl border border-border/70 bg-background px-4 py-3">
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Atencao humana</p>
+                                <p className="mt-2 text-foreground">{needsHumanAttention ? 'Sim, com prioridade' : 'Nao ha alerta humano pendente'}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    {humanAttentionReason || 'A IA pode seguir conduzindo a conversa normalmente.'}
+                                </p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-background px-4 py-3">
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Objecao principal</p>
+                                <p className="mt-2 text-foreground">{topObjection || 'Nenhuma objecao dominante registrada'}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    {humanAttentionSince ? `Sinalizado ${new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(humanAttentionSince))}` : 'Sem alerta de takeover ate agora.'}
+                                </p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="rounded-3xl border border-border bg-surface p-5">
                         <div className="flex items-start justify-between gap-4">
                             <div className="flex items-start gap-3">
                                 <div className="rounded-2xl border border-primary/15 bg-primary/10 p-2 text-primary">
@@ -457,7 +500,7 @@ export function LeadSummaryDrawer({
                             </div>
                             <div className="rounded-2xl border border-border/70 bg-background px-4 py-3">
                                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Objecao principal</p>
-                                <p className="mt-2 text-foreground">{data?.memory?.main_objection || 'Sem objecao registrada'}</p>
+                                <p className="mt-2 text-foreground">{topObjection || 'Sem objecao registrada'}</p>
                             </div>
                             <div className="rounded-2xl border border-border/70 bg-background px-4 py-3">
                                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Dor percebida</p>

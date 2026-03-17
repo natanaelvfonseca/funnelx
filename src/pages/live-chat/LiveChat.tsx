@@ -48,6 +48,10 @@ interface LeadSummaryData {
     recommendation?: string | null;
     stage?: string | null;
     intent?: string | null;
+    needsHumanAttention?: boolean;
+    humanAttentionReason?: string | null;
+    humanAttentionSince?: string | null;
+    topObjection?: string | null;
 }
 
 interface FollowupStatusData {
@@ -68,6 +72,10 @@ interface FollowupStatusData {
     next_recommendation?: string | null;
     sequence_name?: string | null;
     assigned_vendor_name?: string | null;
+    needs_human_attention?: boolean;
+    human_attention_reason?: string | null;
+    human_attention_since?: string | null;
+    top_objection?: string | null;
 }
 
 const FOLLOWUP_STATUS_META: Record<string, { label: string; badgeClass: string }> = {
@@ -137,6 +145,8 @@ function buildRevenueOsTips({
     unreadCount,
     summary,
     lastInboundTimestamp,
+    objection,
+    needsHumanAttention,
 }: {
     temperature?: string;
     score?: number;
@@ -144,6 +154,8 @@ function buildRevenueOsTips({
     unreadCount?: number;
     summary?: LeadSummaryData | null;
     lastInboundTimestamp?: number | string | null;
+    objection?: string | null;
+    needsHumanAttention?: boolean;
 }) {
     const tips: { title: string; body: string }[] = [];
 
@@ -166,6 +178,20 @@ function buildRevenueOsTips({
         tips.push({
             title: 'Aprofunde a qualificacao',
             body: 'Use perguntas abertas para entender contexto, urgencia e o que faria esse lead avancar.',
+        });
+    }
+
+    if (needsHumanAttention) {
+        tips.push({
+            title: 'Acione humano com contexto',
+            body: 'Este lead merece acompanhamento humano agora. Entre com clareza, valide a decisao e mantenha uma CTA unica para nao perder timing.',
+        });
+    }
+
+    if (objection) {
+        tips.push({
+            title: 'Trabalhe a objecao principal',
+            body: `Existe uma objecao ativa em torno de "${objection}". Responda com prova, contexto e conduza para o proximo passo logo depois de reduzir a friccao.`,
         });
     }
 
@@ -244,6 +270,13 @@ export function LiveChat() {
                         setActiveLeadScore(data.leadScore || 0);
                         setActiveLeadTemp(data.leadTemperature || "Frio");
                         setActiveLeadId(data.leadId || null);
+                        setActiveLeadSummary((current) => current ? {
+                            ...current,
+                            needsHumanAttention: data.needsHumanAttention || false,
+                            humanAttentionReason: data.humanAttentionReason || null,
+                            humanAttentionSince: data.humanAttentionSince || null,
+                            topObjection: data.topObjection || current.topObjection || null,
+                        } : current);
                     }
                 }
             } catch (err) {
@@ -277,6 +310,10 @@ export function LiveChat() {
                     recommendation: summary.recommendation || null,
                     stage: summary.stage || null,
                     intent: summary.intent || null,
+                    needsHumanAttention: summary.needs_human_attention || false,
+                    humanAttentionReason: summary.human_attention_reason || null,
+                    humanAttentionSince: summary.human_attention_since || null,
+                    topObjection: summary.top_objection || data?.memory?.top_objection || data?.memory?.main_objection || null,
                 });
             })
             .catch(() => {
@@ -1297,6 +1334,11 @@ export function LiveChat() {
                                                     IA pausada
                                                 </span>
                                             )}
+                                            {(activeLeadSummary?.needsHumanAttention || activeFollowupStatus?.needs_human_attention) && (
+                                                <span className="inline-flex items-center gap-2 rounded-full border border-red-200/80 bg-red-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200">
+                                                    Atencao humana
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="mt-2 truncate text-sm text-gray-500 dark:text-gray-400">
                                             {activeChat.remoteJid || activeChat.id}
@@ -1357,8 +1399,7 @@ export function LiveChat() {
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-bold text-amber-500">Handoff Humano Ativo</p>
                                             <p className="mt-0.5 text-xs leading-relaxed text-amber-400/80">
-                                                A IA foi pausada automaticamente pelo Revenue OS — este lead atingiu alta intenção de compra.
-                                                Uma notificação foi enviada com o brief completo. Assuma a conversa agora.
+                                                A conversa esta em modo manual. O time humano pode assumir daqui com o contexto montado pela IA e retomar o fluxo quando fizer sentido.
                                             </p>
                                         </div>
                                         <button
@@ -1607,7 +1648,13 @@ function ConversationInsightsPanel({
         unreadCount: activeChat.unreadCount,
         summary: activeLeadSummary,
         lastInboundTimestamp: lastInboundMessage?.messageTimestamp ?? activeChat.lastMessage?.timestamp ?? null,
+        objection: activeLeadSummary?.topObjection || activeFollowupStatus?.top_objection || activeFollowupStatus?.detected_objection || null,
+        needsHumanAttention: activeLeadSummary?.needsHumanAttention || activeFollowupStatus?.needs_human_attention || false,
     });
+    const needsHumanAttention = activeLeadSummary?.needsHumanAttention || activeFollowupStatus?.needs_human_attention || false;
+    const humanAttentionReason = activeLeadSummary?.humanAttentionReason || activeFollowupStatus?.human_attention_reason || null;
+    const humanAttentionSince = activeLeadSummary?.humanAttentionSince || activeFollowupStatus?.human_attention_since || null;
+    const topObjection = activeLeadSummary?.topObjection || activeFollowupStatus?.top_objection || activeFollowupStatus?.detected_objection || null;
 
     const signalCards = [
         {
@@ -1709,6 +1756,45 @@ function ConversationInsightsPanel({
                                 </p>
                             </div>
                         )}
+                    </div>
+                </div>
+            </div>
+
+            <div className="rounded-[28px] border border-black/[0.06] bg-white/[0.94] p-5 shadow-[0_18px_44px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-[#171719]">
+                <div className="flex items-start justify-between gap-3">
+                    <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">Revenue OS</p>
+                        <h4 className="mt-2 text-lg font-display font-bold tracking-tight text-gray-900 dark:text-white">
+                            Prioridade humana e objecoes
+                        </h4>
+                    </div>
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${needsHumanAttention ? 'border-red-200 bg-red-50 text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300' : 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'}`}>
+                        {needsHumanAttention ? 'Atencao humana' : 'IA conduzindo'}
+                    </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-[22px] border border-black/[0.06] bg-[#F8F8FA] p-4 dark:border-white/[0.08] dark:bg-[#111214]">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                            Contexto humano
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
+                            {humanAttentionReason || (needsHumanAttention ? 'Lead com alta prioridade comercial' : 'Sem alerta pendente')}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                            {humanAttentionSince ? `Sinalizado em ${formatRelativeMoment(humanAttentionSince)}` : 'A IA pode continuar conduzindo enquanto o humano se organiza.'}
+                        </p>
+                    </div>
+                    <div className="rounded-[22px] border border-black/[0.06] bg-[#F8F8FA] p-4 dark:border-white/[0.08] dark:bg-[#111214]">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                            Objecao principal
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
+                            {topObjection || 'Nenhuma objecao dominante mapeada'}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                            Use prova, contexto e CTA clara para destravar esse ponto.
+                        </p>
                     </div>
                 </div>
             </div>
