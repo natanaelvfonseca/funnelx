@@ -86,7 +86,6 @@ const GOALS = [
     { value: 'aquecer_lead', label: 'Aquecer e transferir no momento certo' },
 ];
 const FIXED_AGENT_MODEL = 'gpt-4.1';
-const FIXED_AGENT_MODEL_LABEL = 'GPT-4.1';
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
     return <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">{children}</label>;
@@ -692,20 +691,6 @@ export default function AgentEditModal({ agent, isOpen, onClose, onUpdate }: Age
                                             <div className="md:col-span-2">
                                                 <FieldLabel>Instrucoes complementares</FieldLabel>
                                                 <Textarea rows={6} value={advancedInstructions} onChange={(e) => setAdvancedInstructions(e.target.value)} placeholder="Use este bloco para refinamentos pontuais que fazem sentido so para esta IA." />
-                                            </div>
-                                            <div>
-                                                <FieldLabel>Modelo</FieldLabel>
-                                                <div className="rounded-2xl border border-black/[0.08] bg-white px-4 py-4 text-sm text-gray-900 dark:border-white/[0.08] dark:bg-[#171718] dark:text-white">
-                                                    <div className="flex items-center justify-between gap-3">
-                                                        <span className="font-semibold">{FIXED_AGENT_MODEL_LABEL}</span>
-                                                        <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
-                                                            Padrao
-                                                        </span>
-                                                    </div>
-                                                    <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                                                        A Kogna usa esse modelo automaticamente.
-                                                    </p>
-                                                </div>
                                             </div>
                                             <div>
                                                 <FieldLabel>Temperatura</FieldLabel>
