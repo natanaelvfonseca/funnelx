@@ -225,6 +225,7 @@ export function OnboardingV2() {
         14: () => {
             if (!form.name.trim()) { setError('Informe seu nome.'); return false; }
             if (!form.email.trim() || !form.email.includes('@')) { setError('Informe um e-mail válido.'); return false; }
+            if (!form.phone.trim()) { setError('Informe seu WhatsApp.'); return false; }
             if (form.password.length < 6) { setError('A senha deve ter pelo menos 6 caracteres.'); return false; }
             if (form.password !== form.confirmPassword) { setError('As senhas não coincidem.'); return false; }
             return true;
@@ -864,7 +865,7 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
             <div className="space-y-3">
                 <div><FieldLabel>Nome completo</FieldLabel><Input placeholder="João Silva" value={form.name} onChange={e => set('name', e.target.value)} /></div>
                 <div><FieldLabel>E-mail</FieldLabel><Input type="email" placeholder="joao@empresa.com" value={form.email} onChange={e => set('email', e.target.value)} /></div>
-                <div><FieldLabel>WhatsApp <span className="text-gray-400 normal-case tracking-normal">(opcional)</span></FieldLabel><Input type="tel" placeholder="+55 11 99999-9999" value={form.phone} onChange={e => set('phone', e.target.value)} /></div>
+                <div><FieldLabel>WhatsApp</FieldLabel><Input type="tel" placeholder="DDD + NÚMERO" value={form.phone} onChange={e => set('phone', e.target.value)} /></div>
                 <div><FieldLabel>Senha</FieldLabel><Input type="password" placeholder="Mínimo 6 caracteres" value={form.password} onChange={e => set('password', e.target.value)} /></div>
                 <div><FieldLabel>Confirmar senha</FieldLabel><Input type="password" placeholder="Confirme sua senha" value={form.confirmPassword} onChange={e => set('confirmPassword', e.target.value)} /></div>
             </div>
