@@ -261,13 +261,13 @@ export function OnboardingV2() {
             if (files.length > 0 && data.agentId) {
                 const knowledgeData = new FormData();
                 files.forEach((file) => knowledgeData.append('files', file));
-                await fetch(`/api/agents/${data.agentId}/upload`, {
+                fetch(`/api/agents/${data.agentId}/upload`, {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${data.token}` },
                     body: knowledgeData,
                 }).catch(() => { });
             }
-            await refreshUser();
+            refreshUser().catch(() => { });
             go(15);
         } catch (e: any) {
             setError(e.message);

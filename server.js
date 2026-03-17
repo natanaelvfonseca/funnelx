@@ -4857,7 +4857,7 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
           agendaPolicy: agendaPolicy || "",
           objectionPlaybook: seededObjectionPlaybook,
         },
-        regeneratePlaybook: true,
+        regeneratePlaybook: false,
       });
       log(`[ONBOARDING-V2] ia_configs saved for org ${org.id}`);
     } catch (iaErr) {
@@ -4895,19 +4895,32 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
     const { password: _, ...safeUser } = user;
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
 
-    await Promise.allSettled([
-      runAdminEventAutomations('user_created', {
-        userId: user.id,
-        eventKey: `user_created:${user.id}`,
-      }),
-      runAdminEventAutomations('onboarding_completed', {
-        userId: user.id,
-        eventKey: `onboarding_completed:${user.id}`,
-      }),
-    ]);
-
     log(`[ONBOARDING-V2] New account created: ${email} (org: ${org.id})`);
     res.status(201).json({ token, user: { ...safeUser, organization: org }, role: 'user', agentId: createdAgentId });
+
+    runNonBlockingTask(`onboarding-playbook:${org.id}`, async () => {
+      const currentProfile = await getCanonicalCompanyProfile({ orgId: org.id, userId: user.id });
+      await upsertCanonicalCompanyProfile({
+        orgId: org.id,
+        userId: user.id,
+        payload: currentProfile,
+        regeneratePlaybook: true,
+      });
+      log(`[ONBOARDING-V2] playbook regenerated in background for org ${org.id}`);
+    });
+
+    runNonBlockingTask(`onboarding-automations:${user.id}`, async () => {
+      await Promise.allSettled([
+        runAdminEventAutomations('user_created', {
+          userId: user.id,
+          eventKey: `user_created:${user.id}`,
+        }),
+        runAdminEventAutomations('onboarding_completed', {
+          userId: user.id,
+          eventKey: `onboarding_completed:${user.id}`,
+        }),
+      ]);
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => { });
     log('[ONBOARDING-V2] register-and-save error: ' + err.message);
@@ -5524,6 +5537,16 @@ async function runAdminEventAutomations(triggerEvent, { userId, eventKey, extraV
       extraVars,
     });
   }
+}
+
+function runNonBlockingTask(label, task) {
+  setTimeout(() => {
+    Promise.resolve()
+      .then(task)
+      .catch((err) => {
+        log(`[BG ${label}] ${err?.message || err}`);
+      });
+  }, 0);
 }
 
 function getOptionalUserIdFromAuthHeader(req) {
@@ -6754,16 +6777,17 @@ app.post("/api/register", async (req, res) => {
     );
 
     log(`User registered successfully: ${user.id} (${email})`);
-    await runAdminEventAutomations('user_created', {
-      userId: user.id,
-      eventKey: `user_created:${user.id}`,
-    }).catch((automationErr) => {
-      log('[AUTO EVENT user_created] ' + automationErr.message);
-    });
     res.json({
       user: { ...safeUser, organization },
       role: user.role,
       token,
+    });
+
+    runNonBlockingTask(`register-automation:${user.id}`, async () => {
+      await runAdminEventAutomations('user_created', {
+        userId: user.id,
+        eventKey: `user_created:${user.id}`,
+      });
     });
   } catch (err) {
     log("Register error: " + err.toString());
