@@ -699,8 +699,12 @@ function composeAgentSystemPrompt({
   agentType,
   customInstructions = "",
 }) {
-  const playbook = buildFallbackOperationalPlaybook(profile, profile.improvementFeedback || []);
-  const objectionSummary = (profile.objectionPlaybook || playbook.objection_playbook || [])
+  const fallback = buildFallbackOperationalPlaybook(profile, profile.improvementFeedback || []);
+  const responsePlaybook = profile.responsePlaybook || fallback.response_playbook || {};
+  const qualificationStrategy = profile.qualificationStrategy || fallback.qualification_strategy || {};
+  const offerStrategy = profile.offerStrategy || fallback.offer_strategy || {};
+  const handoffStrategy = profile.handoffStrategy || fallback.handoff_strategy || {};
+  const objectionSummary = (profile.objectionPlaybook || fallback.objection_playbook || [])
     .slice(0, 3)
     .map((item) => `${item.label}: ${item.recommended_approach}`)
     .join("\n");
@@ -708,12 +712,22 @@ function composeAgentSystemPrompt({
   return `Voce e ${agentName || profile.agentName || "um agente da Kogna"}, agente ${agentType || "comercial"} da empresa ${profile.companyName || "cliente Kogna"}.
 
 Missao principal: ${profile.agentObjective || "gerar avancos comerciais no WhatsApp"}.
-Oferta principal: ${profile.companyProduct || "entender a oferta e conduzir o proximo passo"}.
-ICP / publico ideal: ${profile.targetAudience || "descobrir o fit ideal ao longo da conversa"}.
+Oferta principal: ${offerStrategy.primary_offer || profile.companyProduct || "entender a oferta e conduzir o proximo passo"}.
+ICP / publico ideal: ${qualificationStrategy.icp || profile.targetAudience || "descobrir o fit ideal ao longo da conversa"}.
+Dor central: ${qualificationStrategy.pain_points || profile.customerPain || "entender a principal dor do lead"}.
+Desejo / resultado: ${profile.customerDesires || "mapear o resultado que o lead quer atingir"}.
+Diferenciais: ${offerStrategy.benefit_anchor || profile.differentiators || "conectar valor, contexto e proximo passo"}.
+Preco / ticket: ${profile.productPrice ? `R$ ${profile.productPrice}` : "nao informado"}.
 Tom de voz: ${profile.voiceTone || "consultivo"}.
 Quando nao souber: ${profile.unknownBehavior || "ganhe contexto e ofereca proximo passo seguro"}.
-Politica de humano: ${profile.humanHandoffPolicy || "sinalize prioridade humana, mas continue apoiando ate o takeover"}.
-Regras de resposta: ${(playbook.response_playbook?.principles || []).join(" | ")}
+Sinais de compra: ${qualificationStrategy.buying_signals || profile.buyingSignals || "pedido de preco, agenda, urgencia e comparacao"}.
+Definicao de bom lead: ${qualificationStrategy.good_lead_definition || profile.qualificationCriteria || "fit, dor clara, timing e abertura para avancar"}.
+CTA preferida: ${qualificationStrategy.next_step || profile.idealNextStep || "levar para o proximo passo mais simples e valioso"}.
+Uso de imagem e catalogo: ${offerStrategy.use_image_when || "quando houver pedido de produto, comparacao ou contexto visual"}.
+Uso de promocao: ${offerStrategy.use_promotion_when || "quando houver intencao, objecao de preco ou promocao vigente"}.
+Politica de humano: ${handoffStrategy.policy || profile.humanHandoffPolicy || "sinalize prioridade humana, mas continue apoiando ate o takeover"}.
+Operacao com humano: ${handoffStrategy.human_signal_message || "nao silencie a conversa; continue conduzindo ate takeover manual real"}.
+Regras de resposta: ${(responsePlaybook.principles || []).join(" | ")}
 Playbook de objecoes:
 ${objectionSummary || "Reposicione valor, dor e proximo passo com objetividade."}
 ${profile.restrictions ? `Nunca diga: ${profile.restrictions}` : ""}
@@ -2635,6 +2649,106 @@ async function updateLeadMemory(orgId, leadId, intent, extractedMemory) {
 
 function normalizePhoneDigits(value) {
   return String(value || '').replace(/\D/g, '');
+}
+
+const KOGNA_SYSTEM_ORIGIN_MARKER = "\u200B\u200C\u200D\u2060\u2061\u2062\u2063";
+
+function buildPhoneCandidateList(value) {
+  const digits = normalizePhoneDigits(value);
+  if (!digits) return [];
+
+  const candidates = new Set([digits]);
+  if (digits.startsWith("55") && digits.length > 11) {
+    candidates.add(digits.slice(2));
+  } else if (!digits.startsWith("55")) {
+    candidates.add(`55${digits}`);
+  }
+  return [...candidates].filter(Boolean);
+}
+
+function markSystemOriginMessage(message) {
+  const text = String(message || "");
+  return text.includes(KOGNA_SYSTEM_ORIGIN_MARKER)
+    ? text
+    : `${text}${KOGNA_SYSTEM_ORIGIN_MARKER}`;
+}
+
+function hasKognaSystemOriginMarker(message) {
+  return String(message || "").includes(KOGNA_SYSTEM_ORIGIN_MARKER);
+}
+
+async function isKognaInternalOrigin(remoteJid) {
+  const remoteDigits = String(remoteJid || "").split("@")[0];
+  const candidates = buildPhoneCandidateList(remoteDigits);
+  if (candidates.length === 0) return false;
+
+  const configuredNumbers = normalizeStringList(process.env.KOGNA_INTERNAL_WHATSAPP_NUMBERS || "")
+    .flatMap((entry) => buildPhoneCandidateList(entry));
+  if (configuredNumbers.some((entry) => candidates.includes(entry))) {
+    return true;
+  }
+
+  const adminUserRes = await pool.query(
+    `SELECT 1
+       FROM users
+      WHERE role = 'admin'
+        AND (
+          regexp_replace(COALESCE(personal_phone, ''), '\\D', '', 'g') = ANY($1::text[])
+          OR regexp_replace(COALESCE(company_phone, ''), '\\D', '', 'g') = ANY($1::text[])
+        )
+      LIMIT 1`,
+    [candidates],
+  ).catch(() => ({ rows: [] }));
+
+  return adminUserRes.rows.length > 0;
+}
+
+async function getInboundIgnoreReason({ remoteJid, content }) {
+  if (hasKognaSystemOriginMarker(content)) {
+    return "system-origin";
+  }
+
+  if (await isKognaInternalOrigin(remoteJid)) {
+    return "kogna-internal-number";
+  }
+
+  return null;
+}
+
+async function cleanupFailedOnboardingProvisioning({ orgId, userId }) {
+  if (!orgId && !userId) return;
+
+  await pool.query(
+    `UPDATE organizations
+        SET owner_id = NULL
+      WHERE id = $1`,
+    [orgId],
+  ).catch(() => { });
+
+  await pool.query(
+    `DELETE FROM agents
+      WHERE organization_id = $1`,
+    [orgId],
+  ).catch(() => { });
+
+  await pool.query(
+    `DELETE FROM ia_configs
+      WHERE organization_id = $1
+         OR user_id = $2`,
+    [orgId, userId],
+  ).catch(() => { });
+
+  await pool.query(
+    `DELETE FROM users
+      WHERE id = $1`,
+    [userId],
+  ).catch(() => { });
+
+  await pool.query(
+    `DELETE FROM organizations
+      WHERE id = $1`,
+    [orgId],
+  ).catch(() => { });
 }
 
 function formatConversationStage(stage) {
@@ -4754,6 +4868,9 @@ IMPORTANTE:
 // POST /api/onboarding/register-and-save — creates account + org + agent from all onboarding data
 app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
   const client = await pool.connect();
+  let committedProvisioning = false;
+  let org = null;
+  let user = null;
   try {
     const {
       name, email, phone, password,
@@ -4776,7 +4893,6 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
     await client.query('BEGIN');
 
     // Use SAVEPOINT so we can recover from a failed INSERT without aborting the whole transaction
-    let org;
     await client.query('SAVEPOINT sp_org');
     try {
       const r = await client.query(
@@ -4803,7 +4919,7 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
        VALUES ($1, $2, $3, $4, 'user', 100) RETURNING *`,
       [name, email.toLowerCase(), hashedPassword, org.id]
     );
-    const user = userRes.rows[0];
+    user = userRes.rows[0];
 
     await client.query('UPDATE organizations SET owner_id = $1 WHERE id = $2', [user.id, org.id]);
 
@@ -4811,11 +4927,12 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
     await client.query(`UPDATE users SET onboarding_completed = true WHERE id = $1`, [user.id]).catch(() => { });
 
     await client.query('COMMIT');
+    committedProvisioning = true;
 
     // Best-effort: save whatsapp number in personal_phone column
     if (phone) pool.query(`UPDATE users SET personal_phone=$1 WHERE id=$2`, [phone, user.id]).catch(() => { });
 
-    // ── Optional: save AI config (best-effort) ────────────────────────────────
+    // ── Mandatory: seed canonical company profile before creating the agent ───
     const seededObjectionPlaybook = Array.isArray(objectionPlaybook) && objectionPlaybook.length > 0
       ? objectionPlaybook
       : normalizeStringList(objections).map((label, index) => ({
@@ -4826,87 +4943,103 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
         priority: index + 1,
       }));
 
-    try {
-      await ensureKognaAICoreTables();
-      await upsertCanonicalCompanyProfile({
-        orgId: org.id,
-        userId: user.id,
-        payload: {
-          companyName,
-          agentName: aiName,
-          companyProduct: mainProduct,
-          revenueGoal,
-          agentObjective,
-          unknownBehavior,
-          voiceTone,
-          restrictions: restrictions || "",
-          customerPain: customerPain || "",
-          customerDesires: customerDesires || "",
-          differentiators: differentiators || "",
-          productPrice: productPrice || "",
-          targetAudience: Array.isArray(targetAudience) ? targetAudience.join(', ') : targetAudience || "",
-          industry: industry || "",
-          industryDetail: industryDetail || "",
-          channels: channels || [],
-          salesCycle: salesCycle || "",
-          humanHandoffPolicy: humanHandoffPolicy || "",
-          buyingSignals: buyingSignals || "",
-          qualificationCriteria: qualificationCriteria || "",
-          objectionHandling: objectionHandling || "",
-          idealNextStep: idealNextStep || "",
-          agendaPolicy: agendaPolicy || "",
-          objectionPlaybook: seededObjectionPlaybook,
-        },
-        regeneratePlaybook: false,
-      });
-      log(`[ONBOARDING-V2] ia_configs saved for org ${org.id}`);
-    } catch (iaErr) {
-      log('[ONBOARDING-V2] ia_configs save failed: ' + iaErr.message);
-    }
+    await ensureKognaAICoreTables();
+    const seededProfile = await upsertCanonicalCompanyProfile({
+      orgId: org.id,
+      userId: user.id,
+      payload: {
+        companyName,
+        agentName: aiName,
+        companyProduct: mainProduct,
+        revenueGoal,
+        agentObjective,
+        unknownBehavior,
+        voiceTone,
+        restrictions: restrictions || "",
+        customerPain: customerPain || "",
+        customerDesires: customerDesires || "",
+        differentiators: differentiators || "",
+        productPrice: productPrice || "",
+        targetAudience: Array.isArray(targetAudience) ? targetAudience.join(', ') : targetAudience || "",
+        industry: industry || "",
+        industryDetail: industryDetail || "",
+        channels: channels || [],
+        salesCycle: salesCycle || "",
+        humanHandoffPolicy: humanHandoffPolicy || "",
+        buyingSignals: buyingSignals || "",
+        qualificationCriteria: qualificationCriteria || "",
+        objectionHandling: objectionHandling || "",
+        idealNextStep: idealNextStep || "",
+        agendaPolicy: agendaPolicy || "",
+        objectionPlaybook: seededObjectionPlaybook,
+      },
+      regeneratePlaybook: false,
+    });
+    log(`[ONBOARDING-V2] canonical profile saved for org ${org.id}`);
 
-    // ── Optional: create first agent (best-effort) ────────────────────────────
-    let createdAgentId = null;
-    try {
-      const profile = await getCanonicalCompanyProfile({ orgId: org.id, userId: user.id });
-      const systemPrompt = composeAgentSystemPrompt({
-        profile,
-        agentName: aiName || 'Agente IA',
-        agentType: 'sdr',
-      });
+    // ── Mandatory: create first agent hydrated from onboarding profile ────────
+    const createdAgent = {
+      id: null,
+      name: aiName || seededProfile.agentName || 'Agente IA',
+      type: 'sdr',
+    };
+    const systemPrompt = composeAgentSystemPrompt({
+      profile: seededProfile,
+      agentName: createdAgent.name,
+      agentType: createdAgent.type,
+    });
 
-      const agentInsert = await pool.query(
-        `INSERT INTO agents (organization_id, name, type, status, system_prompt, advanced_instructions, model_config)
-         VALUES ($1, $2, 'sdr', 'active', $3, $4, $5)
-         RETURNING id`,
-        [
-          org.id,
-          aiName || 'Agente IA',
-          systemPrompt,
-          profile.advancedInstructions || null,
-          JSON.stringify({ model: DEFAULT_AGENT_MODEL, temperature: 0.45 }),
-        ]
-      );
-      createdAgentId = agentInsert.rows[0]?.id || null;
-      log(`[ONBOARDING-V2] Agent created for org ${org.id}`);
-    } catch (agentErr) {
-      log('[ONBOARDING-V2] agent insert skipped: ' + agentErr.message);
-    }
+    const agentInsert = await pool.query(
+      `INSERT INTO agents (organization_id, name, type, status, system_prompt, advanced_instructions, model_config)
+       VALUES ($1, $2, 'sdr', 'active', $3, $4, $5)
+       RETURNING id`,
+      [
+        org.id,
+        createdAgent.name,
+        systemPrompt,
+        seededProfile.advancedInstructions || null,
+        JSON.stringify({ model: DEFAULT_AGENT_MODEL, temperature: 0.45 }),
+      ]
+    );
+    createdAgent.id = agentInsert.rows[0]?.id || null;
+    log(`[ONBOARDING-V2] agent hydrated from onboarding profile for org ${org.id}`);
 
     const { password: _, ...safeUser } = user;
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
 
     log(`[ONBOARDING-V2] New account created: ${email} (org: ${org.id})`);
-    res.status(201).json({ token, user: { ...safeUser, organization: org }, role: 'user', agentId: createdAgentId });
+    res.status(201).json({ token, user: { ...safeUser, organization: org }, role: 'user', agentId: createdAgent.id });
 
     runNonBlockingTask(`onboarding-playbook:${org.id}`, async () => {
       const currentProfile = await getCanonicalCompanyProfile({ orgId: org.id, userId: user.id });
-      await upsertCanonicalCompanyProfile({
+      const hydratedProfile = await upsertCanonicalCompanyProfile({
         orgId: org.id,
         userId: user.id,
         payload: currentProfile,
         regeneratePlaybook: true,
       });
-      log(`[ONBOARDING-V2] playbook regenerated in background for org ${org.id}`);
+      if (createdAgent.id) {
+        const nextSystemPrompt = composeAgentSystemPrompt({
+          profile: hydratedProfile,
+          agentName: createdAgent.name,
+          agentType: createdAgent.type,
+        });
+        await pool.query(
+          `UPDATE agents
+              SET system_prompt = $1,
+                  advanced_instructions = $2,
+                  updated_at = NOW()
+            WHERE id = $3
+              AND organization_id = $4`,
+          [
+            nextSystemPrompt,
+            hydratedProfile.advancedInstructions || null,
+            createdAgent.id,
+            org.id,
+          ],
+        );
+      }
+      log(`[ONBOARDING-V2] playbook regenerated and agent prompt synced for org ${org.id}`);
     });
 
     runNonBlockingTask(`onboarding-automations:${user.id}`, async () => {
@@ -4922,7 +5055,11 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
       ]);
     });
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => { });
+    if (!committedProvisioning) {
+      await client.query('ROLLBACK').catch(() => { });
+    } else {
+      await cleanupFailedOnboardingProvisioning({ orgId: org?.id, userId: user?.id });
+    }
     log('[ONBOARDING-V2] register-and-save error: ' + err.message);
     res.status(500).json({ error: 'Erro ao criar conta: ' + err.message });
   } finally {
@@ -5290,15 +5427,16 @@ async function sendEmail(to, subject, html) {
   log(`[SMTP] Sent to ${to}: ${subject}`);
 }
 
-async function sendWhatsAppMsg(instanceName, phone, message) {
+async function sendWhatsAppMsg(instanceName, phone, message, options = {}) {
   const EVO_URL = process.env.EVOLUTION_API_URL;
   const EVO_KEY = process.env.EVOLUTION_API_KEY;
   if (!EVO_URL || !EVO_KEY) { log('[WA] EVOLUTION env vars missing'); return; }
   const cleaned = phone.replace(/\D/g, '');
+  const finalMessage = options.systemOrigin ? markSystemOriginMessage(message) : message;
   await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY },
-    body: JSON.stringify({ number: cleaned, text: message }),
+    body: JSON.stringify({ number: cleaned, text: finalMessage }),
   });
 }
 
@@ -5448,6 +5586,7 @@ async function dispatchAutomationToRecipient(automation, recipient, options = {}
   const channels = Array.isArray(automation?.channels) ? automation.channels : [];
   const eventKey = options.eventKey || null;
   const extraVars = options.extraVars || {};
+  const systemOrigin = options.systemOrigin === true;
   const vars = getAutomationTemplateVars(recipient, extraVars);
   const finalMessage = interpolateTemplate(automation.message_template || '', vars);
   const errors = [];
@@ -5480,7 +5619,7 @@ async function dispatchAutomationToRecipient(automation, recipient, options = {}
         if (!phone) {
           errors.push('whatsapp: usuario sem numero cadastrado');
         } else {
-          await sendWhatsAppMsg(automation.wa_instance, phone, finalMessage);
+          await sendWhatsAppMsg(automation.wa_instance, phone, finalMessage, { systemOrigin });
           delivered = true;
         }
       }
@@ -5506,7 +5645,7 @@ async function dispatchAutomationToRecipient(automation, recipient, options = {}
   };
 }
 
-async function runAdminEventAutomations(triggerEvent, { userId, eventKey, extraVars = {} } = {}) {
+async function runAdminEventAutomations(triggerEvent, { userId, eventKey, extraVars = {}, systemOrigin = true } = {}) {
   if (!triggerEvent || !userId) return;
 
   await ensureAdminAutomationColumns();
@@ -5535,6 +5674,7 @@ async function runAdminEventAutomations(triggerEvent, { userId, eventKey, extraV
     await dispatchAutomationToRecipient(automation, recipient, {
       eventKey,
       extraVars,
+      systemOrigin,
     });
   }
 }
@@ -10064,16 +10204,8 @@ app.post("/api/webhooks/whatsapp", async (req, res) => {
         return res.json({ success: true });
       }
 
-      // --- AUTO LEAD CREATION (CRM) ---
-      // Ensure a lead exists in the CRM for this WhatsApp contact.
-      // This runs fire-and-forget (no await) to not slow the message path.
       const orgId = instance.organization_id;
       const pushName = event.data?.pushName || event.data?.notify || data?.pushName || data?.notify || null;
-      if (orgId) {
-        ensureLeadFromWhatsApp(remoteJid, pushName, orgId)
-          .catch(e => log(`[AUTO-LEAD] Error: ${e.message}`));
-      }
-      // --- END AUTO LEAD CREATION ---
 
       let finalUserText = "";
       let imageUrl = null;
@@ -10214,6 +10346,24 @@ app.post("/api/webhooks/whatsapp", async (req, res) => {
         log(`[AI] No content to process.`);
         return res.json({ success: true });
       }
+
+      const ignoreReason = await getInboundIgnoreReason({
+        remoteJid,
+        content: finalUserText,
+      });
+      if (ignoreReason) {
+        log(`[AI GUARD] Ignoring inbound message from ${remoteJid} on ${instanceName}: ${ignoreReason}`);
+        return res.json({ success: true, ignored: ignoreReason });
+      }
+
+      // --- AUTO LEAD CREATION (CRM) ---
+      // Ensure a lead exists in the CRM for this WhatsApp contact.
+      // This runs fire-and-forget (no await) to not slow the message path.
+      if (orgId) {
+        ensureLeadFromWhatsApp(remoteJid, pushName, orgId)
+          .catch(e => log(`[AUTO-LEAD] Error: ${e.message}`));
+      }
+      // --- END AUTO LEAD CREATION ---
 
       // Deduct Koins for Input Processing (Hearing/Seeing)
       if (reductionAmount > 0) {
@@ -11609,6 +11759,15 @@ app.post("/api/evolution/webhook", async (req, res) => {
       return res.status(200).send("OK");
     }
 
+    const ignoreReason = await getInboundIgnoreReason({
+      remoteJid,
+      content,
+    });
+    if (ignoreReason) {
+      log(`[AI GUARD] Ignoring inbound message from ${remoteJid} on ${instanceName}: ${ignoreReason}`);
+      return res.status(200).send("OK");
+    }
+
     log(
       `[WEBHOOK] Message from ${remoteJid} (${pushName}): ${content.substring(0, 50)}...`,
     );
@@ -11633,13 +11792,6 @@ app.post("/api/evolution/webhook", async (req, res) => {
     const userId = instanceRes.rows[0].user_id;
     const instanceOrgId = instanceRes.rows[0].organization_id;
 
-    // ── Auto-create lead in CRM (BEFORE agent check) ──────────────────────────
-    // This runs even if no agent is linked to the instance yet
-    if (instanceOrgId && remoteJid && !remoteJid.includes('g.us')) {
-      ensureLeadFromWhatsApp(remoteJid, pushName, instanceOrgId)
-        .catch(e => log(`[WEBHOOK] Auto-lead error: ${e.message}`));
-    }
-
     // Find Active Agent for this instance
     const agentRes = await pool.query(
       "SELECT * FROM agents WHERE whatsapp_instance_id = $1 AND status = 'active' LIMIT 1",
@@ -11653,6 +11805,12 @@ app.post("/api/evolution/webhook", async (req, res) => {
     }
 
     const agent = agentRes.rows[0];
+
+    // ── Auto-create lead in CRM only for valid external inbound messages ──────
+    if (instanceOrgId && remoteJid && !remoteJid.includes('g.us')) {
+      ensureLeadFromWhatsApp(remoteJid, pushName, instanceOrgId)
+        .catch(e => log(`[WEBHOOK] Auto-lead error: ${e.message}`));
+    }
 
     // 4. Log User Message to DB
     // Evolution sends 'id' in data.key.id
