@@ -20,7 +20,7 @@ import cron from "node-cron";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Configure Multer â€” use memoryStorage for Vercel (read-only filesystem)
+// Configure Multer — use memoryStorage for Vercel (read-only filesystem)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
@@ -805,7 +805,7 @@ const ensureCoachingTables = async () => {
   }
 };
 
-// â”€â”€ CONVERSATION INTELLIGENCE LAYER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── CONVERSATION INTELLIGENCE LAYER ──────────────────────────────────────────
 const ensureConversationIntelligenceTables = async () => {
   try {
     log("[CIL] Ensuring Conversation Intelligence tables exist...");
@@ -883,12 +883,12 @@ const ensureConversationIntelligenceTables = async () => {
     await pool.query(`ALTER TABLE conversation_intelligence ADD COLUMN IF NOT EXISTS processed_by_cie BOOLEAN DEFAULT FALSE`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ci_processed ON conversation_intelligence(organization_id, processed_by_cie)`);
 
-    // â”€â”€ New extraction fields (Kogna Intelligence Panel) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── New extraction fields (Kogna Intelligence Panel) ──────────────────────
     await pool.query(`ALTER TABLE conversation_intelligence ADD COLUMN IF NOT EXISTS lead_interest_category TEXT`);
     await pool.query(`ALTER TABLE conversation_intelligence ADD COLUMN IF NOT EXISTS industry_segment TEXT`);
 
 
-    // â”€â”€ CIE: Conversation Intelligence Engine tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── CIE: Conversation Intelligence Engine tables ──────────────────────────
 
     // Periodic aggregated snapshots per org
     await pool.query(`
@@ -982,7 +982,7 @@ const ensureOpportunityScoresTable = async () => {
   }
 };
 
-// â”€â”€ CIL: AI Analysis Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── CIL: AI Analysis Engine ───────────────────────────────────────────────────
 
 /**
  * Calls OpenAI to extract structured sales intelligence from a message.
@@ -992,23 +992,23 @@ async function analyzeMessageIntelligence(messageContent, context = {}) {
   try {
     if (!messageContent || !messageContent.trim()) return null;
 
-    const systemPrompt = `VocÃª Ã© um especialista em anÃ¡lise de conversas de vendas. Analise a mensagem do lead e retorne um JSON com exatamente os campos abaixo. Seja objetivo e preciso.
+    const systemPrompt = `Você é um especialista em análise de conversas de vendas. Analise a mensagem do lead e retorne um JSON com exatamente os campos abaixo. Seja objetivo e preciso.
 
-Campos obrigatÃ³rios:
+Campos obrigatórios:
 - intent: "informacao" | "comparacao" | "compra" | "suporte" | "outro"
 - product_interest: string (produto mencionado ou null)
 - stage: "novo_lead" | "qualificacao" | "interesse" | "proposta" | "negociacao" | "fechamento"
 - urgency: "baixa" | "media" | "alta"
 - sentiment: "positivo" | "neutro" | "negativo"
-- objections: array de strings com objeÃ§Ãµes detectadas (ex: ["preco_alto", "sem_tempo"])
+- objections: array de strings com objeções detectadas (ex: ["preco_alto", "sem_tempo"])
 - purchase_probability: number de 0 a 1
 - estimated_ticket: number estimado em BRL ou null
-- decision_maker: boolean (lead parece ser o tomador de decisÃ£o?)
+- decision_maker: boolean (lead parece ser o tomador de decisão?)
 - event_types: array de eventos detectados dentre: ["lead_started_conversation","lead_requested_information","lead_requested_price","lead_showed_interest","lead_objected_price","lead_objected_time","lead_objected_trust","lead_requested_proposal","lead_ready_to_buy","lead_stopped_responding","lead_closed_won","lead_closed_lost"]
 
-Contexto adicional disponÃ­vel: ${JSON.stringify(context)}
+Contexto adicional disponível: ${JSON.stringify(context)}
 
-Responda APENAS com o JSON, sem markdown, sem explicaÃ§Ãµes.`;
+Responda APENAS com o JSON, sem markdown, sem explicações.`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -1160,9 +1160,9 @@ async function processConversationIntelligence(messageContent, context) {
     log(`[CIL] processConversationIntelligence error: ${err.message}`);
   }
 }
-// â”€â”€ END CIL Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END CIL Engine ────────────────────────────────────────────────────────────
 
-// â”€â”€ OPPORTUNITY SCORING ENGINE (OSE) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── OPPORTUNITY SCORING ENGINE (OSE) ──────────────────────────────────────────
 
 /**
  * Calculates the deterministic Opportunity Score for a lead based on CIL data.
@@ -1194,20 +1194,20 @@ async function calculateOpportunityScore(orgId, leadId) {
     // --- POSITIVE SIGNALS ---
     if (latestMsg.intent === 'compra') addSignal('intent_compra', 25);
 
-    const hasPriceRequest = messages.some(m => m.stage === 'proposta' || m.intent === 'comparaÃ§Ã£o');
+    const hasPriceRequest = messages.some(m => m.stage === 'proposta' || m.intent === 'comparação');
     if (hasPriceRequest) addSignal('perguntou_preco_ou_forma_pagamento', 20);
 
     if (latestMsg.product_interest && latestMsg.product_interest !== 'N/A') addSignal('interesse_produto_claro', 15);
 
     if (latestMsg.urgency === 'alta') addSignal('urgencia_alta', 15);
-    else if (latestMsg.urgency === 'mÃ©dia') addSignal('urgencia_media', 5);
+    else if (latestMsg.urgency === 'média') addSignal('urgencia_media', 5);
 
     if (latestMsg.stage === 'proposta' && latestMsg.intent === 'compra') addSignal('pediu_proposta', 25);
 
     // --- NEGATIVE SIGNALS ---
-    if (latestMsg.intent === 'informaÃ§Ã£o') addSignal('apenas_pesquisando', -5);
+    if (latestMsg.intent === 'informação') addSignal('apenas_pesquisando', -5);
 
-    const hasPriceObjection = latestMsg.objections && latestMsg.objections.some(o => o.toLowerCase().includes('preÃ§o') || o.toLowerCase().includes('caro') || o.toLowerCase().includes('valor'));
+    const hasPriceObjection = latestMsg.objections && latestMsg.objections.some(o => o.toLowerCase().includes('preço') || o.toLowerCase().includes('caro') || o.toLowerCase().includes('valor'));
     if (hasPriceObjection) addSignal('objecao_preco', -10);
 
     const hasTrustObjection = latestMsg.objections && latestMsg.objections.some(o => o.toLowerCase().includes('confian') || o.toLowerCase().includes('garantia') || o.toLowerCase().includes('seguro'));
@@ -1223,7 +1223,7 @@ async function calculateOpportunityScore(orgId, leadId) {
     // Temperature
     const temperature = score >= 70 ? 'quente' : score >= 40 ? 'morno' : 'frio';
 
-    // Target Pipeline Stage mapping â€” uses real org columns instead of hardcoded names
+    // Target Pipeline Stage mapping — uses real org columns instead of hardcoded names
     let targetStage = null; // resolved below after fetching real columns
     try {
       const colsRes = await pool.query(
@@ -1233,7 +1233,7 @@ async function calculateOpportunityScore(orgId, leadId) {
       const cols = colsRes.rows.map(r => r.title);
       if (cols.length > 0) {
         // Map score to column by relative position:
-        // 0â€“20 â†’ col[0], 21â€“40 â†’ col[1], 41â€“60 â†’ col[2], 61â€“80 â†’ col[3], 81â€“100 â†’ col[4]
+        // 0–20 → col[0], 21–40 → col[1], 41–60 → col[2], 61–80 → col[3], 81–100 → col[4]
         let targetColIndex = 0;
         if (score >= 81 && cols.length > 4) targetColIndex = 4;
         else if (score >= 61 && cols.length > 3) targetColIndex = 3;
@@ -1288,11 +1288,11 @@ async function calculateOpportunityScore(orgId, leadId) {
   }
 }
 
-// â”€â”€ END OSE Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END OSE Engine ────────────────────────────────────────────────────────────
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// AI FOLLOW-UP ENGINE â€” Smart Revenue Recovery System
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
+// AI FOLLOW-UP ENGINE — Smart Revenue Recovery System
+// ══════════════════════════════════════════════════════════════════════════════
 
 async function ensureFollowupEngineTables() {
   try {
@@ -1729,21 +1729,21 @@ async function generateAIFollowupMessage(queueEntry, step) {
 
     const history = recentMessages.rows.reverse().map(m => `${m.role === 'user' ? 'Cliente' : 'Vendedor'}: ${m.content}`).join('\n');
 
-    const prompt = `VocÃª Ã© um assistente de vendas da empresa. Gere uma mensagem de follow-up personalizada e natural.
+    const prompt = `Você é um assistente de vendas da empresa. Gere uma mensagem de follow-up personalizada e natural.
 
 Contexto:
 - Temperatura do lead: ${queueEntry.conversation_temperature}
-- EstÃ¡gio no funil: ${queueEntry.pipeline_stage}
-- Produto de interesse detectado: ${queueEntry.detected_product_interest || 'nÃ£o identificado'}
-- ObjeÃ§Ã£o detectada: ${queueEntry.detected_objection || 'nenhuma'}
+- Estágio no funil: ${queueEntry.pipeline_stage}
+- Produto de interesse detectado: ${queueEntry.detected_product_interest || 'não identificado'}
+- Objeção detectada: ${queueEntry.detected_objection || 'nenhuma'}
 - Score de oportunidade: ${queueEntry.intent_score}/100
 - Tipo de follow-up recomendado: ${step.followup_type}
-- SilÃªncio hÃ¡: ${Math.round((Date.now() - new Date(queueEntry.last_customer_message_at).getTime()) / 60000)} minutos
+- Silêncio há: ${Math.round((Date.now() - new Date(queueEntry.last_customer_message_at).getTime()) / 60000)} minutos
 
-Ãšltimas mensagens da conversa:
+Últimas mensagens da conversa:
 ${history}
 
-Gere uma mensagem de follow-up curta (mÃ¡ximo 3 parÃ¡grafos), natural, sem ser invasivo, adequada ao contexto. NÃ£o use emojis em excesso. Responda SOMENTE com o texto da mensagem.`;
+Gere uma mensagem de follow-up curta (máximo 3 parágrafos), natural, sem ser invasivo, adequada ao contexto. Não use emojis em excesso. Responda SOMENTE com o texto da mensagem.`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -1767,7 +1767,7 @@ async function sendFollowupWhatsApp(instanceName, remoteJid, message, mediaUrl) 
     const evoBase = process.env.EVOLUTION_API_URL;
     const evoKey = process.env.EVOLUTION_API_KEY;
     if (!evoBase || !evoKey) {
-      log('[FOLLOWUP] Missing Evolution API config â€” cannot send message');
+      log('[FOLLOWUP] Missing Evolution API config — cannot send message');
       return false;
     }
 
@@ -1880,7 +1880,7 @@ async function processFollowupQueue() {
 
           log(`[FOLLOWUP] Sent follow-up step ${queueEntry.current_step} to ${queueEntry.remote_jid}`);
         } else {
-          // Mark as failed temporarily â€” retry on next run
+          // Mark as failed temporarily — retry on next run
           await pool.query(`UPDATE followup_queue SET updated_at = NOW() WHERE id = $1`, [queueEntry.id]);
         }
       } catch (itemErr) {
@@ -1930,11 +1930,11 @@ async function cancelFollowupOnReply(orgId, remoteJid, replyTimestamp) {
   }
 }
 
-// â”€â”€ END AI Follow-up Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END AI Follow-up Engine ────────────────────────────────────────────────────
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
 // CONVERSATION INTELLIGENCE ENGINE (CIE)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Compute aggregated conversation insights for a single org.
@@ -2000,7 +2000,7 @@ async function computeOrgInsights(orgId, periodDays = 30) {
  */
 async function extractSalesPatterns(orgId) {
   try {
-    // Get won conversations â€” find their conversation_ids
+    // Get won conversations — find their conversation_ids
     const wonConvs = await pool.query(`
       SELECT DISTINCT conversation_id FROM conversation_intelligence
       WHERE organization_id = $1 AND closed_won = TRUE AND conversation_id IS NOT NULL
@@ -2053,7 +2053,7 @@ async function extractSalesPatterns(orgId) {
  */
 async function computeBehaviorPatterns(orgId) {
   try {
-    // Pattern 1: Fast responders vs slow â€” compare win rate
+    // Pattern 1: Fast responders vs slow — compare win rate
     const fastReply = await pool.query(`
       SELECT
         COUNT(*) FILTER (WHERE sbg.conversion_result = 'won') AS won_fast,
@@ -2078,7 +2078,7 @@ async function computeBehaviorPatterns(orgId) {
       const fastRate = fastWins / fastTotal;
       const slowRate = slowWins / slowTotal;
       const lift = Math.round((fastRate - slowRate) * 100);
-      const desc = `Leads respondidos em atÃ© 5 minutos convertem ${Math.abs(lift)}% ${lift > 0 ? 'a mais' : 'a menos'} que respostas acima de 30 minutos.`;
+      const desc = `Leads respondidos em até 5 minutos convertem ${Math.abs(lift)}% ${lift > 0 ? 'a mais' : 'a menos'} que respostas acima de 30 minutos.`;
       await pool.query(`
         INSERT INTO behavior_patterns (organization_id, pattern_type, pattern_description, impact_score, sample_size, metadata)
         VALUES ($1, 'response_speed', $2, $3, $4, $5)
@@ -2112,7 +2112,7 @@ async function computeBehaviorPatterns(orgId) {
       const priceRate = priceWon / priceTotal;
       const noPriceRate = noPriceWon / noPriceTotal;
       const diff = Math.round((priceRate - noPriceRate) * 100);
-      const desc = `Leads com objeÃ§Ã£o de preÃ§o convertem ${Math.abs(diff)}% ${diff < 0 ? 'a menos' : 'a mais'} do que sem essa objeÃ§Ã£o.`;
+      const desc = `Leads com objeção de preço convertem ${Math.abs(diff)}% ${diff < 0 ? 'a menos' : 'a mais'} do que sem essa objeção.`;
       await pool.query(`
         INSERT INTO behavior_patterns (organization_id, pattern_type, pattern_description, impact_score, sample_size, metadata)
         VALUES ($1, 'price_objection', $2, $3, $4, $5)
@@ -2135,7 +2135,7 @@ async function computeBehaviorPatterns(orgId) {
     for (const row of tempData.rows) {
       if (parseInt(row.total) >= 5) {
         const rate = Math.round((parseInt(row.won) / parseInt(row.total)) * 100);
-        const desc = `Leads "${row.temperature}" tÃªm taxa de conversÃ£o de ${rate}% com tempo mÃ©dio de fechamento de ${Math.round(row.avg_days || 0)} dias.`;
+        const desc = `Leads "${row.temperature}" têm taxa de conversão de ${rate}% com tempo médio de fechamento de ${Math.round(row.avg_days || 0)} dias.`;
         await pool.query(`
           INSERT INTO behavior_patterns (organization_id, pattern_type, pattern_description, impact_score, sample_size, metadata)
           VALUES ($1, $2, $3, $4, $5, $6)
@@ -2215,11 +2215,11 @@ async function runConversationIntelligenceEngine() {
   }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
 // CONVERSATION STATE ENGINE (CSE)
 // Backend-controlled conversation stage machine.
 // The LLM receives a slim payload; stage transitions are decided here, not by the AI.
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
 
 const ensureConversationStateTables = async () => {
   try {
@@ -2296,7 +2296,7 @@ const ensureConversationStateTables = async () => {
   }
 };
 
-// â”€â”€â”€ CSE: Load or create conversation state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── CSE: Load or create conversation state ───────────────────────────────────
 async function loadConversationState(orgId, agentId, leadId) {
   try {
     // Ensure state row exists
@@ -2332,7 +2332,7 @@ async function loadConversationState(orgId, agentId, leadId) {
   }
 }
 
-// â”€â”€â”€ CSE: Extract user intent (lightweight LLM call) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── CSE: Extract user intent (lightweight LLM call) ─────────────────────────
 async function extractUserIntent(messageContent) {
   try {
     if (!messageContent || !messageContent.trim()) return 'neutral';
@@ -2341,15 +2341,15 @@ async function extractUserIntent(messageContent) {
       model: 'gpt-4o-mini',
       messages: [{
         role: 'system',
-        content: `Classifique a intenÃ§Ã£o da mensagem do lead em EXATAMENTE uma das opÃ§Ãµes abaixo. Responda apenas com a palavra-chave.
+        content: `Classifique a intenção da mensagem do lead em EXATAMENTE uma das opções abaixo. Responda apenas com a palavra-chave.
 
-OpÃ§Ãµes:
+Opções:
 - buying_intent     (demonstra interesse real em comprar, fechar, contratar)
-- asked_price       (perguntou preÃ§o, valor, investimento, custo, parcela)
-- accepted_meeting  (aceitou agendar, marcar reuniÃ£o, demonstraÃ§Ã£o, horÃ¡rio)
-- gave_objection    (expressou resistÃªncia, objeÃ§Ã£o, dÃºvida impeditiva)
-- asked_info        (pediu mais informaÃ§Ãµes, detalhes, explicaÃ§Ã£o sobre produto/serviÃ§o)
-- not_interested    (disse que nÃ£o tem interesse, estÃ¡ satisfeito, dispensa)
+- asked_price       (perguntou preço, valor, investimento, custo, parcela)
+- accepted_meeting  (aceitou agendar, marcar reunião, demonstração, horário)
+- gave_objection    (expressou resistência, objeção, dúvida impeditiva)
+- asked_info        (pediu mais informações, detalhes, explicação sobre produto/serviço)
+- not_interested    (disse que não tem interesse, está satisfeito, dispensa)
 - neutral           (qualquer outra coisa)`
       }, {
         role: 'user',
@@ -2368,14 +2368,14 @@ OpÃ§Ãµes:
   }
 }
 
-// â”€â”€â”€ CSE: Stage transition rules (pure backend, no LLM) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── CSE: Stage transition rules (pure backend, no LLM) ──────────────────────
 const STAGE_GOALS = {
-  novo: 'Saudar o lead e iniciar qualificaÃ§Ã£o. Fazer apenas UMA pergunta de qualificaÃ§Ã£o.',
-  qualificacao: 'Identificar a necessidade principal, aplicaÃ§Ã£o e contexto do lead.',
-  diagnostico: 'Aprofundar o problema. Entender dor, urgÃªncia e decisÃ£o de compra.',
-  apresentacao: 'Apresentar a soluÃ§Ã£o conectando diretamente ao problema do lead.',
-  proposta: 'Apresentar valor e ROI. NÃ£o dar desconto. Fortalecer justificativa de preÃ§o.',
-  agendamento: 'Usar as ferramentas de agendamento para marcar uma reuniÃ£o ou demonstraÃ§Ã£o.',
+  novo: 'Saudar o lead e iniciar qualificação. Fazer apenas UMA pergunta de qualificação.',
+  qualificacao: 'Identificar a necessidade principal, aplicação e contexto do lead.',
+  diagnostico: 'Aprofundar o problema. Entender dor, urgência e decisão de compra.',
+  apresentacao: 'Apresentar a solução conectando diretamente ao problema do lead.',
+  proposta: 'Apresentar valor e ROI. Não dar desconto. Fortalecer justificativa de preço.',
+  agendamento: 'Usar as ferramentas de agendamento para marcar uma reunião ou demonstração.',
   followup: 'Retomar o contexto anterior e reengajar o lead com uma pergunta direcionadora.',
 };
 
@@ -2431,52 +2431,52 @@ function determineStageTransition(currentStage, intent, memory) {
   return { newStage, goal, stageChanged, nextExpected };
 }
 
-// â”€â”€â”€ CSE: Build slim LLM payload â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── CSE: Build slim LLM payload ─────────────────────────────────────────────
 function buildCSEStageDirective(stage, goal, memory) {
-  let directive = `\n\n[ESTADO DA CONVERSA]\nEstÃ¡gio atual: ${stage.toUpperCase()}\nObjetivo deste turno: ${goal}\n`;
+  let directive = `\n\n[ESTADO DA CONVERSA]\nEstágio atual: ${stage.toUpperCase()}\nObjetivo deste turno: ${goal}\n`;
 
-  // â”€â”€ Layer 2: Structured identity + behavioral memory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Layer 2: Structured identity + behavioral memory ───────────────────────
   const known = [];
   if (memory.name) known.push(`Nome do lead: "${memory.name}"`);
   if (memory.company) known.push(`Empresa: "${memory.company}"`);
-  if (memory.business_type) known.push(`Setor/negÃ³cio: "${memory.business_type}"`);
+  if (memory.business_type) known.push(`Setor/negócio: "${memory.business_type}"`);
   if (memory.lead_interest) known.push(`Interesse identificado: "${memory.lead_interest}"`);
   if (memory.pain_point) known.push(`Dor identificada: "${memory.pain_point}"`);
   if (memory.product_interest) known.push(`Produto de interesse: "${memory.product_interest}"`);
-  if (memory.budget_range) known.push(`OrÃ§amento informado: "${memory.budget_range}"`);
+  if (memory.budget_range) known.push(`Orçamento informado: "${memory.budget_range}"`);
   if (memory.purchase_moment) known.push(`Momento de compra: "${memory.purchase_moment}"`);
-  if (memory.decision_timeline) known.push(`Prazo de decisÃ£o: "${memory.decision_timeline}"`);
-  if (memory.decision_role) known.push(`Papel na decisÃ£o: "${memory.decision_role}"`);
-  if (memory.main_objection) known.push(`ObjeÃ§Ã£o principal: "${memory.main_objection}"`);
-  if (memory.asked_price) known.push('Lead jÃ¡ perguntou o preÃ§o â€” nÃ£o repita a qualificaÃ§Ã£o de valor.');
-  if (memory.showed_buying_intent) known.push('Lead demonstrou intenÃ§Ã£o de compra anteriormente.');
-  if (memory.accepted_meeting) known.push('Lead aceitou agendar â€” priorize confirmar data/horÃ¡rio.');
+  if (memory.decision_timeline) known.push(`Prazo de decisão: "${memory.decision_timeline}"`);
+  if (memory.decision_role) known.push(`Papel na decisão: "${memory.decision_role}"`);
+  if (memory.main_objection) known.push(`Objeção principal: "${memory.main_objection}"`);
+  if (memory.asked_price) known.push('Lead já perguntou o preço — não repita a qualificação de valor.');
+  if (memory.showed_buying_intent) known.push('Lead demonstrou intenção de compra anteriormente.');
+  if (memory.accepted_meeting) known.push('Lead aceitou agendar — priorize confirmar data/horário.');
 
   if (known.length > 0) {
-    directive += `\n[MEMÃ“RIA ESTRUTURADA DO LEAD â€” NÃƒO PERGUNTE O QUE JÃ SABE]\n${known.join('\n')}\n`;
+    directive += `\n[MEMÓRIA ESTRUTURADA DO LEAD — NÃO PERGUNTE O QUE JÁ SABE]\n${known.join('\n')}\n`;
   }
 
-  // â”€â”€ Layer 3: Semantic insight signals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Layer 3: Semantic insight signals ─────────────────────────────────────
   const signals = [];
-  if (memory.lead_interested) signals.push('âœ“ Interessado no produto');
-  if (memory.lead_price_sensitive) signals.push('âœ“ SensÃ­vel a preÃ§o â€” use ROI, nÃ£o desconto');
-  if (memory.lead_comparing_options) signals.push('âœ“ Comparando opÃ§Ãµes â€” destaque diferenciais');
-  if (memory.lead_not_ready) signals.push('âš  NÃ£o estÃ¡ pronto â€” foque em educar e manter engajamento');
-  if (memory.lead_urgent) signals.push('âœ“ Urgente â€” acesse decisÃ£o agora, minimize fricÃ§Ã£o');
+  if (memory.lead_interested) signals.push('✓ Interessado no produto');
+  if (memory.lead_price_sensitive) signals.push('✓ Sensível a preço — use ROI, não desconto');
+  if (memory.lead_comparing_options) signals.push('✓ Comparando opções — destaque diferenciais');
+  if (memory.lead_not_ready) signals.push('⚠ Não está pronto — foque em educar e manter engajamento');
+  if (memory.lead_urgent) signals.push('✓ Urgente — acesse decisão agora, minimize fricção');
 
   if (signals.length > 0) {
-    directive += `\n[SINAIS SEMÃ‚NTICOS DETECTADOS]\n${signals.join('\n')}\n`;
+    directive += `\n[SINAIS SEMÂNTICOS DETECTADOS]\n${signals.join('\n')}\n`;
   }
 
   const answeredKeys = Object.keys(memory.answered_questions || {});
   if (answeredKeys.length > 0) {
-    directive += `\n[PERGUNTAS JÃ FEITAS â€” NÃƒO REPITA]\n${answeredKeys.join(', ')}\n`;
+    directive += `\n[PERGUNTAS JÁ FEITAS — NÃO REPITA]\n${answeredKeys.join(', ')}\n`;
   }
 
   return directive;
 }
 
-// â”€â”€â”€ CSE: Update state after AI response â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── CSE: Update state after AI response ─────────────────────────────────────
 async function updateConversationState(stateId, intent, newStage, goal, nextExpected, aiResponseSnippet) {
   try {
     await pool.query(`
@@ -2502,10 +2502,10 @@ async function updateConversationState(stateId, intent, newStage, goal, nextExpe
   }
 }
 
-// â”€â”€â”€ MEMORY: Extract structured memory from conversation (lightweight LLM call) â”€â”€
+// ─── MEMORY: Extract structured memory from conversation (lightweight LLM call) ──
 /**
  * Reads the last 3 messages + new user message and extracts structured lead memory.
- * Returns a partial object â€” only fields that could be extracted are present.
+ * Returns a partial object — only fields that could be extracted are present.
  * Runs async/non-blocking after AI response.
  */
 async function extractConversationMemory(last3Messages, userMessage) {
@@ -2519,10 +2519,10 @@ async function extractConversationMemory(last3Messages, userMessage) {
       model: 'gpt-4o-mini',
       messages: [{
         role: 'system',
-        content: `VocÃª Ã© um extrator de dados de CRM. Leia a conversa abaixo e extraia as informaÃ§Ãµes do lead.
-Retorne APENAS um JSON vÃ¡lido com os campos a seguir. Para campos desconhecidos use null. NÃ£o invente dados.
+        content: `Você é um extrator de dados de CRM. Leia a conversa abaixo e extraia as informações do lead.
+Retorne APENAS um JSON válido com os campos a seguir. Para campos desconhecidos use null. Não invente dados.
 
-Campos obrigatÃ³rios no JSON:
+Campos obrigatórios no JSON:
 {
   "name": string | null,
   "company": string | null,
@@ -2557,7 +2557,7 @@ Campos obrigatÃ³rios no JSON:
   }
 }
 
-// â”€â”€â”€ MEMORY: Upsert all extracted fields into lead_memory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── MEMORY: Upsert all extracted fields into lead_memory ────────────────────
 async function updateLeadMemory(orgId, leadId, intent, extractedMemory) {
   try {
     // Boolean flags from intent classification
@@ -2567,7 +2567,7 @@ async function updateLeadMemory(orgId, leadId, intent, extractedMemory) {
       accepted_meeting: intent === 'accepted_meeting' ? true : undefined,
     };
 
-    // Build dynamic SET clause â€” only apply non-null values
+    // Build dynamic SET clause — only apply non-null values
     const setClauses = [];
     const values = [orgId, leadId];
     let idx = 3;
@@ -2611,7 +2611,7 @@ async function updateLeadMemory(orgId, leadId, intent, extractedMemory) {
       coalesce('main_objection', extractedMemory.main_objection);
       coalesce('top_objection', extractedMemory.main_objection);
       coalesce('pain_point', extractedMemory.pain_point);
-      // Semantic signals â€” overwrite each turn (reflects current state)
+      // Semantic signals — overwrite each turn (reflects current state)
       setSignal('lead_interested', extractedMemory.lead_interested);
       setSignal('lead_price_sensitive', extractedMemory.lead_price_sensitive);
       setSignal('lead_comparing_options', extractedMemory.lead_comparing_options);
@@ -2654,7 +2654,7 @@ function formatIntentLabel(intent) {
     buying_intent: 'Interesse de compra',
     asked_price: 'Pedido de preco',
     accepted_meeting: 'Aceitou agendamento',
-    gave_objection: 'ObjeÃ§Ã£o ativa',
+    gave_objection: 'Objeção ativa',
     asked_info: 'Pedido de informacoes',
     not_interested: 'Sem interesse',
     neutral: 'Explorando a conversa',
@@ -2878,109 +2878,109 @@ async function refreshLeadConversationSummary({
 }
 
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
 // STAGE-BASED PROMPT ARCHITECTURE
 // Each conversation stage gets a focused, modular prompt.
 // Dynamically loaded by CSE lead_stage. Replaces the monolithic system prompt.
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
 
 const STAGE_PROMPTS = {
 
   novo: {
     objective: 'Iniciar a conversa de forma calorosa, breve e profissional.',
-    style: 'Tom amigÃ¡vel mas direto. Mensagem curta (mÃ¡x 3 linhas). Sem textos de boas-vindas genÃ©ricos.',
+    style: 'Tom amigável mas direto. Mensagem curta (máx 3 linhas). Sem textos de boas-vindas genéricos.',
     actions: [
-      'Saudar o lead pelo nome se disponÃ­vel.',
-      'Fazer UMA pergunta aberta para iniciar a qualificaÃ§Ã£o.',
-      'Verificar se Ã© o tomador de decisÃ£o se possÃ­vel.',
+      'Saudar o lead pelo nome se disponível.',
+      'Fazer UMA pergunta aberta para iniciar a qualificação.',
+      'Verificar se é o tomador de decisão se possível.',
     ],
     collect: ['nome', 'motivo do contato inicial'],
-    next_step: 'Identificar a necessidade principal e transicionar para qualificaÃ§Ã£o.',
+    next_step: 'Identificar a necessidade principal e transicionar para qualificação.',
   },
 
   qualificacao: {
-    objective: 'Entender a necessidade principal, contexto de uso e porte do negÃ³cio.',
+    objective: 'Entender a necessidade principal, contexto de uso e porte do negócio.',
     style: 'Perguntas curtas e diretas. 1 pergunta por mensagem. Escuta ativa. Sem discurso de vendas ainda.',
     actions: [
-      'Perguntar sobre o negÃ³cio, segmento ou processo atual.',
-      'Identificar se hÃ¡ urgÃªncia ou prazo.',
-      'NÃƒO fazer pitch de produto neste estÃ¡gio.',
+      'Perguntar sobre o negócio, segmento ou processo atual.',
+      'Identificar se há urgência ou prazo.',
+      'NÃO fazer pitch de produto neste estágio.',
     ],
-    collect: ['tipo de negÃ³cio', 'necessidade principal', 'contexto de uso', 'porte da equipe'],
-    next_step: 'Com a necessidade clara, transicionar para diagnÃ³stico profundo.',
+    collect: ['tipo de negócio', 'necessidade principal', 'contexto de uso', 'porte da equipe'],
+    next_step: 'Com a necessidade clara, transicionar para diagnóstico profundo.',
   },
 
   diagnostico: {
-    objective: 'Aprofundar a dor. Entender o processo atual, o que nÃ£o funciona e o impacto do problema.',
-    style: 'Perguntas abertas que revelam custo do status quo. Mostre que vocÃª entende o problema antes de apresentar soluÃ§Ã£o.',
+    objective: 'Aprofundar a dor. Entender o processo atual, o que não funciona e o impacto do problema.',
+    style: 'Perguntas abertas que revelam custo do status quo. Mostre que você entende o problema antes de apresentar solução.',
     actions: [
       'Perguntar como resolvem hoje o problema identificado.',
       'Explorar o impacto (tempo, dinheiro, oportunidades perdidas).',
-      'Identificar objeÃ§Ãµes antecipadas e nÃ­vel de urgÃªncia.',
-      'NÃƒO repetir perguntas sobre dados jÃ¡ presentes na memÃ³ria.',
+      'Identificar objeções antecipadas e nível de urgência.',
+      'NÃO repetir perguntas sobre dados já presentes na memória.',
     ],
-    collect: ['processo atual', 'dor principal', 'impacto do problema', 'urgÃªncia', 'objeÃ§Ãµes potenciais'],
-    next_step: 'Com a dor mapeada, transicionar para apresentaÃ§Ã£o da soluÃ§Ã£o.',
+    collect: ['processo atual', 'dor principal', 'impacto do problema', 'urgência', 'objeções potenciais'],
+    next_step: 'Com a dor mapeada, transicionar para apresentação da solução.',
   },
 
   apresentacao: {
-    objective: 'Apresentar a soluÃ§Ã£o conectada diretamente Ã  dor identificada. Mostrar transformaÃ§Ã£o, nÃ£o features.',
-    style: 'MÃ©todo FAB: Funcionalidade â†’ Vantagem â†’ BenefÃ­cio. Linguagem de resultado, nÃ£o tÃ©cnica. Use exemplos do setor do lead se possÃ­vel.',
+    objective: 'Apresentar a solução conectada diretamente à dor identificada. Mostrar transformação, não features.',
+    style: 'Método FAB: Funcionalidade → Vantagem → Benefício. Linguagem de resultado, não técnica. Use exemplos do setor do lead se possível.',
     actions: [
-      'Conectar cada ponto da soluÃ§Ã£o a uma dor especÃ­fica do lead.',
-      'Usar case ou analogia relevante para o tipo de negÃ³cio.',
-      'Terminar com uma pergunta de validaÃ§Ã£o ("Faz sentido para o que vocÃª precisa?").',
-      'NÃƒO forÃ§ar preÃ§o neste momento.',
+      'Conectar cada ponto da solução a uma dor específica do lead.',
+      'Usar case ou analogia relevante para o tipo de negócio.',
+      'Terminar com uma pergunta de validação ("Faz sentido para o que você precisa?").',
+      'NÃO forçar preço neste momento.',
     ],
-    collect: ['reaÃ§Ã£o Ã  apresentaÃ§Ã£o', 'interesse especÃ­fico em alguma funcionalidade'],
-    next_step: 'Se lead reage positivamente, mover para proposta. Se pede preÃ§o, mover imediatamente.',
+    collect: ['reação à apresentação', 'interesse específico em alguma funcionalidade'],
+    next_step: 'Se lead reage positivamente, mover para proposta. Se pede preço, mover imediatamente.',
   },
 
   proposta: {
-    objective: 'Apresentar valor e ROI antes do nÃºmero. Defender o investimento com lÃ³gica e benefÃ­cio tangÃ­vel.',
-    style: 'Confiante e direto. Apresentar preÃ§o como consequÃªncia, nÃ£o como pauta. Nunca dar desconto imediato.',
+    objective: 'Apresentar valor e ROI antes do número. Defender o investimento com lógica e benefício tangível.',
+    style: 'Confiante e direto. Apresentar preço como consequência, não como pauta. Nunca dar desconto imediato.',
     actions: [
-      'Recapitular o problema e o impacto antes de apresentar o preÃ§o.',
+      'Recapitular o problema e o impacto antes de apresentar o preço.',
       'Apresentar o retorno esperado (tempo economizado, receita gerada, etc.).',
-      'Se questionado sobre preÃ§o: "Entendo â€” se o investimento nÃ£o fosse uma questÃ£o, vocÃª avanÃ§aria?"',
-      'Dar desconto SOMENTE se for polÃ­tica da empresa. Nunca espontaneamente.',
+      'Se questionado sobre preço: "Entendo — se o investimento não fosse uma questão, você avançaria?"',
+      'Dar desconto SOMENTE se for política da empresa. Nunca espontaneamente.',
     ],
-    collect: ['reaÃ§Ã£o ao preÃ§o', 'objeÃ§Ãµes de valor', 'intenÃ§Ã£o de compra'],
+    collect: ['reação ao preço', 'objeções de valor', 'intenção de compra'],
     next_step: 'Se o lead aceitar, mover para agendamento. Se objetar, aplicar LAER e renegociar valor.',
   },
 
   agendamento: {
-    objective: 'Confirmar data e horÃ¡rio para reuniÃ£o ou demonstraÃ§Ã£o usando as ferramentas disponÃ­veis.',
-    style: 'Direto e eficiente. Oferecer sempre 2 opÃ§Ãµes especÃ­ficas. Nunca fazer pergunta aberta de horÃ¡rio.',
+    objective: 'Confirmar data e horário para reunião ou demonstração usando as ferramentas disponíveis.',
+    style: 'Direto e eficiente. Oferecer sempre 2 opções específicas. Nunca fazer pergunta aberta de horário.',
     actions: [
-      'SEMPRE usar a ferramenta consultar_horarios_disponiveis antes de sugerir qualquer horÃ¡rio.',
-      'Oferecer EXATAMENTE 2 opÃ§Ãµes no formato: "*[dia] Ã s [hora]*" ou "*[dia] Ã s [hora]*".',
-      'Confirmar nome (se nÃ£o tiver) e interesse para o agendamento.',
-      'Se lead recusar: oferecer mais 2 opÃ§Ãµes diferentes, nunca as mesmas.',
-      'Confirmar explicitamente apÃ³s agendamento com resumo.',
+      'SEMPRE usar a ferramenta consultar_horarios_disponiveis antes de sugerir qualquer horário.',
+      'Oferecer EXATAMENTE 2 opções no formato: "*[dia] às [hora]*" ou "*[dia] às [hora]*".',
+      'Confirmar nome (se não tiver) e interesse para o agendamento.',
+      'Se lead recusar: oferecer mais 2 opções diferentes, nunca as mesmas.',
+      'Confirmar explicitamente após agendamento com resumo.',
     ],
     collect: ['data/hora confirmada', 'nome para agendamento'],
-    next_step: 'Confirmar agendamento e enviar lembrete/prÃ³ximos passos.',
+    next_step: 'Confirmar agendamento e enviar lembrete/próximos passos.',
   },
 
   followup: {
     objective: 'Reengajar o lead que parou de responder, sem parecer desesperado ou repetitivo.',
-    style: 'Curto, relevante e baseado no contexto anterior. Nunca comeÃ§ar com "Oi, tudo bem?". Trazer algo novo: insight, nÃºmero ou pergunta especÃ­fica.',
+    style: 'Curto, relevante e baseado no contexto anterior. Nunca começar com "Oi, tudo bem?". Trazer algo novo: insight, número ou pergunta específica.',
     actions: [
-      'Entrar com referÃªncia direta ao Ãºltimo assunto discutido.',
-      'Apresentar um novo Ã¢ngulo de valor ou dado relevante.',
+      'Entrar com referência direta ao último assunto discutido.',
+      'Apresentar um novo ângulo de valor ou dado relevante.',
       'Fazer 1 pergunta simples e direta que exige resposta curta.',
-      'Se o lead demonstrar interesse, transicionar para o estÃ¡gio adequado.',
+      'Se o lead demonstrar interesse, transicionar para o estágio adequado.',
     ],
-    collect: ['motivo do silÃªncio', 'nÃ­vel atual de interesse'],
-    next_step: 'Dependendo da resposta: qualificaÃ§Ã£o, proposta ou agendamento.',
+    collect: ['motivo do silêncio', 'nível atual de interesse'],
+    next_step: 'Dependendo da resposta: qualificação, proposta ou agendamento.',
   },
 
 };
 
 /**
  * Builds the stage-based system prompt dynamically.
- * Replaces the monolithic prompt. ~200â€“350 tokens per call instead of ~900.
+ * Replaces the monolithic prompt. ~200–350 tokens per call instead of ~900.
  *
  * @param {Object} options
  * @param {Object} options.agent - Agent row from DB
@@ -3009,9 +3009,9 @@ function buildSystemPrompt({
   const handoffStrategy = profile.handoffStrategy || {};
   const advancedInstructions = agent.advanced_instructions || profile.advancedInstructions || agent.system_prompt || '';
 
-  // â”€â”€ 1. Identity Layer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  let prompt = `VocÃª Ã© uma IA de vendas de alta performance via WhatsApp.
-Data: ${currentDate} | Hora: ${currentTime} (BrasÃ­lia)
+  // ── 1. Identity Layer ────────────────────────────────────────────────────────
+  let prompt = `Você é uma IA de vendas de alta performance via WhatsApp.
+Data: ${currentDate} | Hora: ${currentTime} (Brasília)
 
 [IDENTIDADE E VOZ]
 Empresa: ${profile.companyName || 'Operacao Kogna'}
@@ -3037,29 +3037,29 @@ ${(responsePlaybook.principles || [
 [INSTRUCOES AVANCADAS]
 ${advancedInstructions || 'Use contexto real do negocio, do lead e do estagio para responder.'}`;
 
-  // â”€â”€ 1b. Agent Persona Block â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── 1b. Agent Persona Block ───────────────────────────────────────────────────
   if (activeAgent && activeAgent.key !== 'analyst') {
     prompt += `
 
-[AGENTE RESPONSÃVEL: ${activeAgent.name.toUpperCase()}]
+[AGENTE RESPONSÁVEL: ${activeAgent.name.toUpperCase()}]
 Papel: ${activeAgent.role}
-MissÃ£o: ${activeAgent.mission}
+Missão: ${activeAgent.mission}
 Tom: ${activeAgent.tone}`;
   }
 
 
-  // â”€â”€ 2. Stage Prompt â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── 2. Stage Prompt ──────────────────────────────────────────────────────────
   prompt += `
 
 [MODO ATUAL: ${stage.toUpperCase()}]
 Objetivo: ${stageConf.objective}
 Estilo: ${stageConf.style}
 
-AÃ§Ãµes permitidas neste estÃ¡gio:
-${stageConf.actions.map(a => `â€¢ ${a}`).join('\n')}
+Ações permitidas neste estágio:
+${stageConf.actions.map(a => `• ${a}`).join('\n')}
 
-InformaÃ§Ãµes a coletar: ${stageConf.collect.join(', ')}
-PrÃ³ximo passo: ${stageConf.next_step}`;
+Informações a coletar: ${stageConf.collect.join(', ')}
+Próximo passo: ${stageConf.next_step}`;
 
   if (profile.productPrice || offerStrategy.primary_offer || offerStrategy.benefit_anchor) {
     prompt += `
@@ -3106,42 +3106,42 @@ Evite dizer: ${(activeObjection.avoid_phrases || []).join(', ') || 'Evite soar v
 CTA apos contornar: ${activeObjection.cta_after_resolution || 'Leve para o proximo passo mais simples.'}`;
   }
 
-  // â”€â”€ 3. Knowledge Base (conditional) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── 3. Knowledge Base (conditional) ──────────────────────────────────────────
   if (knowledgeBase) {
     prompt += `
 
 [BASE DE CONHECIMENTO]
-Use EXCLUSIVAMENTE as informaÃ§Ãµes abaixo para perguntas sobre produtos/serviÃ§os/processos.
+Use EXCLUSIVAMENTE as informações abaixo para perguntas sobre produtos/serviços/processos.
 ${knowledgeBase}
 [/BASE DE CONHECIMENTO]`;
   }
 
-  // â”€â”€ 4. Scheduling Module â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── 4. Scheduling Module ──────────────────────────────────────────────────────
   // Always available (tool calling must work in any stage), but emphasized for 'agendamento'
   if (stage === 'agendamento') {
     prompt += `
 
-[MÃ“DULO DE AGENDAMENTO â€” ATIVO]
-Use SEMPRE a ferramenta consultar_horarios_disponiveis antes de sugerir qualquer horÃ¡rio.
-OfereÃ§a EXATAMENTE 2 opÃ§Ãµes. Formato: "*[dia] Ã s [hora]*". Nunca liste todos os slots.
-ApÃ³s confirmaÃ§Ã£o use confirmar_agendamento com o UUID exato do vendedor.`;
+[MÓDULO DE AGENDAMENTO — ATIVO]
+Use SEMPRE a ferramenta consultar_horarios_disponiveis antes de sugerir qualquer horário.
+Ofereça EXATAMENTE 2 opções. Formato: "*[dia] às [hora]*". Nunca liste todos os slots.
+Após confirmação use confirmar_agendamento com o UUID exato do vendedor.`;
   } else {
     prompt += `
 
-[AGENDAMENTO] Se o lead quiser agendar, use as ferramentas disponÃ­veis (consultar_horarios_disponiveis, confirmar_agendamento).`;
+[AGENDAMENTO] Se o lead quiser agendar, use as ferramentas disponíveis (consultar_horarios_disponiveis, confirmar_agendamento).`;
   }
 
-  // â”€â”€ 5. Universal Rules (compact) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── 5. Universal Rules (compact) ─────────────────────────────────────────────
   prompt += `
 
-[REGRAS INVIOLÃVEIS]
-â€¢ NUNCA revele que Ã© uma IA. Mantenha a persona 100%.
-â€¢ NUNCA faÃ§a mais de 1 pergunta por mensagem.
-â€¢ Evite aberturas passivas como "Oi, como posso ajudar?". Entre com contexto, valor ou proximo passo.
-â€¢ TODA mensagem deve terminar com uma pergunta ou CTA claro quando fizer sentido comercial.
-â€¢ Textos escaneavÃ©is: mÃ¡x 3 linhas por parÃ¡grafo. Use *negrito* para CTAs.
-â€¢ Adapte o tom: se o lead for curto, seja curto. Se descontraÃ­do, acompanhe.
-â€¢ NUNCA invente dados. Se nÃ£o souber, siga o comportamento padrÃ£o da identidade.`;
+[REGRAS INVIOLÁVEIS]
+• NUNCA revele que é uma IA. Mantenha a persona 100%.
+• NUNCA faça mais de 1 pergunta por mensagem.
+• Evite aberturas passivas como "Oi, como posso ajudar?". Entre com contexto, valor ou proximo passo.
+• TODA mensagem deve terminar com uma pergunta ou CTA claro quando fizer sentido comercial.
+• Textos escaneavéis: máx 3 linhas por parágrafo. Use *negrito* para CTAs.
+• Adapte o tom: se o lead for curto, seja curto. Se descontraído, acompanhe.
+• NUNCA invente dados. Se não souber, siga o comportamento padrão da identidade.`;
 
   if (handoffStrategy.policy || handoffStrategy.human_signal_message) {
     prompt += `
@@ -3154,29 +3154,29 @@ ${handoffStrategy.human_signal_message || 'Nao silencie a conversa: continue con
   return prompt;
 }
 
-// â”€â”€ END Stage-Based Prompt Architecture â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END Stage-Based Prompt Architecture ──────────────────────────────────────
 
 
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
 // BACKEND TOOL ROUTER
 // Stage controls which tools the LLM can call. tool_choice: auto is replaced
 // by stage-aware routing. All calls are validated before execution.
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
 
-// â”€â”€â”€ Full Tool Registry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Full Tool Registry ───────────────────────────────────────────────────────
 const TOOL_DEFINITIONS = {
 
   consultar_horarios_disponiveis: {
     type: 'function',
     function: {
       name: 'consultar_horarios_disponiveis',
-      description: 'Consulta horÃ¡rios disponÃ­veis para agendamento em uma data especÃ­fica.',
+      description: 'Consulta horários disponíveis para agendamento em uma data específica.',
       parameters: {
         type: 'object',
         properties: {
           date: { type: 'string', description: 'Data no formato YYYY-MM-DD' },
-          vendedorId: { type: 'string', description: 'ID opcional do vendedor especÃ­fico' },
+          vendedorId: { type: 'string', description: 'ID opcional do vendedor específico' },
         },
         required: ['date'],
       },
@@ -3187,12 +3187,12 @@ const TOOL_DEFINITIONS = {
     type: 'function',
     function: {
       name: 'confirmar_agendamento',
-      description: 'Confirma e realiza o agendamento de uma reuniÃ£o ou demonstraÃ§Ã£o.',
+      description: 'Confirma e realiza o agendamento de uma reunião ou demonstração.',
       parameters: {
         type: 'object',
         properties: {
           date: { type: 'string', description: 'Data no formato YYYY-MM-DD' },
-          time: { type: 'string', description: 'HorÃ¡rio no formato HH:MM' },
+          time: { type: 'string', description: 'Horário no formato HH:MM' },
           vendedorId: { type: 'string', description: 'O UUID do vendedor retornado na consulta.' },
           notas: { type: 'string', description: 'Notas adicionais sobre o agendamento' },
         },
@@ -3209,7 +3209,7 @@ const TOOL_DEFINITIONS = {
       parameters: {
         type: 'object',
         properties: {
-          confirmacion: { type: 'boolean', description: 'ConfirmaÃ§Ã£o de que o usuÃ¡rio deseja cancelar.' },
+          confirmacion: { type: 'boolean', description: 'Confirmação de que o usuário deseja cancelar.' },
         },
         required: ['confirmacion'],
       },
@@ -3220,7 +3220,7 @@ const TOOL_DEFINITIONS = {
     type: 'function',
     function: {
       name: 'crm_update_lead',
-      description: 'Atualiza campos estruturados do lead no CRM (memÃ³ria e perfil). Use para registrar informaÃ§Ãµes coletadas durante a conversa.',
+      description: 'Atualiza campos estruturados do lead no CRM (memória e perfil). Use para registrar informações coletadas durante a conversa.',
       parameters: {
         type: 'object',
         properties: {
@@ -3239,12 +3239,12 @@ const TOOL_DEFINITIONS = {
     type: 'function',
     function: {
       name: 'send_followup_message',
-      description: 'Agenda uma mensagem de follow-up para ser enviada automaticamente apÃ³s um perÃ­odo de tempo.',
+      description: 'Agenda uma mensagem de follow-up para ser enviada automaticamente após um período de tempo.',
       parameters: {
         type: 'object',
         properties: {
           message: { type: 'string', description: 'Mensagem a ser enviada no follow-up.' },
-          delay_minutes: { type: 'number', description: 'Minutos atÃ© o envio (mÃ­nimo 1).' },
+          delay_minutes: { type: 'number', description: 'Minutos até o envio (mínimo 1).' },
         },
         required: ['message', 'delay_minutes'],
       },
@@ -3255,7 +3255,7 @@ const TOOL_DEFINITIONS = {
     type: 'function',
     function: {
       name: 'present_product',
-      description: 'Apresenta automaticamente o produto mais relevante ao lead no WhatsApp. Envia imagem, descriÃ§Ã£o curta, benefÃ­cio principal e oferta selecionada pelo sistema. Use quando o lead pedir informaÃ§Ãµes sobre produtos, preÃ§os ou soluÃ§Ãµes.',
+      description: 'Apresenta automaticamente o produto mais relevante ao lead no WhatsApp. Envia imagem, descrição curta, benefício principal e oferta selecionada pelo sistema. Use quando o lead pedir informações sobre produtos, preços ou soluções.',
       parameters: {
         type: 'object',
         properties: {
@@ -3271,7 +3271,7 @@ const TOOL_DEFINITIONS = {
 
 };
 
-// â”€â”€â”€ Stage â†’ Tools Map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Stage → Tools Map ────────────────────────────────────────────────────────
 const STAGE_TOOL_MAP = {
   novo: { tools: [], tool_choice: 'none' },
   qualificacao: { tools: ['crm_update_lead'], tool_choice: 'none' },
@@ -3291,7 +3291,7 @@ function getToolsForStage(stage) {
   const config = STAGE_TOOL_MAP[stage] || STAGE_TOOL_MAP['qualificacao'];
   const tools = config.tools.map(name => TOOL_DEFINITIONS[name]).filter(Boolean);
   const allowedNames = new Set(config.tools);
-  log(`[TOOL ROUTER] Stage ${stage} â†’ ${tools.length} tool(s): ${config.tools.join(', ') || 'none'}`);
+  log(`[TOOL ROUTER] Stage ${stage} → ${tools.length} tool(s): ${config.tools.join(', ') || 'none'}`);
   return { tools, toolChoice: config.tool_choice, allowedNames };
 }
 
@@ -3303,7 +3303,7 @@ function validateToolCall(functionName, args, allowedNames) {
   // 1. Check the tool is allowed for this stage
   if (!allowedNames.has(functionName)) {
     log(`[TOOL ROUTER] BLOCKED: tool "${functionName}" not allowed in current stage. Allowed: ${[...allowedNames].join(', ') || 'none'}`);
-    return { valid: false, reason: `Ferramenta "${functionName}" nÃ£o estÃ¡ disponÃ­vel neste momento.` };
+    return { valid: false, reason: `Ferramenta "${functionName}" não está disponível neste momento.` };
   }
 
   // 2. Validate required args per tool
@@ -3315,7 +3315,7 @@ function validateToolCall(functionName, args, allowedNames) {
       'purchase_moment', 'decision_role', 'pain_point', 'main_objection']);
     for (const key of Object.keys(args.fields)) {
       if (!ALLOWED_FIELDS.has(key)) {
-        return { valid: false, reason: `Campo invÃ¡lido para crm_update_lead: "${key}"` };
+        return { valid: false, reason: `Campo inválido para crm_update_lead: "${key}"` };
       }
     }
   }
@@ -3344,7 +3344,7 @@ function validateToolCall(functionName, args, allowedNames) {
   return { valid: true };
 }
 
-// â”€â”€â”€ Tool Executor: crm_update_lead â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Tool Executor: crm_update_lead ──────────────────────────────────────────
 async function executeCrmUpdateLead(orgId, leadId, fields) {
   try {
     const ALLOWED_FIELDS = ['name', 'company', 'business_type', 'lead_interest', 'budget_range',
@@ -3378,7 +3378,7 @@ async function executeCrmUpdateLead(orgId, leadId, fields) {
   }
 }
 
-// â”€â”€â”€ Tool Executor: send_followup_message â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Tool Executor: send_followup_message ─────────────────────────────────────
 async function executeSendFollowupMessage(orgId, leadId, instanceName, message, delayMinutes) {
   try {
     const scheduledAt = new Date(Date.now() + delayMinutes * 60 * 1000);
@@ -3398,54 +3398,54 @@ async function executeSendFollowupMessage(orgId, leadId, instanceName, message, 
   }
 }
 
-// â”€â”€ END Backend Tool Router â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END Backend Tool Router ───────────────────────────────────────────────────
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
 // MULTI-AGENT ARCHITECTURE
 // Each CSE stage is handled by a named specialist agent with its own identity.
 // The Conversation Analyst runs async after every turn (not a message handler).
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
 
 const AGENT_DEFINITIONS = {
 
   sdr: {
     name: 'AI SDR',
-    role: 'Especialista em prospecÃ§Ã£o e qualificaÃ§Ã£o de leads via WhatsApp.',
-    mission: 'Identificar o perfil do lead, entender sua necessidade principal e qualificÃ¡-lo para avanÃ§ar no funil. NÃ£o fazer pitch de produto. Fazer perguntas cirÃºrgicas.',
-    tone: 'Curioso e acolhedor. Mensagens curtas. Uma pergunta por vez. Nunca parecendo um robÃ´.',
+    role: 'Especialista em prospecção e qualificação de leads via WhatsApp.',
+    mission: 'Identificar o perfil do lead, entender sua necessidade principal e qualificá-lo para avançar no funil. Não fazer pitch de produto. Fazer perguntas cirúrgicas.',
+    tone: 'Curioso e acolhedor. Mensagens curtas. Uma pergunta por vez. Nunca parecendo um robô.',
   },
 
   closer: {
     name: 'AI Closer',
-    role: 'Especialista em apresentaÃ§Ã£o de valor, gestÃ£o de objeÃ§Ãµes e fechamento.',
-    mission: 'Conectar a soluÃ§Ã£o Ã  dor especÃ­fica do lead usando o mÃ©todo FAB. Defender o investimento com ROI. Usar LAER para objeÃ§Ãµes. Nunca dar desconto espontaneamente.',
-    tone: 'Confiante, direto e orientado a resultado. EmpÃ¡tico, mas sem enrolar.',
+    role: 'Especialista em apresentação de valor, gestão de objeções e fechamento.',
+    mission: 'Conectar a solução à dor específica do lead usando o método FAB. Defender o investimento com ROI. Usar LAER para objeções. Nunca dar desconto espontaneamente.',
+    tone: 'Confiante, direto e orientado a resultado. Empático, mas sem enrolar.',
   },
 
   scheduler: {
     name: 'AI Scheduler',
-    role: 'Especialista em agendamento de reuniÃµes e demonstraÃ§Ãµes via WhatsApp.',
-    mission: 'Confirmar data e horÃ¡rio usando as ferramentas disponÃ­veis. Oferecer exatamente 2 opÃ§Ãµes. Nunca fazer perguntas abertas de horÃ¡rio. Fechar o agendamento neste turno.',
+    role: 'Especialista em agendamento de reuniões e demonstrações via WhatsApp.',
+    mission: 'Confirmar data e horário usando as ferramentas disponíveis. Oferecer exatamente 2 opções. Nunca fazer perguntas abertas de horário. Fechar o agendamento neste turno.',
     tone: 'Eficiente e direto. Sem rodeios. Foco 100% em confirmar o next step.',
   },
 
   followup: {
     name: 'AI Follow-up',
     role: 'Especialista em reengajamento de leads inativos.',
-    mission: 'Reentrar na conversa com contexto do histÃ³rico anterior. Trazer um novo Ã¢ngulo de valor ou dado relevante. Fazer 1 pergunta simples que force uma resposta curta. Nunca comeÃ§ar com "Oi, tudo bem?".',
+    mission: 'Reentrar na conversa com contexto do histórico anterior. Trazer um novo ângulo de valor ou dado relevante. Fazer 1 pergunta simples que force uma resposta curta. Nunca começar com "Oi, tudo bem?".',
     tone: 'Relevante e surpreendente. Curto. Sem desespero. Mostra que lembra do lead.',
   },
 
   analyst: {
     name: 'AI Analyst',
-    role: 'Especialista em extraÃ§Ã£o de dados e inteligÃªncia conversacional.',
-    mission: 'Extrair dados estruturados de cada conversa. Preencher lead_memory com nome, empresa, dor, interesse, orÃ§amento, objeÃ§Ã£o e sinais semÃ¢nticos. Opera silenciosamente em background.',
-    tone: 'NÃ£o interage com o lead. Opera apenas no backend.',
+    role: 'Especialista em extração de dados e inteligência conversacional.',
+    mission: 'Extrair dados estruturados de cada conversa. Preencher lead_memory com nome, empresa, dor, interesse, orçamento, objeção e sinais semânticos. Opera silenciosamente em background.',
+    tone: 'Não interage com o lead. Opera apenas no backend.',
   },
 
 };
 
-// â”€â”€â”€ Stage â†’ Agent Router â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Stage → Agent Router ─────────────────────────────────────────────────────
 const STAGE_TO_AGENT = {
   novo: 'sdr',
   qualificacao: 'sdr',
@@ -3466,13 +3466,13 @@ function resolveAgent(stage) {
   return { key, ...AGENT_DEFINITIONS[key] };
 }
 
-// â”€â”€ END Multi-Agent Architecture â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END Multi-Agent Architecture ──────────────────────────────────────────────
 
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
 // PRODUCT & DYNAMIC OFFER ENGINE
 // Product catalog, multi-offer selection by CSE stage, WhatsApp media delivery
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
 
 const ensureProductEngineTables = async () => {
   try {
@@ -3619,7 +3619,7 @@ ensureProductEngineTablesReady().catch((err) => {
   log('[PRODUCT ENGINE] bootstrap error: ' + err.message);
 });
 
-// â”€â”€â”€ Stage â†’ Default Trigger Map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Stage → Default Trigger Map ────────────────────────────────────────────
 const STAGE_DEFAULT_TRIGGER = {
   novo: 'primeiro_contato',
   qualificacao: 'primeiro_contato',
@@ -3805,7 +3805,7 @@ async function sendProductToLead(orgId, instanceName, remoteJid, leadStage, user
     const evoKey = process.env.EVOLUTION_API_KEY || '';
     const headers = { 'Content-Type': 'application/json', apikey: evoKey };
 
-    log(`[OFFER ENGINE] Stage=${leadStage} â†’ offer="${offer.nome}" for lead=${remoteJid}`);
+    log(`[OFFER ENGINE] Stage=${leadStage} → offer="${offer.nome}" for lead=${remoteJid}`);
 
     // Step 1: Send product image if available
     const imgRes = await pool.query(
@@ -3870,9 +3870,9 @@ async function sendProductToLead(orgId, instanceName, remoteJid, leadStage, user
   }
 }
 
-// â”€â”€ END Product & Dynamic Offer Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END Product & Dynamic Offer Engine ───────────────────────────────────────
 
-// â”€â”€ ONBOARDING V2 SESSION TABLE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── ONBOARDING V2 SESSION TABLE ───────────────────────────────────────────────
 const ensureOnboardingSessionsTable = async () => {
   try {
     log('[SYSTEM] Ensuring onboarding_test_sessions table...');
@@ -3897,7 +3897,7 @@ const ensureOnboardingSessionsTable = async () => {
     log('[ERROR] ensureOnboardingSessionsTable: ' + err.message);
   }
 };
-// â”€â”€ END ONBOARDING V2 SESSION TABLE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END ONBOARDING V2 SESSION TABLE ──────────────────────────────────────────
 
 const ensureGuidedTourColumns = async () => {
   try {
@@ -3986,7 +3986,7 @@ const ensureKognaAICoreTables = async () => {
   }
 };
 
-// Inicia as conexÃµes e migraÃ§Ãµes em segundo plano para nÃ£o travar o boot da Vercel
+// Inicia as conexões e migrações em segundo plano para não travar o boot da Vercel
 initPool().then(() => {
   ensureKognaAICoreTables();
   ensureLeadsColumns();
@@ -4064,7 +4064,7 @@ const verifyJWT = (req, res, next) => {
   } catch (err) {
     log(`[AUTH] JWT Verification failed: ${err.message} (Secret defined: ${!!JWT_SECRET})`);
     return res.status(401).json({
-      error: "Token invÃ¡lido ou expirado",
+      error: "Token inválido ou expirado",
       reason: err.message,
       code: err.name
     });
@@ -4170,7 +4170,7 @@ app.get("/api/instance", verifyJWT, async (req, res) => {
 
     if (result.rows.length === 0) {
       log(`[API_INSTANCE] No instances found for user ${userId}`);
-      return res.status(404).json({ error: "Nenhuma instÃ¢ncia encontrada" });
+      return res.status(404).json({ error: "Nenhuma instância encontrada" });
     }
 
     // Prioritize CONNECTED instances
@@ -4457,7 +4457,7 @@ app.post("/api/login", async (req, res) => {
   }
 
   if (!email || !password) {
-    return res.status(400).json({ error: "E-mail e senha sÃ£o obrigatÃ³rios" });
+    return res.status(400).json({ error: "E-mail e senha são obrigatórios" });
   }
 
   try {
@@ -4530,9 +4530,9 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// â”€â”€ ONBOARDING V2 ENDPOINTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── ONBOARDING V2 ENDPOINTS ───────────────────────────────────────────────────
 
-// POST /api/onboarding/preview-ai â€” powers the Step 15 AI test chat
+// POST /api/onboarding/preview-ai — powers the Step 15 AI test chat
 // Public, rate-limited to 5 msgs per session_id
 const onboardingPreviewLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -4547,7 +4547,7 @@ const onboardingSessionCount = new Map();
 app.post('/api/onboarding/preview-ai', onboardingPreviewLimiter, async (req, res) => {
   try {
     const { session_id, message, onboarding_context, history } = req.body;
-    if (!session_id || !message) return res.status(400).json({ error: 'session_id e message sÃ£o obrigatÃ³rios.' });
+    if (!session_id || !message) return res.status(400).json({ error: 'session_id e message são obrigatórios.' });
 
     const MAX_MSGS = 5;
 
@@ -4555,7 +4555,7 @@ app.post('/api/onboarding/preview-ai', onboardingPreviewLimiter, async (req, res
     const count = onboardingSessionCount.get(session_id) || 0;
 
     if (count >= MAX_MSGS) {
-      return res.status(429).json({ error: 'Limite de interaÃ§Ãµes de teste atingido.', limitReached: true, messagesUsed: MAX_MSGS });
+      return res.status(429).json({ error: 'Limite de interações de teste atingido.', limitReached: true, messagesUsed: MAX_MSGS });
     }
 
     const ctx = onboarding_context || {};
@@ -4629,12 +4629,12 @@ IMPORTANTE:
       temperature: 0.75
     });
 
-    const reply = completion.choices[0]?.message?.content || 'NÃ£o consegui responder, tente novamente.';
+    const reply = completion.choices[0]?.message?.content || 'Não consegui responder, tente novamente.';
 
     const newCount = count + 1;
     onboardingSessionCount.set(session_id, newCount);
 
-    // Save to dataset for CIL â€” best-effort
+    // Save to dataset for CIL — best-effort
     pool.query(
       `INSERT INTO onboarding_test_sessions (session_id, user_message, ai_reply, onboarding_context)
        VALUES ($1, $2, $3, $4)`,
@@ -4687,7 +4687,7 @@ IMPORTANTE:
   }
 });
 
-// POST /api/onboarding/register-and-save â€” creates account + org + agent from all onboarding data
+// POST /api/onboarding/register-and-save — creates account + org + agent from all onboarding data
 app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
   const client = await pool.connect();
   try {
@@ -4702,13 +4702,13 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
       referral_code
     } = req.body;
 
-    if (!name || !email || !password) return res.status(400).json({ error: 'Nome, e-mail e senha sÃ£o obrigatÃ³rios.' });
+    if (!name || !email || !password) return res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios.' });
     if (password.length < 6) return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres.' });
 
     const existCheck = await client.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
-    if (existCheck.rows.length > 0) return res.status(409).json({ error: 'Este e-mail jÃ¡ estÃ¡ cadastrado. FaÃ§a login.' });
+    if (existCheck.rows.length > 0) return res.status(409).json({ error: 'Este e-mail já está cadastrado. Faça login.' });
 
-    // â”€â”€ Mandatory transaction: org + user â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Mandatory transaction: org + user ─────────────────────────────────────
     await client.query('BEGIN');
 
     // Use SAVEPOINT so we can recover from a failed INSERT without aborting the whole transaction
@@ -4751,7 +4751,7 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
     // Best-effort: save whatsapp number in personal_phone column
     if (phone) pool.query(`UPDATE users SET personal_phone=$1 WHERE id=$2`, [phone, user.id]).catch(() => { });
 
-    // â”€â”€ Optional: save AI config (best-effort) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Optional: save AI config (best-effort) ────────────────────────────────
     const seededObjectionPlaybook = Array.isArray(objectionPlaybook) && objectionPlaybook.length > 0
       ? objectionPlaybook
       : normalizeStringList(objections).map((label, index) => ({
@@ -4800,7 +4800,7 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
       log('[ONBOARDING-V2] ia_configs save failed: ' + iaErr.message);
     }
 
-    // â”€â”€ Optional: create first agent (best-effort) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Optional: create first agent (best-effort) ────────────────────────────
     let createdAgentId = null;
     try {
       const profile = await getCanonicalCompanyProfile({ orgId: org.id, userId: user.id });
@@ -4853,11 +4853,11 @@ app.post('/api/onboarding/register-and-save', authLimiter, async (req, res) => {
   }
 });
 
-// â”€â”€ END ONBOARDING V2 ENDPOINTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END ONBOARDING V2 ENDPOINTS ───────────────────────────────────────────────
 
-// â”€â”€ COMPANY DATA ENDPOINTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── COMPANY DATA ENDPOINTS ────────────────────────────────────────────────────
 
-// GET /api/company-data â€” returns ia_configs mapped to CompanyData shape (used by MyAIs)
+// GET /api/company-data — returns ia_configs mapped to CompanyData shape (used by MyAIs)
 app.get('/api/company-data', verifyJWT, async (req, res) => {
   try {
     await ensureKognaAICoreTables();
@@ -4871,7 +4871,7 @@ app.get('/api/company-data', verifyJWT, async (req, res) => {
   }
 });
 
-// PUT /api/company-profile â€” saves ia_configs for the org
+// PUT /api/company-profile — saves ia_configs for the org
 app.put('/api/company-profile', verifyJWT, async (req, res) => {
   try {
     await ensureKognaAICoreTables();
@@ -4930,7 +4930,7 @@ app.post('/api/company-profile/regenerate-playbook', verifyJWT, async (req, res)
   }
 });
 
-// PATCH /api/ia-config â€” compatibility wrapper for structured feedback
+// PATCH /api/ia-config — compatibility wrapper for structured feedback
 app.patch('/api/ia-config', verifyJWT, async (req, res) => {
   try {
     await ensureKognaAICoreTables();
@@ -5053,11 +5053,11 @@ app.delete('/api/objections/:id', verifyJWT, async (req, res) => {
   }
 });
 
-// â”€â”€ END COMPANY DATA ENDPOINTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END COMPANY DATA ENDPOINTS ────────────────────────────────────────────────
 
-// â”€â”€ AGENTS CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── AGENTS CRUD ───────────────────────────────────────────────────────────────
 
-// GET /api/agents â€” list all agents for the user's org
+// GET /api/agents — list all agents for the user's org
 app.get('/api/agents', verifyJWT, async (req, res) => {
   try {
     const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
@@ -5088,7 +5088,7 @@ app.get('/api/agents', verifyJWT, async (req, res) => {
   }
 });
 
-// POST /api/agents â€” create a new agent
+// POST /api/agents — create a new agent
 app.post('/api/agents', verifyJWT, async (req, res) => {
   try {
     await ensureKognaAICoreTables();
@@ -5097,7 +5097,7 @@ app.post('/api/agents', verifyJWT, async (req, res) => {
     if (!orgId) return res.status(400).json({ error: 'No organization' });
 
     const { name, type, system_prompt, model_config, use_company_profile, advanced_instructions } = req.body;
-    if (!name) return res.status(400).json({ error: 'name Ã© obrigatÃ³rio' });
+    if (!name) return res.status(400).json({ error: 'name é obrigatório' });
 
     const profile = await getCanonicalCompanyProfile({ orgId, userId: req.userId });
     const generatedPrompt = use_company_profile || !system_prompt
@@ -5141,7 +5141,7 @@ app.delete('/api/agents/:id', verifyJWT, async (req, res) => {
       'DELETE FROM agents WHERE id = $1 AND organization_id = $2 RETURNING id',
       [req.params.id, orgId]
     );
-    if (r.rows.length === 0) return res.status(404).json({ error: 'Agente nÃ£o encontrado.' });
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Agente não encontrado.' });
     res.json({ success: true });
   } catch (err) {
     log('[AGENTS] DELETE error: ' + err.message);
@@ -5158,7 +5158,7 @@ app.post('/api/agents/:id/toggle-pause', verifyJWT, async (req, res) => {
       'SELECT status FROM agents WHERE id = $1 AND organization_id = $2',
       [req.params.id, orgId]
     );
-    if (curr.rows.length === 0) return res.status(404).json({ error: 'Agente nÃ£o encontrado.' });
+    if (curr.rows.length === 0) return res.status(404).json({ error: 'Agente não encontrado.' });
     const newStatus = curr.rows[0].status === 'paused' ? 'active' : 'paused';
     await pool.query('UPDATE agents SET status = $1 WHERE id = $2', [newStatus, req.params.id]);
     res.json({ status: newStatus });
@@ -5168,7 +5168,7 @@ app.post('/api/agents/:id/toggle-pause', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/industry/my-profile â€” returns org industry slug (used by MyAIs for agent suggestions)
+// GET /api/industry/my-profile — returns org industry slug (used by MyAIs for agent suggestions)
 app.get('/api/industry/my-profile', verifyJWT, async (req, res) => {
   try {
     const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
@@ -5182,9 +5182,9 @@ app.get('/api/industry/my-profile', verifyJWT, async (req, res) => {
   } catch (_) { res.json({}); }
 });
 
-// â”€â”€ END AGENTS CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END AGENTS CRUD ───────────────────────────────────────────────────────────
 
-// â”€â”€ AUTOMATIONS & NOTIFICATIONS SYSTEM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── AUTOMATIONS & NOTIFICATIONS SYSTEM ────────────────────────────────────────
 
 // Lazy-load nodemailer so the module doesn't crash if not installed
 let nodemailer;
@@ -5205,7 +5205,7 @@ function createSmtpTransporter() {
 
 async function sendEmail(to, subject, html) {
   const transporter = createSmtpTransporter();
-  if (!transporter) { log('[SMTP] Skipped â€“ nodemailer not available'); return; }
+  if (!transporter) { log('[SMTP] Skipped – nodemailer not available'); return; }
   await transporter.sendMail({
     from: process.env.SMTP_FROM || '"Kogna" <news@kogna.co>',
     to, subject, html,
@@ -5474,7 +5474,7 @@ function getOptionalUserIdFromAuthHeader(req) {
   }
 }
 
-// â”€â”€ GET /api/admin/automations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── GET /api/admin/automations ────────────────────────────────────────────────
 app.get('/api/admin/automations', verifyJWT, requireAdmin, async (req, res) => {
   try {
     await ensureAdminAutomationColumns();
@@ -5488,13 +5488,13 @@ app.get('/api/admin/automations', verifyJWT, requireAdmin, async (req, res) => {
   }
 });
 
-// â”€â”€ POST /api/admin/automations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── POST /api/admin/automations ───────────────────────────────────────────────
 app.post('/api/admin/automations', verifyJWT, requireAdmin, async (req, res) => {
   try {
     await ensureAdminAutomationColumns();
     const { name, trigger_event, trigger_rule, audience_type, audience_filter, channels, message_template, wa_instance } = req.body;
     if (!name || !trigger_event || !message_template) {
-      return res.status(400).json({ error: 'name, trigger_event e message_template sÃ£o obrigatÃ³rios.' });
+      return res.status(400).json({ error: 'name, trigger_event e message_template são obrigatórios.' });
     }
     if (Array.isArray(channels) && channels.includes('whatsapp') && !wa_instance) {
       return res.status(400).json({ error: 'Selecione qual conexao do WhatsApp sera usada nessa automacao.' });
@@ -5512,7 +5512,7 @@ app.post('/api/admin/automations', verifyJWT, requireAdmin, async (req, res) => 
   }
 });
 
-// â”€â”€ PATCH /api/admin/automations/:id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── PATCH /api/admin/automations/:id ─────────────────────────────────────────
 app.patch('/api/admin/automations/:id', verifyJWT, requireAdmin, async (req, res) => {
   try {
     await ensureAdminAutomationColumns();
@@ -5533,14 +5533,14 @@ app.patch('/api/admin/automations/:id', verifyJWT, requireAdmin, async (req, res
         audience_type, audience_filter ? JSON.stringify(audience_filter) : null,
         channels, message_template, is_active, req.params.id, wa_instance ?? null]
     );
-    if (!r.rows.length) return res.status(404).json({ error: 'AutomaÃ§Ã£o nÃ£o encontrada.' });
+    if (!r.rows.length) return res.status(404).json({ error: 'Automação não encontrada.' });
     res.json(r.rows[0]);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// â”€â”€ DELETE /api/admin/automations/:id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── DELETE /api/admin/automations/:id ────────────────────────────────────────
 app.delete('/api/admin/automations/:id', verifyJWT, requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM automation_rules WHERE id=$1', [req.params.id]);
@@ -5548,13 +5548,13 @@ app.delete('/api/admin/automations/:id', verifyJWT, requireAdmin, async (req, re
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// â”€â”€ POST /api/admin/automations/:id/trigger â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── POST /api/admin/automations/:id/trigger ───────────────────────────────────
 // Manually trigger an automation, sending to its audience right now
 app.post('/api/admin/automations/:id/trigger', verifyJWT, requireAdmin, async (req, res) => {
   try {
     await ensureAdminAutomationColumns();
     const autoRes = await pool.query('SELECT * FROM automation_rules WHERE id=$1', [req.params.id]);
-    if (!autoRes.rows.length) return res.status(404).json({ error: 'AutomaÃ§Ã£o nÃ£o encontrada.' });
+    if (!autoRes.rows.length) return res.status(404).json({ error: 'Automação não encontrada.' });
     const auto = autoRes.rows[0];
 
     // Fetch audience
@@ -5632,11 +5632,11 @@ app.post('/api/admin/automations/:id/trigger', verifyJWT, requireAdmin, async (r
   }
 });
 
-// â”€â”€ POST /api/admin/notifications/send â€” Manual send â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── POST /api/admin/notifications/send — Manual send ─────────────────────────
 app.post('/api/admin/notifications/send', verifyJWT, requireAdmin, async (req, res) => {
   try {
     const { message, subject, channels, audience_type, user_ids, filter_tags, wa_instance, notification_title } = req.body;
-    if (!message) return res.status(400).json({ error: 'message Ã© obrigatÃ³rio.' });
+    if (!message) return res.status(400).json({ error: 'message é obrigatório.' });
 
     let recipients = [];
     if (audience_type === 'specific' && user_ids?.length) {
@@ -5656,7 +5656,7 @@ app.post('/api/admin/notifications/send', verifyJWT, requireAdmin, async (req, r
       recipients = r.rows;
     }
 
-    // â”€â”€ Anti-ban helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Anti-ban helpers ─────────────────────────────────────────────────────
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
@@ -5677,7 +5677,7 @@ app.post('/api/admin/notifications/send', verifyJWT, requireAdmin, async (req, r
         body: JSON.stringify({ number: phone + '@s.whatsapp.net', options: { delay: 1200, presence: 'composing' } }),
       }).catch(() => { });
     };
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ────────────────────────────────────────────────────────────────────────
 
     let sent = 0;
     const chs = Array.isArray(channels) ? channels : ['internal'];
@@ -5722,10 +5722,10 @@ app.post('/api/admin/notifications/send', verifyJWT, requireAdmin, async (req, r
 
     res.json({ sent, total: recipients.length, wa_queued: waQueue.length });
 
-    // â”€â”€ WA anti-ban send queue (async background after HTTP response) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── WA anti-ban send queue (async background after HTTP response) ─────────
     if (waQueue.length > 0) {
       (async () => {
-        log(`[WA-BLAST] Iniciando fila: ${waQueue.length} destinatÃ¡rios`);
+        log(`[WA-BLAST] Iniciando fila: ${waQueue.length} destinatários`);
         for (let i = 0; i < waQueue.length; i++) {
           const { u, msg } = waQueue[i];
           try {
@@ -5734,7 +5734,7 @@ app.post('/api/admin/notifications/send', verifyJWT, requireAdmin, async (req, r
             await sleep(randInt(1000, 3000));
 
             await sendWhatsAppMsg(wa_instance, userPhones[u.id], humanize(msg)).catch(() => { });
-            log(`[WA-BLAST] ${i + 1}/${waQueue.length} â†’ ...${userPhones[u.id].slice(-4)}`);
+            log(`[WA-BLAST] ${i + 1}/${waQueue.length} → ...${userPhones[u.id].slice(-4)}`);
 
             if (i + 1 >= waQueue.length) break;
 
@@ -5753,7 +5753,7 @@ app.post('/api/admin/notifications/send', verifyJWT, requireAdmin, async (req, r
             log(`[WA-BLAST] Erro: ${err.message}`);
           }
         }
-        log(`[WA-BLAST] Fila concluÃ­da: ${waQueue.length} mensagens.`);
+        log(`[WA-BLAST] Fila concluída: ${waQueue.length} mensagens.`);
       })();
     }
   } catch (e) {
@@ -5762,7 +5762,7 @@ app.post('/api/admin/notifications/send', verifyJWT, requireAdmin, async (req, r
   }
 });
 
-// â”€â”€ GET /api/admin/whatsapp-instances â€” list all WA instances â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── GET /api/admin/whatsapp-instances — list all WA instances ───────────────────
 app.get('/api/admin/whatsapp-instances', verifyJWT, requireAdmin, async (req, res) => {
   try {
     // Get admin's own organization
@@ -5782,7 +5782,7 @@ app.get('/api/admin/whatsapp-instances', verifyJWT, requireAdmin, async (req, re
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// â”€â”€ GET /api/admin/automation-logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── GET /api/admin/automation-logs ────────────────────────────────────────────
 app.get('/api/admin/automation-logs', verifyJWT, requireAdmin, async (req, res) => {
   try {
     const r = await pool.query(
@@ -5792,7 +5792,7 @@ app.get('/api/admin/automation-logs', verifyJWT, requireAdmin, async (req, res) 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// â”€â”€ GET /api/admin/user-tags â€” list all tags (distinct) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── GET /api/admin/user-tags — list all tags (distinct) ──────────────────────
 app.get('/api/admin/user-tags', verifyJWT, requireAdmin, async (req, res) => {
   try {
     const r = await pool.query('SELECT DISTINCT tag FROM user_tags ORDER BY tag');
@@ -5800,7 +5800,7 @@ app.get('/api/admin/user-tags', verifyJWT, requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// â”€â”€ GET /api/admin/user-tags/:userId â€” tags for a specific user â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── GET /api/admin/user-tags/:userId — tags for a specific user ───────────────
 app.get('/api/admin/user-tags/:userId', verifyJWT, requireAdmin, async (req, res) => {
   try {
     const r = await pool.query('SELECT tag FROM user_tags WHERE user_id=$1', [req.params.userId]);
@@ -5808,11 +5808,11 @@ app.get('/api/admin/user-tags/:userId', verifyJWT, requireAdmin, async (req, res
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// â”€â”€ POST /api/admin/user-tags â€” add a tag â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── POST /api/admin/user-tags — add a tag ────────────────────────────────────
 app.post('/api/admin/user-tags', verifyJWT, requireAdmin, async (req, res) => {
   try {
     const { user_id, tag } = req.body;
-    if (!user_id || !tag) return res.status(400).json({ error: 'user_id e tag obrigatÃ³rios.' });
+    if (!user_id || !tag) return res.status(400).json({ error: 'user_id e tag obrigatórios.' });
     await pool.query(
       'INSERT INTO user_tags (user_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [user_id, tag.trim().toLowerCase()]
@@ -5821,7 +5821,7 @@ app.post('/api/admin/user-tags', verifyJWT, requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// â”€â”€ DELETE /api/admin/user-tags â€” remove a tag â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── DELETE /api/admin/user-tags — remove a tag ───────────────────────────────
 app.delete('/api/admin/user-tags', verifyJWT, requireAdmin, async (req, res) => {
   try {
     const { user_id, tag } = req.body;
@@ -5830,7 +5830,7 @@ app.delete('/api/admin/user-tags', verifyJWT, requireAdmin, async (req, res) => 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// â”€â”€ GET /api/admin/users-filtered â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── GET /api/admin/users-filtered ─────────────────────────────────────────────
 app.get('/api/admin/users-filtered', verifyJWT, requireAdmin, async (req, res) => {
   try {
     const { tag, koins_max, no_agent, no_whatsapp } = req.query;
@@ -5851,7 +5851,7 @@ app.get('/api/admin/users-filtered', verifyJWT, requireAdmin, async (req, res) =
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// â”€â”€ END AUTOMATIONS SYSTEM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END AUTOMATIONS SYSTEM ────────────────────────────────────────────────────
 
 /**
  * @swagger
@@ -6591,13 +6591,13 @@ app.post("/api/register", async (req, res) => {
   if (!email || !password || !name) {
     return res
       .status(400)
-      .json({ error: "Nome, e-mail e senha sÃ£o obrigatÃ³rios" });
+      .json({ error: "Nome, e-mail e senha são obrigatórios" });
   }
 
   if (password.length < 6) {
     return res
       .status(400)
-      .json({ error: "A senha deve ter no mÃ­nimo 6 caracteres" });
+      .json({ error: "A senha deve ter no mínimo 6 caracteres" });
   }
 
   try {
@@ -6606,7 +6606,7 @@ app.post("/api/register", async (req, res) => {
       email,
     ]);
     if (existingEmail.rows.length > 0) {
-      return res.status(409).json({ error: "Este e-mail jÃ¡ estÃ¡ cadastrado" });
+      return res.status(409).json({ error: "Este e-mail já está cadastrado" });
     }
 
     // Check if WhatsApp/phone already exists (if provided)
@@ -6617,7 +6617,7 @@ app.post("/api/register", async (req, res) => {
         [cleanPhone]
       );
       if (existingPhone.rows.length > 0) {
-        return res.status(409).json({ error: "Este nÃºmero de celular jÃ¡ estÃ¡ cadastrado" });
+        return res.status(409).json({ error: "Este número de celular já está cadastrado" });
       }
     }
 
@@ -6669,8 +6669,8 @@ app.post("/api/register", async (req, res) => {
       `INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)`,
       [
         user.id,
-        "Bem-vindo Ã  Kogna!",
-        "Estamos felizes em tÃª-lo conosco. Complete o onboarding para ganhar 100 Koins grÃ¡tis!",
+        "Bem-vindo à Kogna!",
+        "Estamos felizes em tê-lo conosco. Complete o onboarding para ganhar 100 Koins grátis!",
       ],
     );
 
@@ -6757,7 +6757,7 @@ app.post("/api/partners/apply", verifyJWT, async (req, res) => {
       [userId],
     );
     if (existing.rows.length > 0) {
-      return res.status(409).json({ error: "VocÃª jÃ¡ Ã© um parceiro Kogna" });
+      return res.status(409).json({ error: "Você já é um parceiro Kogna" });
     }
 
     // Generate unique affiliate code
@@ -6794,13 +6794,13 @@ app.post("/api/partners/apply", verifyJWT, async (req, res) => {
       if (!email || !password || !name) {
         return res
           .status(400)
-          .json({ error: "Nome, e-mail e senha sÃ£o obrigatÃ³rios" });
+          .json({ error: "Nome, e-mail e senha são obrigatórios" });
       }
 
       if (password.length < 6) {
         return res
           .status(400)
-          .json({ error: "A senha deve ter no mÃ­nimo 6 caracteres" });
+          .json({ error: "A senha deve ter no mínimo 6 caracteres" });
       }
 
       try {
@@ -6814,7 +6814,7 @@ app.post("/api/partners/apply", verifyJWT, async (req, res) => {
             .status(409)
             .json({
               error:
-                "Este e-mail jÃ¡ estÃ¡ cadastrado. FaÃ§a login para se tornar um parceiro.",
+                "Este e-mail já está cadastrado. Faça login para se tornar um parceiro.",
             });
         }
 
@@ -6862,7 +6862,7 @@ app.post("/api/partners/apply", verifyJWT, async (req, res) => {
           [
             user.id,
             "Bem-vindo ao Programa de Parceiros!",
-            "Seu link de afiliado jÃ¡ estÃ¡ ativo. Acesse o painel de parceiros para comeÃ§ar.",
+            "Seu link de afiliado já está ativo. Acesse o painel de parceiros para começar.",
           ],
         );
 
@@ -6904,7 +6904,7 @@ app.get("/api/partners/dashboard", verifyJWT, async (req, res) => {
     if (partnerRes.rows.length === 0) {
       return res
         .status(404)
-        .json({ error: "VocÃª nÃ£o Ã© um parceiro. Solicite sua afiliaÃ§Ã£o." });
+        .json({ error: "Você não é um parceiro. Solicite sua afiliação." });
     }
     const partner = partnerRes.rows[0];
 
@@ -7128,166 +7128,166 @@ app.post("/api/onboarding/create-agent", verifyJWT, async (req, res) => {
 
     // 2. Define Templates (kept in sync with src/data/agentTemplates.ts)
     const templates = {
-      sdr: `[IDENTIDADE E MISSÃƒO]
-VocÃª Ã© {{aiName}}, um SDR (Sales Development Representative) de elite da empresa {{companyName}}, operando via WhatsApp.
+      sdr: `[IDENTIDADE E MISSÃO]
+Você é {{aiName}}, um SDR (Sales Development Representative) de elite da empresa {{companyName}}, operando via WhatsApp.
 A empresa vende: {{companyProduct}}.
-O pÃºblico-alvo Ã©: {{targetAudience}}.
+O público-alvo é: {{targetAudience}}.
 Tom de voz: {{voiceTone}}.
-Principal dor/problema do cliente que vocÃª resolve: {{customerPain}}.
+Principal dor/problema do cliente que você resolve: {{customerPain}}.
 
-Sua MISSÃƒO ÃšNICA E MENSURÃVEL Ã©: AGENDAR UMA REUNIÃƒO/DEMONSTRAÃ‡ÃƒO. VocÃª NÃƒO vende o produto final â€” vocÃª vende a REUNIÃƒO.
+Sua MISSÃO ÚNICA E MENSURÁVEL é: AGENDAR UMA REUNIÃO/DEMONSTRAÇÃO. Você NÃO vende o produto final — você vende a REUNIÃO.
 
-[ABERTURA OBRIGATÃ“RIA â€” PRIMEIRA MENSAGEM]
-Quando alguÃ©m iniciar uma conversa com vocÃª pela primeira vez (ex: "oi", "olÃ¡", qualquer saudaÃ§Ã£o), NUNCA responda com "Como posso te ajudar?" ou qualquer variaÃ§Ã£o. Em vez disso, SEMPRE siga este roteiro:
-1. Cumprimente pelo nome se disponÃ­vel, de forma breve e calorosa.
+[ABERTURA OBRIGATÓRIA — PRIMEIRA MENSAGEM]
+Quando alguém iniciar uma conversa com você pela primeira vez (ex: "oi", "olá", qualquer saudação), NUNCA responda com "Como posso te ajudar?" ou qualquer variação. Em vez disso, SEMPRE siga este roteiro:
+1. Cumprimente pelo nome se disponível, de forma breve e calorosa.
 2. Apresente-se e a empresa em uma linha.
-3. Imediatamente faÃ§a UMA pergunta de qualificaÃ§Ã£o fechada, diretamente ligada Ã  dor do cliente. Exemplo:
-"Ei! Sou a {{aiName}} da {{companyName}}. A maioria das empresas que nos procura enfrenta [dor do cliente]. Isso ressoa com o que vocÃªs vivem hoje?"
+3. Imediatamente faça UMA pergunta de qualificação fechada, diretamente ligada à dor do cliente. Exemplo:
+"Ei! Sou a {{aiName}} da {{companyName}}. A maioria das empresas que nos procura enfrenta [dor do cliente]. Isso ressoa com o que vocês vivem hoje?"
 
-[MAPA COGNITIVO â€” 4 ESTADOS OBRIGATÃ“RIOS]
-Nunca pule estados. Mova o lead de um estado para o prÃ³ximo a cada mensagem:
-1. DESCOBERTA (Rapport + Dor): Confirme o problema. Use: "VocÃª mencionou X â€” isso acontece com qual frequÃªncia?"
-2. QUALIFICAÃ‡ÃƒO (SPIN): MeÃ§a o impacto da dor. "Quanto esse problema custa para vocÃªs por mÃªs, estimativamente?"
-3. CURIOSIDADE (Ponte): "NÃ³s ajudamos [empresa similar] a resolver exatamente isso. Posso te mostrar como em 15 minutos?"
-4. CONVERSÃƒO (Alternative Close): "VocÃª prefere uma call amanhÃ£ de manhÃ£ ou na quinta Ã  tarde?"
+[MAPA COGNITIVO — 4 ESTADOS OBRIGATÓRIOS]
+Nunca pule estados. Mova o lead de um estado para o próximo a cada mensagem:
+1. DESCOBERTA (Rapport + Dor): Confirme o problema. Use: "Você mencionou X — isso acontece com qual frequência?"
+2. QUALIFICAÇÃO (SPIN): Meça o impacto da dor. "Quanto esse problema custa para vocês por mês, estimativamente?"
+3. CURIOSIDADE (Ponte): "Nós ajudamos [empresa similar] a resolver exatamente isso. Posso te mostrar como em 15 minutos?"
+4. CONVERSÃO (Alternative Close): "Você prefere uma call amanhã de manhã ou na quinta à tarde?"
 
-[PROTOCOLO DE CONDUÃ‡ÃƒO ATIVA â€” INVIOLÃVEL]
-- VOCÃŠ LIDERA, NUNCA SEGUE. Cada mensagem deve avanÃ§ar o lead um passo.
-- UMA PERGUNTA POR MENSAGEM â€” sempre fechada ou de alternativa (A ou B), nunca aberta.
-- PROIBIDO: "O que vocÃª gostaria de saber?", "Como posso te ajudar?", "Sobre o que vocÃª quer falar?"
-- Se o lead der uma resposta vaga, nÃ£o aceite. Redirecione: "Entendi! Me conta mais especificamente: [pergunta fechada]"
-- REGRA DA ÃšLTIMA FRASE: 100% das suas mensagens terminam com uma pergunta ou CTA.
+[PROTOCOLO DE CONDUÇÃO ATIVA — INVIOLÁVEL]
+- VOCÊ LIDERA, NUNCA SEGUE. Cada mensagem deve avançar o lead um passo.
+- UMA PERGUNTA POR MENSAGEM — sempre fechada ou de alternativa (A ou B), nunca aberta.
+- PROIBIDO: "O que você gostaria de saber?", "Como posso te ajudar?", "Sobre o que você quer falar?"
+- Se o lead der uma resposta vaga, não aceite. Redirecione: "Entendi! Me conta mais especificamente: [pergunta fechada]"
+- REGRA DA ÚLTIMA FRASE: 100% das suas mensagens terminam com uma pergunta ou CTA.
 
-[TRATAMENTO DE OBJEÃ‡Ã•ES â€” MÃ‰TODO LAER]
-- "SEM TEMPO": "Exatamente por isso estou aqui â€” resolver isso antes que consuma mais tempo. Quanto tempo esse problema jÃ¡ tomou da sua equipe esse mÃªs?"
-- "JÃ TENHO FORNECEDOR": "Ã“timo! O que faria sua experiÃªncia atual passar de 'boa' para 'perfeita'?"
-- "NÃƒO PRECISO": "Entendo. O que te leva a pensar que {{customerPain}} nÃ£o Ã© uma prioridade agora?"
+[TRATAMENTO DE OBJEÇÕES — MÉTODO LAER]
+- "SEM TEMPO": "Exatamente por isso estou aqui — resolver isso antes que consuma mais tempo. Quanto tempo esse problema já tomou da sua equipe esse mês?"
+- "JÁ TENHO FORNECEDOR": "Ótimo! O que faria sua experiência atual passar de 'boa' para 'perfeita'?"
+- "NÃO PRECISO": "Entendo. O que te leva a pensar que {{customerPain}} não é uma prioridade agora?"
 
 REGRAS:
-1. Use linguagem natural, escaneÃ¡vel, parÃ¡grafos de no mÃ¡ximo 2 linhas.
+1. Use linguagem natural, escaneável, parágrafos de no máximo 2 linhas.
 2. Nunca invente dados sobre o produto.
-3. Se nÃ£o souber algo: {{unknownBehavior}}.
+3. Se não souber algo: {{unknownBehavior}}.
 
-RESTRIÃ‡Ã•ES (NUNCA FAZER):
+RESTRIÇÕES (NUNCA FAZER):
 {{restrictions}}`,
 
-      vendedor: `[IDENTIDADE E MISSÃƒO]
-VocÃª Ã© {{aiName}}, um Vendedor Closer de alta performance da empresa {{companyName}}, operando via WhatsApp.
+      vendedor: `[IDENTIDADE E MISSÃO]
+Você é {{aiName}}, um Vendedor Closer de alta performance da empresa {{companyName}}, operando via WhatsApp.
 A empresa vende: {{companyProduct}}.
-O pÃºblico-alvo Ã©: {{targetAudience}}.
+O público-alvo é: {{targetAudience}}.
 Tom de voz: {{voiceTone}}.
-Principal dor/problema do cliente que vocÃª resolve: {{customerPain}}.
+Principal dor/problema do cliente que você resolve: {{customerPain}}.
 
-Sua MISSÃƒO ÃšNICA E MENSURÃVEL Ã©: FECHAR A VENDA. VocÃª nÃ£o tira dÃºvidas â€” vocÃª conduz o cliente Ã  decisÃ£o.
+Sua MISSÃO ÚNICA E MENSURÁVEL é: FECHAR A VENDA. Você não tira dúvidas — você conduz o cliente à decisão.
 
-[ABERTURA OBRIGATÃ“RIA â€” PRIMEIRA MENSAGEM]
-Quando alguÃ©m iniciar uma conversa (ex: "oi", "quero saber mais", qualquer mensagem inicial), NUNCA responda com "Como posso te ajudar?" ou "Sobre o que gostaria de saber?". Siga este roteiro:
-1. Cumprimento breve + apresentaÃ§Ã£o em uma linha.
+[ABERTURA OBRIGATÓRIA — PRIMEIRA MENSAGEM]
+Quando alguém iniciar uma conversa (ex: "oi", "quero saber mais", qualquer mensagem inicial), NUNCA responda com "Como posso te ajudar?" ou "Sobre o que gostaria de saber?". Siga este roteiro:
+1. Cumprimento breve + apresentação em uma linha.
 2. Gatilho de dor imediato: mencione a dor principal do cliente.
-3. Pergunta de diagnÃ³stico fechada para confirmar a dor. Exemplo:
-"OlÃ¡! Sou {{aiName}} da {{companyName}}. Muitos dos nossos clientes chegam atÃ© nÃ³s com [dor do cliente] â€” vocÃª tambÃ©m enfrenta isso no dia a dia?"
+3. Pergunta de diagnóstico fechada para confirmar a dor. Exemplo:
+"Olá! Sou {{aiName}} da {{companyName}}. Muitos dos nossos clientes chegam até nós com [dor do cliente] — você também enfrenta isso no dia a dia?"
 
-[MAPA COGNITIVO â€” 4 ESTADOS]
-1. DIAGNÃ“STICO: Confirme e aprofunde a dor. "Esse problema afeta mais a sua equipe, as vendas ou a operaÃ§Ã£o?"
-2. APRESENTAÃ‡ÃƒO DE VALOR (BAF): BenefÃ­cio â†’ Vantagem â†’ CaracterÃ­stica. Nunca comece pela feature.
-3. NEGOCIAÃ‡ÃƒO: Isole objeÃ§Ãµes, mostre ROI. "O custo de nÃ£o resolver isso jÃ¡ Ã© maior que o investimento."
+[MAPA COGNITIVO — 4 ESTADOS]
+1. DIAGNÓSTICO: Confirme e aprofunde a dor. "Esse problema afeta mais a sua equipe, as vendas ou a operação?"
+2. APRESENTAÇÃO DE VALOR (BAF): Benefício → Vantagem → Característica. Nunca comece pela feature.
+3. NEGOCIAÇÃO: Isole objeções, mostre ROI. "O custo de não resolver isso já é maior que o investimento."
 4. FECHAMENTO: Assumptive Close. "Para liberar seu acesso agora, qual o melhor e-mail?"
 
-[PROTOCOLO DE CONDUÃ‡ÃƒO ATIVA â€” INVIOLÃVEL]
-- VOCÃŠ LIDERA SEMPRE. NÃ£o existe mensagem sua que nÃ£o avance o processo de venda.
-- UMA PERGUNTA POR MENSAGEM â€” fechada ou alternativa, nunca aberta.
-- PROIBIDO: "O que vocÃª quer saber?", "Tem alguma dÃºvida?", "Como posso te ajudar?"
-- REGRA DA ÃšLTIMA FRASE: 100% das mensagens terminam com pergunta ou CTA de fechamento.
+[PROTOCOLO DE CONDUÇÃO ATIVA — INVIOLÁVEL]
+- VOCÊ LIDERA SEMPRE. Não existe mensagem sua que não avance o processo de venda.
+- UMA PERGUNTA POR MENSAGEM — fechada ou alternativa, nunca aberta.
+- PROIBIDO: "O que você quer saber?", "Tem alguma dúvida?", "Como posso te ajudar?"
+- REGRA DA ÚLTIMA FRASE: 100% das mensagens terminam com pergunta ou CTA de fechamento.
 
-[TRATAMENTO TÃTICO DE OBJEÃ‡Ã•ES â€” LAER]
-- "TÃ CARO": "Se o preÃ§o nÃ£o fosse obstÃ¡culo, vocÃª fecharia hoje? O que impede alÃ©m disso?"
-- "PRECISO PENSAR": "O que especificamente estÃ¡ pesando mais? A [benefÃ­cio] ou a [outra preocupaÃ§Ã£o]?"
-- "CONCORRENTE Ã‰ MAIS BARATO": "O que vocÃª busca: o menor preÃ§o ou a certeza de resolver [dor]?"
+[TRATAMENTO TÁTICO DE OBJEÇÕES — LAER]
+- "TÁ CARO": "Se o preço não fosse obstáculo, você fecharia hoje? O que impede além disso?"
+- "PRECISO PENSAR": "O que especificamente está pesando mais? A [benefício] ou a [outra preocupação]?"
+- "CONCORRENTE É MAIS BARATO": "O que você busca: o menor preço ou a certeza de resolver [dor]?"
 
-[TÃ‰CNICAS DE FECHAMENTO]
-- ASSUMPTIVE CLOSE: "Para seguirmos, me passa seu e-mail que jÃ¡ preparo o acesso."
-- ALTERNATIVE CLOSE: "Prefere fechar no PIX hoje ou parcelar no cartÃ£o?"
-- URGÃŠNCIA: Mencione escassez de vagas/estoque de forma natural e verdadeira.
+[TÉCNICAS DE FECHAMENTO]
+- ASSUMPTIVE CLOSE: "Para seguirmos, me passa seu e-mail que já preparo o acesso."
+- ALTERNATIVE CLOSE: "Prefere fechar no PIX hoje ou parcelar no cartão?"
+- URGÊNCIA: Mencione escassez de vagas/estoque de forma natural e verdadeira.
 
 REGRAS:
-1. Nunca invente dados. Se nÃ£o souber: {{unknownBehavior}}.
+1. Nunca invente dados. Se não souber: {{unknownBehavior}}.
 
-RESTRIÃ‡Ã•ES (NUNCA FAZER):
+RESTRIÇÕES (NUNCA FAZER):
 {{restrictions}}`,
 
-      suporte: `[IDENTIDADE E MISSÃƒO]
-VocÃª Ã© {{aiName}}, Especialista em Suporte e Sucesso do Cliente da empresa {{companyName}}, operando via WhatsApp.
+      suporte: `[IDENTIDADE E MISSÃO]
+Você é {{aiName}}, Especialista em Suporte e Sucesso do Cliente da empresa {{companyName}}, operando via WhatsApp.
 A empresa atua com: {{companyProduct}}.
-O pÃºblico-alvo Ã©: {{targetAudience}}.
+O público-alvo é: {{targetAudience}}.
 Tom de voz: {{voiceTone}}.
 
-Sua MISSÃƒO Ã©: Resolver a dor ou dÃºvida do cliente no menor nÃºmero de mensagens possÃ­vel, garantindo que ele saia mais satisfeito do que quando chegou.
+Sua MISSÃO é: Resolver a dor ou dúvida do cliente no menor número de mensagens possível, garantindo que ele saia mais satisfeito do que quando chegou.
 
 [ABERTURA]
-Receba o cliente com empatia e agilidade. Identifique o problema antes de propor soluÃ§Ãµes.
-Example: "OlÃ¡, {{aiName}} aqui da {{companyName}}! Pode me contar o que estÃ¡ acontecendo? Vou resolver isso para vocÃª."
+Receba o cliente com empatia e agilidade. Identifique o problema antes de propor soluções.
+Example: "Olá, {{aiName}} aqui da {{companyName}}! Pode me contar o que está acontecendo? Vou resolver isso para você."
 
 [MAPA COGNITIVO]
 1. Acolhimento: Empatia imediata, sem julgamento.
-2. InvestigaÃ§Ã£o: Isole o problema com uma pergunta especÃ­fica.
-3. ResoluÃ§Ã£o: Entregue a soluÃ§Ã£o em passos curtos.
-4. ConfirmaÃ§Ã£o: "Isso resolveu? Posso ajudar com mais alguma coisa?"
+2. Investigação: Isole o problema com uma pergunta específica.
+3. Resolução: Entregue a solução em passos curtos.
+4. Confirmação: "Isso resolveu? Posso ajudar com mais alguma coisa?"
 
-[GESTÃƒO DE CONFLITOS â€” LAER]
+[GESTÃO DE CONFLITOS — LAER]
 Cliente irritado:
-1. Validar: "Entendo sua frustraÃ§Ã£o e lamento muito. Vou resolver agora."
-2. Explorar: "Para eu agir no ponto certo â€” o erro aparece em qual tela/momento exato?"
-3. Responder: SoluÃ§Ã£o objetiva em passos numerados.
+1. Validar: "Entendo sua frustração e lamento muito. Vou resolver agora."
+2. Explorar: "Para eu agir no ponto certo — o erro aparece em qual tela/momento exato?"
+3. Responder: Solução objetiva em passos numerados.
 
 PROTOCOLOS:
-- AMBIGUIDADE: Se o relato for vago, peÃ§a um detalhe especÃ­fico antes de responder.
-- ESPELHAMENTO: Se formal â†’ seja preciso. Se casual â†’ seja caloroso.
-- ÃšLTIMA FRASE: Sempre feche com "Consegui te ajudar ou hÃ¡ mais algo que posso verificar?"
+- AMBIGUIDADE: Se o relato for vago, peça um detalhe específico antes de responder.
+- ESPELHAMENTO: Se formal → seja preciso. Se casual → seja caloroso.
+- ÚLTIMA FRASE: Sempre feche com "Consegui te ajudar ou há mais algo que posso verificar?"
 
 REGRAS:
-1. Respostas tÃ©cnicas = passos numerados e curtos.
-2. Se nÃ£o souber: {{unknownBehavior}}. NUNCA invente prazos.
+1. Respostas técnicas = passos numerados e curtos.
+2. Se não souber: {{unknownBehavior}}. NUNCA invente prazos.
 
-RESTRIÃ‡Ã•ES (NUNCA FAZER):
+RESTRIÇÕES (NUNCA FAZER):
 {{restrictions}}`,
 
-      atendente: `[IDENTIDADE E MISSÃƒO]
-VocÃª Ã© {{aiName}}, Concierge e Atendente da empresa {{companyName}}, operando via WhatsApp.
+      atendente: `[IDENTIDADE E MISSÃO]
+Você é {{aiName}}, Concierge e Atendente da empresa {{companyName}}, operando via WhatsApp.
 A empresa vende: {{companyProduct}}.
-O pÃºblico-alvo Ã©: {{targetAudience}}.
+O público-alvo é: {{targetAudience}}.
 Tom de voz: {{voiceTone}}.
 
-Sua MISSÃƒO Ã©: Identificar rapidamente a intenÃ§Ã£o do usuÃ¡rio (Comprar, DÃºvida, ReclamaÃ§Ã£o) e resolver ou direcionar no menor nÃºmero de mensagens possÃ­vel.
+Sua MISSÃO é: Identificar rapidamente a intenção do usuário (Comprar, Dúvida, Reclamação) e resolver ou direcionar no menor número de mensagens possível.
 
 [ABERTURA]
-Receba o cliente com energia e identifique a intenÃ§Ã£o rapidamente.
-"OlÃ¡! Sou a {{aiName}} da {{companyName}}. Posso te ajudar com informaÃ§Ãµes, suporte ou dar inÃ­cio a um pedido. O que te trouxe aqui hoje?"
+Receba o cliente com energia e identifique a intenção rapidamente.
+"Olá! Sou a {{aiName}} da {{companyName}}. Posso te ajudar com informações, suporte ou dar início a um pedido. O que te trouxe aqui hoje?"
 
-[TRIAGEM â€” 3 TRILHAS]
+[TRIAGEM — 3 TRILHAS]
 
 TRILHA 1: INTERESSE/COMPRA
-- Aja como consultor. Apresente: BenefÃ­cio â†’ Vantagem â†’ Produto (BAF).
-- Assumptive Close: "Para seguirmos, sÃ³ preciso de [dado]..."
+- Aja como consultor. Apresente: Benefício → Vantagem → Produto (BAF).
+- Assumptive Close: "Para seguirmos, só preciso de [dado]..."
 
-TRILHA 2: SUPORTE/RECLAMAÃ‡ÃƒO â€” LAER
-1. Validar: "Entendo a frustraÃ§Ã£o. Vou resolver agora."
+TRILHA 2: SUPORTE/RECLAMAÇÃO — LAER
+1. Validar: "Entendo a frustração. Vou resolver agora."
 2. Explorar: "O erro aparece na tela X ou Y?"
-3. Responder: SoluÃ§Ã£o em passos claros.
+3. Responder: Solução em passos claros.
 
-TRILHA 3: DÃšVIDA GERAL
-- Resposta direta com base no conhecimento disponÃ­vel.
-- Se vago: peÃ§a clareza antes de adivinhar.
+TRILHA 3: DÚVIDA GERAL
+- Resposta direta com base no conhecimento disponível.
+- Se vago: peça clareza antes de adivinhar.
 
 PROTOCOLOS:
 - ESPELHAMENTO: Adapte energia ao cliente.
-- LOOP: Responda focado na Ãºltima pergunta. NÃ£o polua com info extra.
-- ENCERRAMENTO: "Mais alguma coisa que posso verificar para vocÃª hoje?"
+- LOOP: Responda focado na última pergunta. Não polua com info extra.
+- ENCERRAMENTO: "Mais alguma coisa que posso verificar para você hoje?"
 
 REGRAS:
-1. ParÃ¡grafos mÃ¡ximo 3 linhas.
-2. Se nÃ£o souber: {{unknownBehavior}}.
+1. Parágrafos máximo 3 linhas.
+2. Se não souber: {{unknownBehavior}}.
 
-RESTRIÃ‡Ã•ES (NUNCA FAZER):
+RESTRIÇÕES (NUNCA FAZER):
 {{restrictions}}`,
     };
 
@@ -7308,7 +7308,7 @@ RESTRIÃ‡Ã•ES (NUNCA FAZER):
       )
       .replace(
         /{{restrictions}}/g,
-        restrictions || "Nenhuma restriÃ§Ã£o definida.",
+        restrictions || "Nenhuma restrição definida.",
       );
 
     // 4. Find most recent WhatsApp Instance for this Org
@@ -7410,18 +7410,18 @@ app.post("/api/admin/fix-missing-agents", verifyJWT, verifyAdmin, async (req, re
       const targetAudience = config?.target_audience || "clientes";
       const voiceTone = config?.voice_tone || "profissional";
 
-      const systemPrompt = `VocÃª Ã© um SDR virtual chamado ${aiName}.
+      const systemPrompt = `Você é um SDR virtual chamado ${aiName}.
 A empresa ${companyName} vende: ${companyProduct}.
-O pÃºblico-alvo Ã©: ${targetAudience}.
+O público-alvo é: ${targetAudience}.
 Tom de voz: ${voiceTone}.
 
 REGRAS:
-1. FaÃ§a perguntas de qualificaÃ§Ã£o para entender a necessidade do lead.
-2. Quando o lead estiver qualificado, proponha uma reuniÃ£o ou demonstraÃ§Ã£o.
-3. Nunca invente informaÃ§Ãµes sobre o produto.
-4. Use linguagem natural e evite parecer um robÃ´.
-5. Responda sempre em portuguÃªs brasileiro.
-6. Mantenha as respostas curtas (mÃ¡ximo 3 parÃ¡grafos).`;
+1. Faça perguntas de qualificação para entender a necessidade do lead.
+2. Quando o lead estiver qualificado, proponha uma reunião ou demonstração.
+3. Nunca invente informações sobre o produto.
+4. Use linguagem natural e evite parecer um robô.
+5. Responda sempre em português brasileiro.
+6. Mantenha as respostas curtas (máximo 3 parágrafos).`;
 
       const agentName = aiName || companyName || "Agente IA";
 
@@ -7575,7 +7575,7 @@ app.get("/api/admin/strategic-metrics", verifyJWT, verifyAdmin, async (req, res)
         previousDateFilter = "AND 1=0"; // Dummy to return 0 for previous
     }
 
-    // ExecuÃ§Ã£o em PARALELO para evitar Timeouts na Vercel (limite de 10-15s)
+    // Execução em PARALELO para evitar Timeouts na Vercel (limite de 10-15s)
     const [revenueRes, prevRevenueRes, usersRes, orgsRes, tokensRes, productsRes] = await Promise.all([
       pool.query(`SELECT COALESCE(SUM(value), 0) as total FROM billing_history WHERE status = 'approved' ${dateFilter}`),
       pool.query(`SELECT COALESCE(SUM(value), 0) as prev_total FROM billing_history WHERE status = 'approved' ${previousDateFilter}`),
@@ -7595,7 +7595,7 @@ app.get("/api/admin/strategic-metrics", verifyJWT, verifyAdmin, async (req, res)
     let koinsRevenue = totalRevenue > 0 ? totalRevenue * 0.85 : 0;
     let connectionsRevenue = totalRevenue > 0 ? totalRevenue * 0.15 : 0;
 
-    // Se o banco estiver zerado (totalRevenue == 0), usamos mocks estratÃ©gicos para preencher o visual
+    // Se o banco estiver zerado (totalRevenue == 0), usamos mocks estratégicos para preencher o visual
     const isMockedBase = totalRevenue === 0;
     if (isMockedBase) {
       koinsRevenue = 15400.00;
@@ -7622,7 +7622,7 @@ app.get("/api/admin/strategic-metrics", verifyJWT, verifyAdmin, async (req, res)
       };
     }).sort((a, b) => b.revenue - a.revenue);
 
-    // Dados do grÃ¡fico com distribuiÃ§Ã£o temporal simulada
+    // Dados do gráfico com distribuição temporal simulada
     const revenueChartData = Array.from({ length: 7 }).map((_, i) => ({
       date: i === 6 ? 'Hoje' : `-${6 - i}d`,
       koins: Math.floor((koinsRevenue / 7) * (0.8 + Math.random() * 0.4)),
@@ -7710,7 +7710,7 @@ app.post("/api/admin/users", verifyJWT, verifyAdmin, async (req, res) => {
       email,
     ]);
     if (exists.rows.length > 0) {
-      return res.status(400).json({ error: "Email jÃ¡ cadastrado" });
+      return res.status(400).json({ error: "Email já cadastrado" });
     }
 
     const tempPassword = Math.random().toString(36).slice(-8);
@@ -7751,7 +7751,7 @@ app.delete("/api/admin/users/:id", verifyJWT, verifyAdmin, async (req, res) => {
     // 1. Find the user's organization
     const userRes = await pool.query("SELECT organization_id FROM users WHERE id = $1", [userId]);
     if (userRes.rows.length === 0) {
-      return res.status(404).json({ error: "UsuÃ¡rio nÃ£o encontrado" });
+      return res.status(404).json({ error: "Usuário não encontrado" });
     }
     const orgId = userRes.rows[0]?.organization_id;
 
@@ -7881,7 +7881,7 @@ app.post("/api/admin/partners", verifyJWT, verifyAdmin, async (req, res) => {
     }
 
     const { email, name } = req.body;
-    if (!email) return res.status(400).json({ error: "Email obrigatÃ³rio" });
+    if (!email) return res.status(400).json({ error: "Email obrigatório" });
 
     // 1. Check if user exists
     let targetUser = await pool.query("SELECT * FROM users WHERE email = $1", [
@@ -7898,7 +7898,7 @@ app.post("/api/admin/partners", verifyJWT, verifyAdmin, async (req, res) => {
           .status(404)
           .json({
             error:
-              "UsuÃ¡rio nÃ£o encontrado. Para criar um novo, forneÃ§a o nome.",
+              "Usuário não encontrado. Para criar um novo, forneça o nome.",
           });
       }
 
@@ -7938,7 +7938,7 @@ VALUES(gen_random_uuid(), $1, $2, $3, NOW(), 0)
       [targetUserId],
     );
     if (existingPartner.rows.length > 0) {
-      return res.status(409).json({ error: "UsuÃ¡rio jÃ¡ Ã© um parceiro." });
+      return res.status(409).json({ error: "Usuário já é um parceiro." });
     }
 
     // 3. Create Partner
@@ -8007,7 +8007,7 @@ app.put("/api/admin/partners/:id", verifyJWT, verifyAdmin, async (req, res) => {
     );
 
     if (result.rowCount === 0)
-      return res.status(404).json({ error: "Parceiro nÃ£o encontrado" });
+      return res.status(404).json({ error: "Parceiro não encontrado" });
 
     log(`Admin updated partner ${partnerId}: ${JSON.stringify(req.body)} `);
     res.json({ success: true, partner: result.rows[0] });
@@ -8271,7 +8271,7 @@ app.put("/api/profile/change-password", verifyJWT, async (req, res) => {
     if (!newPassword || newPassword.length < 6) {
       return res
         .status(400)
-        .json({ error: "A nova senha deve ter no mÃ­nimo 6 caracteres" });
+        .json({ error: "A nova senha deve ter no mínimo 6 caracteres" });
     }
 
     const userRes = await pool.query(
@@ -8406,7 +8406,7 @@ const checkPlanLimits = async (userId) => {
     if (count >= limit) {
       return {
         allowed: false,
-        message: `Limite de ${limit} conex${limit === 1 ? 'Ã£o' : 'Ãµes'} atingido.Compre mais conexÃµes para adicionar.`,
+        message: `Limite de ${limit} conex${limit === 1 ? 'ão' : 'ões'} atingido.Compre mais conexões para adicionar.`,
       };
     }
 
@@ -8524,7 +8524,7 @@ const ensureUserInitialized = async (userId) => {
         { name: "Facebook", is_system: true },
         { name: "Instagram", is_system: true },
         { name: "Google", is_system: true },
-        { name: "IndicaÃ§Ã£o", is_system: false },
+        { name: "Indicação", is_system: false },
         { name: "WhatsApp", is_system: false },
         { name: "Site", is_system: false },
       ];
@@ -8648,7 +8648,7 @@ app.get("/api/company-data", verifyJWT, async (req, res) => {
       targetAudience: targetAudience,
       voiceTone: voiceTone,
       unknownBehavior: "Avisar que vai verificar e retornar",
-      restrictions: "Nenhuma restriÃ§Ã£o definida.",
+      restrictions: "Nenhuma restrição definida.",
     });
   } catch (err) {
     log("[ERROR] GET /api/company-data error: " + err.toString());
@@ -8796,7 +8796,7 @@ app.put("/api/agents/:id", verifyJWT, async (req, res) => {
       if (collisionCheck.rows.length > 0) {
         const otherAgent = collisionCheck.rows[0];
         return res.status(400).json({
-          error: `Esta conexÃ£o jÃ¡ estÃ¡ sendo usada pela IA "${otherAgent.name}".Desconecte - a antes de usar aqui.`,
+          error: `Esta conexão já está sendo usada pela IA "${otherAgent.name}".Desconecte - a antes de usar aqui.`,
         });
       }
     }
@@ -9024,7 +9024,7 @@ app.get("/api/chats/status/:agentId/:remoteJid", async (req, res) => {
   }
 });
 
-// â”€â”€ MEMORY: GET /api/leads/:leadId/memory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── MEMORY: GET /api/leads/:leadId/memory ─────────────────────────────────────
 // Returns the full 3-layer memory for a given lead (WhatsApp remoteJid).
 app.get('/api/leads/:leadId/memory', verifyJWT, async (req, res) => {
   try {
@@ -9074,7 +9074,7 @@ app.get('/api/leads/:leadId/memory', verifyJWT, async (req, res) => {
   }
 });
 
-// â”€â”€ MEMORY: GET /api/crm/memory-overview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── MEMORY: GET /api/crm/memory-overview ──────────────────────────────────────
 // Returns memory summary for all leads in the org (for CRM list view).
 app.get('/api/crm/memory-overview', verifyJWT, async (req, res) => {
   try {
@@ -9130,7 +9130,7 @@ app.patch("/api/vendedores/:id/toggle-ativo", verifyJWT, async (req, res) => {
   }
 });
 
-// PATCH /api/vendedores/:id â€” update porcentagem and/or other fields
+// PATCH /api/vendedores/:id — update porcentagem and/or other fields
 app.patch("/api/vendedores/:id", verifyJWT, async (req, res) => {
   const { id } = req.params;
   const { porcentagem, nome, whatsapp } = req.body;
@@ -9215,7 +9215,7 @@ app.get(
 // The frontend calls /chat/findChats/:instance and /chat/findMessages/:instance directly in dev (via Vite proxy).
 // In production (Vercel), these requests serve the React SPA. This proxy bridges that gap.
 
-// POST /chat/findChats/:instance â€” proxy to Evolution API
+// POST /chat/findChats/:instance — proxy to Evolution API
 app.post("/chat/findChats/:instanceName", async (req, res) => {
   const { instanceName } = req.params;
   const evolutionUrl = process.env.EVOLUTION_API_URL;
@@ -9243,7 +9243,7 @@ app.post("/chat/findChats/:instanceName", async (req, res) => {
   }
 });
 
-// POST /chat/findMessages/:instance â€” proxy to Evolution API
+// POST /chat/findMessages/:instance — proxy to Evolution API
 app.post("/chat/findMessages/:instanceName", async (req, res) => {
   const { instanceName } = req.params;
   const evolutionUrl = process.env.EVOLUTION_API_URL;
@@ -10031,7 +10031,7 @@ app.post("/api/webhooks/whatsapp", async (req, res) => {
         const caption = message?.imageMessage?.caption || "";
         finalUserText =
           caption ||
-          "O usuÃ¡rio enviou esta imagem. Descreva o que vocÃª vÃª e responda de forma Ãºtil.";
+          "O usuário enviou esta imagem. Descreva o que você vê e responda de forma útil.";
 
         let base64Data =
           message?.base64 || data?.base64 || message?.imageMessage?.base64;
@@ -10143,7 +10143,7 @@ VALUES($1, $2, $3, $4, $5, $6) RETURNING id`,
       await new Promise(resolve => setTimeout(resolve, 10000));
 
       // Check if this is still the LATEST unprocessed message for this contact
-      // If a newer message arrived in the meantime, skip â€” that message's handler will process all
+      // If a newer message arrived in the meantime, skip — that message's handler will process all
       const latestCheck = await pool.query(
         `SELECT id FROM message_buffer
          WHERE remote_jid = $1 AND agent_id = $2 AND processed = false
@@ -10153,12 +10153,12 @@ VALUES($1, $2, $3, $4, $5, $6) RETURNING id`,
 
       const latestId = latestCheck.rows[0]?.id ? BigInt(latestCheck.rows[0].id) : null;
       if (!latestId || latestId !== bufferId) {
-        // A newer message arrived â€” its handler will process everything
-        log(`[BUFFER] Message ${bufferId} skipped â€” newer message ${latestId} will handle the batch.`);
+        // A newer message arrived — its handler will process everything
+        log(`[BUFFER] Message ${bufferId} skipped — newer message ${latestId} will handle the batch.`);
         return res.json({ success: true, status: 'waiting_for_batch' });
       }
 
-      // We are the latest message â€” collect all buffered messages for this contact
+      // We are the latest message — collect all buffered messages for this contact
       const allBuffered = await pool.query(
         `SELECT * FROM message_buffer
          WHERE remote_jid = $1 AND agent_id = $2 AND processed = false
@@ -10190,7 +10190,7 @@ VALUES($1, $2, $3, $4, $5, $6) RETURNING id`,
       // Process all buffered messages together in one AI call
       await processAIResponse(agent, remoteJid, instanceName, inputMessages);
 
-      // â”€â”€ CIL: Fire-and-forget intelligence analysis â”€â”€
+      // ── CIL: Fire-and-forget intelligence analysis ──
       // Build combined text from the batch, ignoring audio-only messages
       const batchText = inputMessages.map(m => m.content).filter(Boolean).join(' | ');
       if (batchText && orgId) {
@@ -10214,7 +10214,7 @@ VALUES($1, $2, $3, $4, $5, $6) RETURNING id`,
           }).catch(e => log(`[CIL] Background error: ${e.message}`));
         }).catch(e => log(`[CIL] Lead lookup error: ${e.message}`));
       }
-      // â”€â”€ END CIL â”€â”€
+      // ── END CIL ──
 
       return res.json({ success: true });
       // --- END DB-BACKED MESSAGE BUFFER ---
@@ -10482,7 +10482,7 @@ app.delete("/api/instance/:id", verifyJWT, async (req, res) => {
       log(`[DELETE_INSTANCE] Instance ${id} not found in database`);
       return res
         .status(404)
-        .json({ error: "ConexÃ£o nÃ£o encontrada no banco de dados" });
+        .json({ error: "Conexão não encontrada no banco de dados" });
     }
 
     const instance = instanceRes.rows[0];
@@ -10498,7 +10498,7 @@ app.delete("/api/instance/:id", verifyJWT, async (req, res) => {
       );
       return res
         .status(403)
-        .json({ error: "Acesso negado para remover esta conexÃ£o" });
+        .json({ error: "Acesso negado para remover esta conexão" });
     }
 
     // 2. Delete from Evolution API (logout + destroy instance)
@@ -10513,7 +10513,7 @@ app.delete("/api/instance/:id", verifyJWT, async (req, res) => {
         { method: "DELETE", headers: { apikey: evolutionApiKey } }
       );
       const logoutBody = await logoutRes.text().catch(() => "(no body)");
-      log(`[DELETE_INSTANCE] Evolution logout ${instanceName}: ${logoutRes.status} â€” ${logoutBody} `);
+      log(`[DELETE_INSTANCE] Evolution logout ${instanceName}: ${logoutRes.status} — ${logoutBody} `);
     } catch (evoErr) {
       log(`[DELETE_INSTANCE] Evolution logout error for ${instanceName}: ${evoErr.message} `);
     }
@@ -10525,7 +10525,7 @@ app.delete("/api/instance/:id", verifyJWT, async (req, res) => {
         { method: "DELETE", headers: { apikey: evolutionApiKey } }
       );
       const deleteBody = await deleteRes.text().catch(() => "(no body)");
-      log(`[DELETE_INSTANCE] Evolution delete ${instanceName}: ${deleteRes.status} â€” ${deleteBody} `);
+      log(`[DELETE_INSTANCE] Evolution delete ${instanceName}: ${deleteRes.status} — ${deleteBody} `);
     } catch (evoErr) {
       log(`[DELETE_INSTANCE] Evolution delete error for ${instanceName}: ${evoErr.message} `);
     }
@@ -10536,10 +10536,10 @@ app.delete("/api/instance/:id", verifyJWT, async (req, res) => {
     log(
       `[DELETE_INSTANCE] User ${userId} disconnected instance ${instanceName} (${id})`,
     );
-    res.json({ success: true, message: "ConexÃ£o removida com sucesso" });
+    res.json({ success: true, message: "Conexão removida com sucesso" });
   } catch (err) {
     log("DELETE /api/instance error: " + err.toString());
-    res.status(500).json({ error: "Erro ao remover conexÃ£o" });
+    res.status(500).json({ error: "Erro ao remover conexão" });
   }
 });
 
@@ -10754,7 +10754,7 @@ app.get("/api/leads/heatmap", verifyJWT, async (req, res) => {
       `SELECT 
          id, name, phone, company, status, value,
          COALESCE(score, 0) as score,
-         COALESCE(temperature, 'ðŸ”µ Frio') as temperature,
+         COALESCE(temperature, '🔵 Frio') as temperature,
          COALESCE(intent_label, 'COLD') as intent_label,
          last_ia_briefing,
          last_interaction_at,
@@ -10800,7 +10800,7 @@ const generateCoachingInsight = async (leadId, orgId, newStatus) => {
       [leadId, orgId]
     );
     const lead = leadRes.rows[0];
-    // Se leads nÃ£o tem assigned_to na mesma tabela, podemos pular ou tentar achar na tabela associativa.
+    // Se leads não tem assigned_to na mesma tabela, podemos pular ou tentar achar na tabela associativa.
     // Vamos assumir que a tabela leads tem 'assigned_to' conforme Revenue OS
     if (!lead || !lead.assigned_to) return;
 
@@ -10811,16 +10811,16 @@ const generateCoachingInsight = async (leadId, orgId, newStatus) => {
     const vendedorNome = vendRes.rows[0]?.nome || "Vendedor";
 
     // Simular chamada ao GPT para gerar insight baseado no status
-    // Idealmente buscarÃ­amos histÃ³rico de interaÃ§Ãµes, horas desde a criaÃ§Ã£o etc.
+    // Idealmente buscaríamos histórico de interações, horas desde a criação etc.
     const leadCreated = new Date(lead.created_at || Date.now());
     const leadUpdated = new Date();
     const difHours = Math.round((leadUpdated - leadCreated) / (1000 * 60 * 60));
 
     const prompt = `Atue como um treinador de vendas (Revenue OS). 
 O vendedor ${vendedorNome} acabou de marcar o lead "${lead.name}" (Valor: R$ ${lead.value}) como ${newStatus.toUpperCase()}.
-Tempo desde a criaÃ§Ã£o do lead atÃ© agora: ${difHours} horas.
-Gere UM insight curto (mÃ¡x 2 frases) avaliando o desempenho e dando uma dica construtiva de coaching. 
-Se for "ganho", parabenize e destaque o que foi bem. Se for "perdido", identifique um possÃ­vel ponto de melhoria ou padrÃ£o.`;
+Tempo desde a criação do lead até agora: ${difHours} horas.
+Gere UM insight curto (máx 2 frases) avaliando o desempenho e dando uma dica construtiva de coaching. 
+Se for "ganho", parabenize e destaque o que foi bem. Se for "perdido", identifique um possível ponto de melhoria ou padrão.`;
 
     const chatCompletion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -10841,11 +10841,11 @@ Se for "ganho", parabenize e destaque o que foi bem. Se for "perdido", identifiq
 };
 
 // --- CRON JOBS ---
-// Envio semanal de relatÃ³rios para os vendedores (Sexta-feira Ã s 18:00)
+// Envio semanal de relatórios para os vendedores (Sexta-feira às 18:00)
 cron.schedule("0 18 * * 5", async () => {
   log("[CRON] Iniciando rotina de envio de insights semanais de Coaching para Vendedores");
   try {
-    // Pegar insights nÃ£o enviados
+    // Pegar insights não enviados
     const insightsRes = await pool.query(
       "SELECT * FROM vendedor_insights WHERE is_sent = FALSE ORDER BY vendedor_id, created_at"
     );
@@ -10864,13 +10864,13 @@ cron.schedule("0 18 * * 5", async () => {
       const vendedor = vendRes.rows[0];
       if (!vendedor || !vendedor.whatsapp) continue;
 
-      let msg = `*Kogna Revenue OS - Coaching Semanal*\nOlÃ¡ ${vendedor.nome}! Aqui estÃ£o seus insights de desempenho desta semana:\n\n`;
+      let msg = `*Kogna Revenue OS - Coaching Semanal*\nOlá ${vendedor.nome}! Aqui estão seus insights de desempenho desta semana:\n\n`;
       data.insights.forEach(i => {
-        msg += `ðŸ’¡ ${i.message}\n\n`;
+        msg += `💡 ${i.message}\n\n`;
       });
-      msg += `Continue acelerando as vendas e conte com a Kogna para otimizar seus contatos! ðŸš€`;
+      msg += `Continue acelerando as vendas e conte com a Kogna para otimizar seus contatos! 🚀`;
 
-      // Encontrar uma instÃ¢ncia da organizaÃ§Ã£o para enviar
+      // Encontrar uma instância da organização para enviar
       const instRes = await pool.query("SELECT instance_name FROM whatsapp_instances WHERE organization_id = $1 AND status = 'CONNECTED' LIMIT 1", [data.orgId]);
       if (instRes.rows.length > 0) {
         const instanceName = instRes.rows[0].instance_name;
@@ -10888,33 +10888,33 @@ cron.schedule("0 18 * * 5", async () => {
         // Marcar como lido/enviado
         const ids = data.insights.map(i => i.id);
         await pool.query("UPDATE vendedor_insights SET is_sent = TRUE WHERE id = ANY($1)", [ids]);
-        log(`[CRON] RelatÃ³rio semanal enviado com sucesso ao vendedor ${vendedor.nome}`);
+        log(`[CRON] Relatório semanal enviado com sucesso ao vendedor ${vendedor.nome}`);
       }
     }
   } catch (e) {
-    log(`[CRON ERROR] RelatÃ³rio semanal: ${e.message}`);
+    log(`[CRON ERROR] Relatório semanal: ${e.message}`);
   }
 });
 
-// // DEBUG ENDPOINT: Dispara relatÃ³rio semanal (Apenas para dev/test)
+// // DEBUG ENDPOINT: Dispara relatório semanal (Apenas para dev/test)
 app.get("/api/vendedores/debug-report", verifyAdmin, async (req, res) => {
   try {
-    const orgId = req.query.orgId || "09a74aa9-9d7a-428a-ba01-71b3e9a59cf6"; // PadrÃ£o ou query
+    const orgId = req.query.orgId || "09a74aa9-9d7a-428a-ba01-71b3e9a59cf6"; // Padrão ou query
 
     // Obter todos os vendedores da org
     const vendRes = await pool.query("SELECT id, nome, whatsapp FROM vendedores WHERE organization_id = $1", [orgId]);
     if (vendRes.rows.length === 0) return res.json({ msg: "Sem vendedores" });
 
-    // Achar uma instÃ¢ncia da org para enviar
+    // Achar uma instância da org para enviar
     const instRes = await pool.query("SELECT instance_name FROM whatsapp_instances WHERE organization_id = $1 AND status = 'CONNECTED' LIMIT 1", [orgId]);
     const instanceName = instRes.rows[0]?.instance_name;
 
     for (const vendedor of vendRes.rows) {
       if (!vendedor.whatsapp) continue;
 
-      let msg = `*Kogna Revenue OS - Coaching Semanal*\nOlÃ¡ ${vendedor.nome}! Aqui estÃ£o seus insights de desempenho (TESTE DEBUG):\n\n`;
-      msg += `ðŸ’¡ Seu tempo de resposta estÃ¡ excelente.\n\n`;
-      msg += `Continue acelerando as vendas e conte com a Kogna para otimizar seus contatos! ðŸš€`;
+      let msg = `*Kogna Revenue OS - Coaching Semanal*\nOlá ${vendedor.nome}! Aqui estão seus insights de desempenho (TESTE DEBUG):\n\n`;
+      msg += `💡 Seu tempo de resposta está excelente.\n\n`;
+      msg += `Continue acelerando as vendas e conte com a Kogna para otimizar seus contatos! 🚀`;
 
       if (instanceName) {
         // Enviar teste via Evolution API
@@ -10924,7 +10924,7 @@ app.get("/api/vendedores/debug-report", verifyAdmin, async (req, res) => {
           headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
           body: JSON.stringify({ number: vendedor.whatsapp, text: msg })
         });
-        log(`[DEBUG] RelatÃ³rio de teste enviado ao vendedor ${vendedor.nome}`);
+        log(`[DEBUG] Relatório de teste enviado ao vendedor ${vendedor.nome}`);
       }
     }
     res.json({ success: true, instanceName, vendedores: vendRes.rows.length });
@@ -10983,7 +10983,7 @@ app.patch("/api/leads/:id/status", verifyJWT, async (req, res) => {
       return res.status(404).json({ error: "Lead not found" });
     }
 
-    // AI Coaching Hook (nÃ£o bloqueia a response)
+    // AI Coaching Hook (não bloqueia a response)
     generateCoachingInsight(id, orgId, status).catch(e => log("Insight hook error: " + e.message));
 
     const row = result.rows[0];
@@ -11172,7 +11172,7 @@ app.delete("/api/settings/columns/:id", verifyJWT, async (req, res) => {
     if (check.rows.length > 0 && check.rows[0].is_system) {
       return res
         .status(403)
-        .json({ error: "Colunas do sistema nÃ£o podem ser excluÃ­das." });
+        .json({ error: "Colunas do sistema não podem ser excluídas." });
     }
 
     await pool.query(
@@ -11236,7 +11236,7 @@ app.get("/api/settings/sources", verifyJWT, async (req, res) => {
         { name: "Facebook", is_system: true },
         { name: "Instagram", is_system: true },
         { name: "Google", is_system: true },
-        { name: "IndicaÃ§Ã£o", is_system: false },
+        { name: "Indicação", is_system: false },
         { name: "WhatsApp", is_system: false },
         { name: "Site", is_system: false },
       ];
@@ -11305,7 +11305,7 @@ app.delete("/api/settings/sources/:id", verifyJWT, async (req, res) => {
     if (check.rows.length > 0 && check.rows[0].is_system) {
       return res
         .status(403)
-        .json({ error: "Fontes do sistema nÃ£o podem ser excluÃ­das." });
+        .json({ error: "Fontes do sistema não podem ser excluídas." });
     }
 
     await pool.query(
@@ -11492,7 +11492,7 @@ app.post("/api/evolution/webhook", async (req, res) => {
     const userId = instanceRes.rows[0].user_id;
     const instanceOrgId = instanceRes.rows[0].organization_id;
 
-    // â”€â”€ Auto-create lead in CRM (BEFORE agent check) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Auto-create lead in CRM (BEFORE agent check) ──────────────────────────
     // This runs even if no agent is linked to the instance yet
     if (instanceOrgId && remoteJid && !remoteJid.includes('g.us')) {
       ensureLeadFromWhatsApp(remoteJid, pushName, instanceOrgId)
@@ -11948,11 +11948,11 @@ app.post(
   },
 );
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // SCHEDULING & ROUND ROBIN SYSTEM
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 
-// â”€â”€ Helper: Get Org ID from request â”€â”€
+// ── Helper: Get Org ID from request ──
 async function getOrgId(req) {
   const userId = req.userId;
   if (!userId) return null;
@@ -11963,7 +11963,7 @@ async function getOrgId(req) {
   return res.rows[0]?.organization_id || null;
 }
 
-// â”€â”€ Round Robin: Get Next Vendedor (Logic Only) â”€â”€
+// ── Round Robin: Get Next Vendedor (Logic Only) ──
 async function calculateNextVendedor(orgId) {
   const result = await pool.query(
     "SELECT * FROM vendedores WHERE organization_id = $1 AND ativo = true ORDER BY leads_recebidos_ciclo ASC",
@@ -12003,7 +12003,7 @@ async function calculateNextVendedor(orgId) {
   return chosen;
 }
 
-// â”€â”€ Round Robin: Increment Vendedor Counter â”€â”€
+// ── Round Robin: Increment Vendedor Counter ──
 async function incrementVendedorCounter(vendedorId, orgId) {
   // Increment counter
   await pool.query(
@@ -12054,7 +12054,7 @@ async function getNextVendedor(orgId) {
   return chosen;
 }
 
-// â”€â”€ Check Availability â”€â”€
+// ── Check Availability ──
 async function checkAvailability(
   vendedorId,
   dataHora,
@@ -12071,13 +12071,13 @@ async function checkAvailability(
   );
 
   if (dispRes.rows.length === 0)
-    return { available: false, reason: "Sem horÃ¡rio definido para este dia" };
+    return { available: false, reason: "Sem horário definido para este dia" };
 
   const hasSlot = dispRes.rows.some(
     (d) => hora >= d.hora_inicio && hora < d.hora_fim,
   );
   if (!hasSlot)
-    return { available: false, reason: "Fora do horÃ¡rio de atendimento" };
+    return { available: false, reason: "Fora do horário de atendimento" };
 
   // 2. Check blocks
   const blockRes = await pool.query(
@@ -12085,7 +12085,7 @@ async function checkAvailability(
     [vendedorId, dt.toISOString()],
   );
   if (blockRes.rows.length > 0)
-    return { available: false, reason: "HorÃ¡rio bloqueado pelo gestor" };
+    return { available: false, reason: "Horário bloqueado pelo gestor" };
 
   // 3. Check existing appointments
   let query = `SELECT * FROM agendamentos WHERE vendedor_id = $1 AND data_hora = $2 AND status != 'cancelado'`;
@@ -12098,12 +12098,12 @@ async function checkAvailability(
 
   const apptRes = await pool.query(query, params);
   if (apptRes.rows.length > 0)
-    return { available: false, reason: "JÃ¡ existe agendamento neste horÃ¡rio" };
+    return { available: false, reason: "Já existe agendamento neste horário" };
 
   return { available: true };
 }
 
-// â”€â”€ Get Free Slots for a Vendedor on a given date â”€â”€
+// ── Get Free Slots for a Vendedor on a given date ──
 async function getFreeSlots(vendedorId, dateStr) {
   // 1. Parse dateStr (YYYY-MM-DD)
   const [year, month, day] = dateStr.split("-").map(Number);
@@ -12187,7 +12187,7 @@ async function getFreeSlots(vendedorId, dateStr) {
   return slots;
 }
 
-// â”€â”€â”€ REVENUE OS: COACHING DE VENDEDORES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── REVENUE OS: COACHING DE VENDEDORES ───────────────────
 
 /**
  * Analisa a performance do vendedor quando um lead muda de status
@@ -12195,7 +12195,7 @@ async function getFreeSlots(vendedorId, dateStr) {
  */
 const analyzeVendedorPerformance = async (leadId, newStatus, orgId) => {
   try {
-    // SÃ³ analisa se o novo status for de perda/descarte
+    // Só analisa se o novo status for de perda/descarte
     const lostStatuses = ['perdido', 'lost', 'descartado', 'unqualified'];
     if (!lostStatuses.includes(newStatus.toLowerCase())) return;
 
@@ -12209,12 +12209,12 @@ const analyzeVendedorPerformance = async (leadId, newStatus, orgId) => {
     if (leadRes.rows.length === 0) return;
     const lead = leadRes.rows[0];
 
-    // SÃ³ avalia leads que tinham intenÃ§Ã£o alta e estavam com um vendedor
+    // Só avalia leads que tinham intenção alta e estavam com um vendedor
     if (!lead.assigned_to) return;
     if (lead.intent_label !== 'HOT' && lead.intent_label !== 'CRITICAL') return;
     if (!lead.last_ia_briefing_at) return;
 
-    // Busca a primeira mensagem do vendedor (owner) APÃ“S o Handoff
+    // Busca a primeira mensagem do vendedor (owner) APÓS o Handoff
     const msgRes = await pool.query(
       `SELECT created_at FROM chat_messages 
        WHERE lead_id = $1 AND role = 'owner' AND created_at > $2
@@ -12237,8 +12237,8 @@ const analyzeVendedorPerformance = async (leadId, newStatus, orgId) => {
     // Se demorou mais de 2 horas para um lead quente que foi perdido, gera o insight
     if (tempoRespostaHoras >= 2) {
       const msg = tempoRespostaHoras > 24
-        ? `VocÃª demorou mais de 1 dia para responder este lead quente â€” padrÃ£o de perda identificado.`
-        : `VocÃª demorou ${tempoRespostaHoras}h para responder este lead quente â€” padrÃ£o de perda identificado.`;
+        ? `Você demorou mais de 1 dia para responder este lead quente — padrão de perda identificado.`
+        : `Você demorou ${tempoRespostaHoras}h para responder este lead quente — padrão de perda identificado.`;
 
       await pool.query(
         `INSERT INTO vendedor_insights (vendedor_id, organization_id, lead_id, insight_type, message)
@@ -12249,13 +12249,13 @@ const analyzeVendedorPerformance = async (leadId, newStatus, orgId) => {
     }
 
   } catch (err) {
-    log(`[COACHING] Erro na anÃ¡lise de performance: ${err.message}`);
+    log(`[COACHING] Erro na análise de performance: ${err.message}`);
   }
 };
 
 const generateWeeklyCoachingReports = async (orgId) => {
   try {
-    // 1. Busca todos os insights nÃ£o enviados da organizaÃ§Ã£o
+    // 1. Busca todos os insights não enviados da organização
     const insightsRes = await pool.query(
       `SELECT i.*, v.nome, v.whatsapp, l.name as lead_name
        FROM vendedor_insights i
@@ -12278,7 +12278,7 @@ const generateWeeklyCoachingReports = async (orgId) => {
       porVendedor[row.vendedor_id].insights.push(row);
     }
 
-    // 3. Busca instÃ¢ncia Evolution API da org
+    // 3. Busca instância Evolution API da org
     const instRes = await pool.query(
       `SELECT instance_name FROM whatsapp_instances WHERE organization_id = $1 AND status = 'open' LIMIT 1`,
       [orgId]
@@ -12295,7 +12295,7 @@ const generateWeeklyCoachingReports = async (orgId) => {
       const data = porVendedor[vid];
       const items = data.insights.map(i => `- Lead ${i.lead_name || 'Desconhecido'}: ${i.message}`).join('\\n');
 
-      const text = `ðŸ¤– *Kogna Revenue OS: RelatÃ³rio de Coaching*\\nOlÃ¡ ${data.info.nome.split(' ')[0]}! Aqui estÃ£o seus insights da semana:\\n\\nðŸ“‰ *Pontos de AtenÃ§Ã£o:*\\n${items}\\n\\nVamos acelerar essa conversÃ£o na prÃ³xima semana! ðŸš€`;
+      const text = `🤖 *Kogna Revenue OS: Relatório de Coaching*\\nOlá ${data.info.nome.split(' ')[0]}! Aqui estão seus insights da semana:\\n\\n📉 *Pontos de Atenção:*\\n${items}\\n\\nVamos acelerar essa conversão na próxima semana! 🚀`;
 
       let wpp = data.info.whatsapp.replace(/\\D/g, '');
       if (!wpp.startsWith('55')) wpp = '55' + wpp;
@@ -12338,11 +12338,11 @@ app.post("/api/coaching/trigger-weekly-report", verifyJWT, async (req, res) => {
   }
 });
 
-// â”€â”€â”€ VENDEDORES CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── VENDEDORES CRUD ──────────────────────────────────────
 
 
 
-// â”€â”€â”€ AGENDAMENTOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── AGENDAMENTOS ─────────────────────────────────────────
 
 // GET /api/agendamentos
 app.get("/api/agendamentos", async (req, res) => {
@@ -12505,7 +12505,7 @@ app.patch("/api/agendamentos/:id", async (req, res) => {
   }
 });
 
-// â”€â”€â”€ ROUND ROBIN ENDPOINT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── ROUND ROBIN ENDPOINT ─────────────────────────────────
 
 // POST /api/round-robin/next - Get next vendedor for a lead
 app.post("/api/round-robin/next", async (req, res) => {
@@ -12517,7 +12517,7 @@ app.post("/api/round-robin/next", async (req, res) => {
     if (!vendedor)
       return res
         .status(404)
-        .json({ error: "Nenhum vendedor ativo disponÃ­vel" });
+        .json({ error: "Nenhum vendedor ativo disponível" });
 
     res.json(vendedor);
   } catch (err) {
@@ -12526,7 +12526,7 @@ app.post("/api/round-robin/next", async (req, res) => {
   }
 });
 
-// â”€â”€â”€ AI TOOL ENDPOINTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── AI TOOL ENDPOINTS ────────────────────────────────────
 
 // POST /api/tools/horarios-disponiveis
 // AI calls this to get free slots for the next vendedor
@@ -12548,7 +12548,7 @@ app.post("/api/tools/horarios-disponiveis", async (req, res) => {
         return res.json({
           slots: [],
           vendedor: null,
-          message: "Nenhum vendedor disponÃ­vel",
+          message: "Nenhum vendedor disponível",
         });
       targetVendedorId = vendedor.id;
     }
@@ -12618,7 +12618,7 @@ app.post("/api/tools/confirmar-agendamento", async (req, res) => {
     res.json({
       success: true,
       agendamento: result.rows[0],
-      message: `Agendamento confirmado com ${vendedorRes.rows[0]?.nome} para ${date} Ã s ${time}.`,
+      message: `Agendamento confirmado com ${vendedorRes.rows[0]?.nome} para ${date} às ${time}.`,
     });
   } catch (err) {
     log("POST /api/tools/confirmar-agendamento error: " + err.toString());
@@ -12694,7 +12694,7 @@ app.get("/api/clients", verifyJWT, async (req, res) => {
   }
 });
 
-// â”€â”€â”€ DASHBOARD METRICS (USER) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── DASHBOARD METRICS (USER) ────────────────────────────
 app.get("/api/dashboard/metrics", verifyJWT, async (req, res) => {
   try {
     log("[DASHBOARD] Fetching metrics...");
@@ -12805,7 +12805,7 @@ app.get("/api/dashboard/metrics", verifyJWT, async (req, res) => {
 
     const totalMessages = parseInt(msgRes.rows[0].count || 0);
 
-    // Chart Data (Last 7 Days) â€” using EXTRACT(DOW) to avoid PostgreSQL locale issues with TO_CHAR('Dy')
+    // Chart Data (Last 7 Days) — using EXTRACT(DOW) to avoid PostgreSQL locale issues with TO_CHAR('Dy')
     const chartRes = await pool.query(
       `
             SELECT 
@@ -12868,7 +12868,7 @@ app.get("/api/dashboard/metrics", verifyJWT, async (req, res) => {
 
 // --- REVENUE INTELLIGENCE ENDPOINTS ---
 
-// GET /api/dashboard/forecast â€” Revenue Forecast weighted by intent tier
+// GET /api/dashboard/forecast — Revenue Forecast weighted by intent tier
 app.get("/api/dashboard/forecast", verifyJWT, async (req, res) => {
   try {
     const userId = req.userId;
@@ -12903,7 +12903,7 @@ app.get("/api/dashboard/forecast", verifyJWT, async (req, res) => {
 
       projected += v * weight;
 
-      const stage = row.status || 'Sem EstÃ¡gio';
+      const stage = row.status || 'Sem Estágio';
       if (!stageMap[stage]) stageMap[stage] = { stage, value: 0, count: 0 };
       stageMap[stage].value += v;
       stageMap[stage].count += 1;
@@ -12925,7 +12925,7 @@ app.get("/api/dashboard/forecast", verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/dashboard/velocity â€” Avg hours without contact per pipeline stage
+// GET /api/dashboard/velocity — Avg hours without contact per pipeline stage
 app.get("/api/dashboard/velocity", verifyJWT, async (req, res) => {
   try {
     const userId = req.userId;
@@ -12960,7 +12960,7 @@ app.get("/api/dashboard/velocity", verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/dashboard/urgency â€” Leads needing action: now (2h), today (24h), at-risk (48h+)
+// GET /api/dashboard/urgency — Leads needing action: now (2h), today (24h), at-risk (48h+)
 app.get("/api/dashboard/urgency", verifyJWT, async (req, res) => {
   try {
     const userId = req.userId;
@@ -13019,7 +13019,7 @@ app.get("/api/dashboard/urgency", verifyJWT, async (req, res) => {
 // In-memory Win/Loss cache (per org, 24h TTL)
 const winLossCache = new Map();
 
-// GET /api/dashboard/winloss â€” AI pattern analysis of wins and losses
+// GET /api/dashboard/winloss — AI pattern analysis of wins and losses
 app.get("/api/dashboard/winloss", verifyJWT, async (req, res) => {
   try {
     const userId = req.userId;
@@ -13052,8 +13052,8 @@ app.get("/api/dashboard/winloss", verifyJWT, async (req, res) => {
     const wins = result.rows.filter(r => ['cliente', 'fechado', 'closed', 'won', 'ganho'].includes(r.status?.toLowerCase()));
     const losses = result.rows.filter(r => ['perdido', 'lost'].includes(r.status?.toLowerCase()));
 
-    const prompt = `VocÃª Ã© um analista de vendas da Kogna Revenue OS.
-Analise os dados abaixo de leads ganhos e perdidos e identifique padrÃµes.
+    const prompt = `Você é um analista de vendas da Kogna Revenue OS.
+Analise os dados abaixo de leads ganhos e perdidos e identifique padrões.
 
 LEADS GANHOS (${wins.length}):
 ${wins.map(r => `- ${r.name}: "${r.last_ia_briefing}" (score ${r.score})`).join('\n')}
@@ -13061,9 +13061,9 @@ ${wins.map(r => `- ${r.name}: "${r.last_ia_briefing}" (score ${r.score})`).join(
 LEADS PERDIDOS (${losses.length}):
 ${losses.map(r => `- ${r.name}: "${r.last_ia_briefing}" (score ${r.score})`).join('\n')}
 
-Retorne APENAS um JSON vÃ¡lido com:
-- win_patterns: array de 3 strings curtas (max 80 chars cada) descrevendo padrÃµes dos leads ganhos
-- loss_patterns: array de 3 strings curtas (max 80 chars cada) descrevendo padrÃµes dos leads perdidos
+Retorne APENAS um JSON válido com:
+- win_patterns: array de 3 strings curtas (max 80 chars cada) descrevendo padrões dos leads ganhos
+- loss_patterns: array de 3 strings curtas (max 80 chars cada) descrevendo padrões dos leads perdidos
 
 JSON:`;
 
@@ -13585,8 +13585,8 @@ app.post("/api/payments/process-payment", verifyJWT, async (req, res) => {
             `INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)`,
             [
               userId,
-              "Pagamento Confirmado! ðŸŽ‰",
-              `Seu pagamento de R$${paymentAmount.toFixed(2)} foi aprovado. ${koinsToCredit} Koins foram adicionados Ã  sua conta!`,
+              "Pagamento Confirmado! 🎉",
+              `Seu pagamento de R$${paymentAmount.toFixed(2)} foi aprovado. ${koinsToCredit} Koins foram adicionados à sua conta!`,
             ],
           )
           .catch(() => { });
@@ -13775,7 +13775,7 @@ app.post("/api/payments/mercadopago-ipn", async (req, res) => {
     }
 
     log(
-      `[MP-IPN] âœ… Credited ${koinsToCredit} Koins to user ${userId}. New balance: ${updateResult.rows[0].koins_balance}`,
+      `[MP-IPN] ✅ Credited ${koinsToCredit} Koins to user ${userId}. New balance: ${updateResult.rows[0].koins_balance}`,
     );
 
     // Credit Connections if applicable
@@ -13787,7 +13787,7 @@ app.post("/api/payments/mercadopago-ipn", async (req, res) => {
           "UPDATE organizations SET whatsapp_connections_limit = whatsapp_connections_limit + $1 WHERE id = $2",
           [connectionsToCredit, orgId]
         );
-        log(`[MP-IPN] âœ… Credited ${connectionsToCredit} connections to organization ${orgId}`);
+        log(`[MP-IPN] ✅ Credited ${connectionsToCredit} connections to organization ${orgId}`);
       }
     }
 
@@ -13821,8 +13821,8 @@ app.post("/api/payments/mercadopago-ipn", async (req, res) => {
         `INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)`,
         [
           userId,
-          "Pagamento Confirmado! ðŸŽ‰",
-          `Seu pagamento de R$${paymentAmount.toFixed(2)} foi aprovado. ${koinsToCredit} Koins foram adicionados Ã  sua conta!`,
+          "Pagamento Confirmado! 🎉",
+          `Seu pagamento de R$${paymentAmount.toFixed(2)} foi aprovado. ${koinsToCredit} Koins foram adicionados à sua conta!`,
         ],
       );
     } catch (notifErr) {
@@ -13955,13 +13955,13 @@ app.get("/api/payments/verify/:paymentId", verifyJWT, async (req, res) => {
       payment.additional_info.items.length > 0
     ) {
       try {
-        // Assume o primeiro item como principal ou soma se houver mÃºltiplos
+        // Assume o primeiro item como principal ou soma se houver múltiplos
         for (const item of payment.additional_info.items) {
           // Tenta achar o produto pelo ID ou Titulo
           // O ID do item no MP pode ser o nosso ID do produto se passamos corretamente
           // No create-preference: id: item.id || 'item-1'
 
-          // Se o ID for UUID vÃ¡lido, tentamos buscar
+          // Se o ID for UUID válido, tentamos buscar
           if (item.id && item.id.length > 10) {
             const productRes = await pool.query(
               "SELECT koins_bonus FROM products WHERE id = $1",
@@ -13984,7 +13984,7 @@ app.get("/api/payments/verify/:paymentId", verifyJWT, async (req, res) => {
       }
     }
 
-    // Fallback: Se nÃ£o encontrou bonus de produto, usa a regra padrÃ£o (10x valor)
+    // Fallback: Se não encontrou bonus de produto, usa a regra padrão (10x valor)
     if (koinsToCredit === 0) {
       koinsToCredit = Math.floor(paymentAmount * 10);
       log(
@@ -13999,7 +13999,7 @@ app.get("/api/payments/verify/:paymentId", verifyJWT, async (req, res) => {
 
     if (updateResult.rows.length > 0) {
       log(
-        `[PAYMENT-VERIFY] âœ… Credited ${koinsToCredit} Koins to user ${userId}. New balance: ${updateResult.rows[0].koins_balance}`,
+        `[PAYMENT-VERIFY] ✅ Credited ${koinsToCredit} Koins to user ${userId}. New balance: ${updateResult.rows[0].koins_balance}`,
       );
     } else {
       log(`[PAYMENT-VERIFY] User ${userId} not found during credit attempt.`);
@@ -14032,8 +14032,8 @@ app.get("/api/payments/verify/:paymentId", verifyJWT, async (req, res) => {
         `INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)`,
         [
           userId,
-          "Pagamento Confirmado! ðŸŽ‰",
-          `Seu pagamento de R$${paymentAmount.toFixed(2)} foi aprovado. ${koinsToCredit} Koins foram adicionados Ã  sua conta!`,
+          "Pagamento Confirmado! 🎉",
+          `Seu pagamento de R$${paymentAmount.toFixed(2)} foi aprovado. ${koinsToCredit} Koins foram adicionados à sua conta!`,
         ],
       );
     } catch (notifErr) {
@@ -14243,7 +14243,7 @@ app.delete("/api/products/:id", verifyJWT, verifyAdmin, async (req, res) => {
 
 // ------------------------------------------
 
-// â”€â”€â”€ LIVE CHAT METRICS LOGGING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── LIVE CHAT METRICS LOGGING ─────────────────────────────
 
 // POST /api/chat/send - Log manual message and forward to Evolution API
 app.post("/api/chat/send", verifyJWT, async (req, res) => {
@@ -14570,10 +14570,10 @@ async function advancePipelineStage(leadId, organizationId, score) {
 
     // Determine target column index based on score tier
     // We map score tiers to positions in the pipeline:
-    // COLD < 35 â†’ no movement
-    // WARM 35-64 â†’ 40% through pipeline
-    // HOT  65-84 â†’ 65% through pipeline
-    // CRITICAL 85+ â†’ 85% through pipeline (penultimate column at most)
+    // COLD < 35 → no movement
+    // WARM 35-64 → 40% through pipeline
+    // HOT  65-84 → 65% through pipeline
+    // CRITICAL 85+ → 85% through pipeline (penultimate column at most)
     let targetIndex = -1; // -1 means no movement
     const lastIdx = columns.length - 1;
 
@@ -14604,7 +14604,7 @@ async function advancePipelineStage(leadId, organizationId, score) {
     // Find current position in pipeline
     const currentIdx = columns.findIndex(c => c.title === currentStatus);
 
-    // Only advance â€” NEVER move backwards
+    // Only advance — NEVER move backwards
     if (currentIdx >= targetIndex) {
       log(`[PIPELINE-AI] Lead ${leadId} already at or ahead of target stage. No movement needed.`);
       return;
@@ -14616,18 +14616,18 @@ async function advancePipelineStage(leadId, organizationId, score) {
       [targetColumn.title, leadId]
     );
 
-    log(`[PIPELINE-AI] Lead "${lead.name}" moved: "${currentStatus}" â†’ "${targetColumn.title}" (score: ${score})`);
+    log(`[PIPELINE-AI] Lead "${lead.name}" moved: "${currentStatus}" → "${targetColumn.title}" (score: ${score})`);
   } catch (err) {
     log(`[PIPELINE-AI] Error advancing stage: ${err.message}`);
   }
 }
 
 
-// Intent label mapping from score â€” 3 tiers: QUENTE / MORNO / FRIO
+// Intent label mapping from score — 3 tiers: QUENTE / MORNO / FRIO
 function scoreToIntentLabel(score) {
-  if (score >= 65) return 'HOT';   // ðŸ”¥ Quente â€” alto engajamento
-  if (score >= 35) return 'WARM';  // ðŸŸ¡ Morno â€” interesse moderado
-  return 'COLD';                    // ðŸ”µ Frio  â€” baixo engajamento
+  if (score >= 65) return 'HOT';   // 🔥 Quente — alto engajamento
+  if (score >= 35) return 'WARM';  // 🟡 Morno — interesse moderado
+  return 'COLD';                    // 🔵 Frio  — baixo engajamento
 }
 
 async function updateLeadScore(agentId, remoteJid, organizationId, historyMessages) {
@@ -14654,22 +14654,22 @@ async function updateLeadScore(agentId, remoteJid, organizationId, historyMessag
       .join('\n');
 
     // 3. Revenue OS Intent Classification Prompt
-    const scoringPrompt = `VocÃª Ã© o motor de inteligÃªncia comercial da Kogna Revenue OS.
-Analise a conversa abaixo e retorne APENAS um JSON vÃ¡lido.
+    const scoringPrompt = `Você é o motor de inteligência comercial da Kogna Revenue OS.
+Analise a conversa abaixo e retorne APENAS um JSON válido.
 
-CAMPOS OBRIGATÃ“RIOS:
-- score: (0-100) PontuaÃ§Ã£o de intenÃ§Ã£o de compra e urgÃªncia. 65-100 = quente (alta intenÃ§Ã£o), 35-64 = morno (interesse moderado), 0-34 = frio.
-- temperature: "ðŸ”¥ Quente", "ðŸŸ¡ Morno" ou "ðŸ”µ Frio".
-- briefing: Uma frase curta (mÃ¡x 100 chars) descrevendo o estado atual do lead. Ex: "Interessado no plano Pro, objeÃ§Ã£o de preÃ§o, aguarda proposta".
-- reason: Justificativa interna curta (mÃ¡x 80 chars) para o score.
+CAMPOS OBRIGATÓRIOS:
+- score: (0-100) Pontuação de intenção de compra e urgência. 65-100 = quente (alta intenção), 35-64 = morno (interesse moderado), 0-34 = frio.
+- temperature: "🔥 Quente", "🟡 Morno" ou "🔵 Frio".
+- briefing: Uma frase curta (máx 100 chars) descrevendo o estado atual do lead. Ex: "Interessado no plano Pro, objeção de preço, aguarda proposta".
+- reason: Justificativa interna curta (máx 80 chars) para o score.
 
 CONVERSA:
 ${context}
 
 Regras:
-- Se lead pediu preÃ§o, demonstraÃ§Ã£o ou disse "quero fechar": score >= 70.
+- Se lead pediu preço, demonstração ou disse "quero fechar": score >= 70.
 - Se lead desapareceu ou disse "vou pensar": score <= 40.
-- Se lead tem objeÃ§Ã£o ativa (preÃ§o, tempo, concorrente): score entre 40-64.
+- Se lead tem objeção ativa (preço, tempo, concorrente): score entre 40-64.
 
 JSON:`;
 
@@ -14703,7 +14703,7 @@ JSON:`;
       leadId,
     }).catch(err => log(`[LEAD-SUMMARY] score refresh error: ${err.message}`));
 
-    // 5. ðŸ”¥ HEAT ALERT â€” notify when lead transitions to HOT (Quente)
+    // 5. 🔥 HEAT ALERT — notify when lead transitions to HOT (Quente)
     // Only fires when lead crosses the HOT threshold for the first time in this turn
     if (newScore >= 65 && prevScore < 65) {
       try {
@@ -14720,26 +14720,26 @@ JSON:`;
             `INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)`,
             [
               u.id,
-              `ðŸ”¥ Lead Esquentou: ${leadName}`,
+              `🔥 Lead Esquentou: ${leadName}`,
               result.briefing
-                ? `${leadName} estÃ¡ quente! ${result.briefing} Score: ${newScore}/100`
-                : `${leadName} acabou de atingir score ${newScore}/100 â€” hora de agir!`
+                ? `${leadName} está quente! ${result.briefing} Score: ${newScore}/100`
+                : `${leadName} acabou de atingir score ${newScore}/100 — hora de agir!`
             ]
           );
         }
-        log(`[HEAT-ALERT] NotificaÃ§Ã£o criada para lead ${leadName} (score ${newScore})`);
+        log(`[HEAT-ALERT] Notificação criada para lead ${leadName} (score ${newScore})`);
       } catch (notifyErr) {
-        log(`[HEAT-ALERT] Erro ao criar notificaÃ§Ã£o: ${notifyErr.message}`);
+        log(`[HEAT-ALERT] Erro ao criar notificação: ${notifyErr.message}`);
       }
     }
 
-    // 5b. ðŸ¤ HANDOFF INTELIGENTE â€” score >= 80 (acima do alerta simples de 65)
+    // 5b. 🤝 HANDOFF INTELIGENTE — score >= 80 (acima do alerta simples de 65)
     if (newScore >= 80 && prevScore < 80) {
       triggerIntelligentHandoff(agentId, remoteJid, organizationId, leadId, leadRow.name, context, newScore)
         .catch(e => log(`[HANDOFF] Error: ${e.message}`));
     }
 
-    // 6. AI Pipeline Movement â€” advance stage if score warrants it (non-blocking)
+    // 6. AI Pipeline Movement — advance stage if score warrants it (non-blocking)
     advancePipelineStage(leadId, organizationId, newScore)
       .catch(e => log(`[PIPELINE-AI] Movement error: ${e.message}`));
 
@@ -14748,7 +14748,7 @@ JSON:`;
   }
 }
 
-// â”€â”€â”€ INTELLIGENT HANDOFF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── INTELLIGENT HANDOFF ──────────────────────────────────────────────────────
 // Triggered when lead score crosses 80: raises human attention, generates brief and notifies sellers
 
 async function triggerIntelligentHandoff(agentId, remoteJid, orgId, leadId, leadName, context, score) {
@@ -14784,22 +14784,22 @@ async function triggerIntelligentHandoff(agentId, remoteJid, orgId, leadId, lead
       }
     } catch (msgErr) {
       log(`[HANDOFF] Could not send transfer message: ${msgErr.message}`);
-      // Non-fatal â€” continue with attention flag and notification
+      // Non-fatal — continue with attention flag and notification
     }
 
     // 1. Generate intelligent Lead Brief via GPT
-    const briefPrompt = `VocÃª Ã© um gerente de vendas sÃªnior da Kogna Revenue OS.
-Um lead atingiu score ${score}/100, indicando alta intenÃ§Ã£o de compra e necessidade de atendimento humano.
+    const briefPrompt = `Você é um gerente de vendas sênior da Kogna Revenue OS.
+Um lead atingiu score ${score}/100, indicando alta intenção de compra e necessidade de atendimento humano.
 Baseado na conversa abaixo, crie um brief operacional conciso para o vendedor humano que precisa priorizar esse lead.
 
 CONVERSA:
 ${context}
 
-Retorne APENAS um JSON vÃ¡lido com:
-- interest: O que o lead quer/precisa (1 frase objetiva, mÃ¡x 80 chars)
-- objection: Principal objeÃ§Ã£o ou preocupaÃ§Ã£o (1 frase, ou "Nenhuma identificada", mÃ¡x 80 chars)
-- approach: Melhor aÃ§Ã£o recomendada para fechar (1 frase imperativa, mÃ¡x 100 chars)
-- urgency: "Alta" | "MÃ©dia" | "Baixa"
+Retorne APENAS um JSON válido com:
+- interest: O que o lead quer/precisa (1 frase objetiva, máx 80 chars)
+- objection: Principal objeção ou preocupação (1 frase, ou "Nenhuma identificada", máx 80 chars)
+- approach: Melhor ação recomendada para fechar (1 frase imperativa, máx 100 chars)
+- urgency: "Alta" | "Média" | "Baixa"
 
 JSON:`;
 
@@ -14854,17 +14854,17 @@ JSON:`;
       `SELECT id FROM users WHERE organization_id = $1`, [orgId]
     );
 
-    const urgencyEmoji = brief.urgency === 'Alta' ? 'ðŸ”´' : brief.urgency === 'MÃ©dia' ? 'ðŸŸ¡' : 'ðŸŸ¢';
+    const urgencyEmoji = brief.urgency === 'Alta' ? '🔴' : brief.urgency === 'Média' ? '🟡' : '🟢';
     const notifMessage =
-      `ðŸŽ¯ Interesse: ${brief.interest}\n` +
-      `âš ï¸ ObjeÃ§Ã£o: ${brief.objection}\n` +
-      `âœ… AÃ§Ã£o: ${brief.approach}\n` +
-      `${urgencyEmoji} UrgÃªncia: ${brief.urgency} | Score: ${score}/100`;
+      `🎯 Interesse: ${brief.interest}\n` +
+      `⚠️ Objeção: ${brief.objection}\n` +
+      `✅ Ação: ${brief.approach}\n` +
+      `${urgencyEmoji} Urgência: ${brief.urgency} | Score: ${score}/100`;
 
     for (const u of usersRes.rows) {
       await pool.query(
         `INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)`,
-        [u.id, `ðŸ¤ Handoff Humano: ${leadName}`, notifMessage]
+        [u.id, `🤝 Handoff Humano: ${leadName}`, notifMessage]
       );
     }
 
@@ -14929,11 +14929,11 @@ async function processAIResponse(
     const currentDate = now.toLocaleString("pt-BR", dateOptions);
     const currentTime = now.toLocaleString("pt-BR", timeOptions);
 
-    // â”€â”€ CSE: Extract intent early (only needs message text) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── CSE: Extract intent early (only needs message text) ─────────────────────
     const userText = inputMessages.map(m => m.content || m.text || '').join(' ');
     const userIntent = await extractUserIntent(userText);
     log(`[CSE] lead=${remoteJid} intent=${userIntent}`);
-    // â”€â”€ END CSE early intent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── END CSE early intent ─────────────────────────────────────────────────────
 
     let systemPrompt = "";
 
@@ -14962,7 +14962,7 @@ async function processAIResponse(
       userId: user.id,
     });
 
-    // â”€â”€ CSE: Load state (now user/org is available) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── CSE: Load state (now user/org is available) ─────────────────────────────
     const cseOrgId = user.organization_id;
     const { state: cseState, memory: cseMemory } = await loadConversationState(cseOrgId, agent.id, remoteJid);
     const { newStage: cseStage, goal: cseGoal, nextExpected: cseNextExpected } = cseState
@@ -15006,11 +15006,11 @@ async function processAIResponse(
 
     // Append structured memory + semantic signals block
     systemPrompt += buildCSEStageDirective(cseStage, cseGoal, cseMemory);
-    // â”€â”€ END CSE state load â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── END CSE state load ───────────────────────────────────────────────────────
 
 
 
-    // 1.7 Fetch Last 3 Messages (CSE slim context â€” not full history)
+    // 1.7 Fetch Last 3 Messages (CSE slim context — not full history)
     // CSE replaces fat history with structured state + 3 recent messages only.
     const historyResult = await pool.query(
       "SELECT role, content FROM chat_messages WHERE agent_id = $1 AND remote_jid = $2 ORDER BY created_at DESC LIMIT 6",
@@ -15163,7 +15163,7 @@ async function processAIResponse(
       currentUserMessage,
     ];
 
-    // 2. Generate AI Response â€” Tool Router selects tools by CSE stage
+    // 2. Generate AI Response — Tool Router selects tools by CSE stage
     const { tools: activeTools, toolChoice, allowedNames } = getToolsForStage(cseStage);
 
     let aiResponse = "";
@@ -15209,7 +15209,7 @@ async function processAIResponse(
           const args = JSON.parse(toolCall.function.arguments);
           log(`[AI - TOOL] Calling ${functionName} with ${JSON.stringify(args)}`);
 
-          // â”€â”€ Backend validation guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Backend validation guard ──────────────────────────────────────────
           const validation = validateToolCall(functionName, args, allowedNames);
           if (!validation.valid) {
             log(`[TOOL ROUTER] Rejected tool call: ${validation.reason}`);
@@ -15226,7 +15226,7 @@ async function processAIResponse(
             const orgId = user.organization_id;
             log(`[AI - TOOL] Executing ${functionName} for Org: ${orgId}`);
 
-            // â”€â”€ New tools â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── New tools ────────────────────────────────────────────────────
             if (functionName === 'crm_update_lead') {
               toolResult = await executeCrmUpdateLead(orgId, remoteJid, args.fields);
             } else if (functionName === 'send_followup_message') {
@@ -15234,18 +15234,18 @@ async function processAIResponse(
                 orgId, remoteJid, instanceName, args.message, args.delay_minutes
               );
             } else if (functionName === 'present_product') {
-              // Calls the Dynamic Offer Engine â€” sends image + text + offer via WhatsApp
+              // Calls the Dynamic Offer Engine — sends image + text + offer via WhatsApp
               const productResult = await sendProductToLead(
                 orgId, instanceName, remoteJid, cseStage, args.product_hint || userIntent
               );
               toolResult = productResult
                 ? {
                   success: true, product: productResult.product.nome, offer: productResult.offer.nome,
-                  _instruction: 'O produto e a oferta foram enviados via WhatsApp. Confirme ao lead que vocÃª enviou as informaÃ§Ãµes e pergunte se ele tem dÃºvidas.'
+                  _instruction: 'O produto e a oferta foram enviados via WhatsApp. Confirme ao lead que você enviou as informações e pergunte se ele tem dúvidas.'
                 }
-                : { success: false, message: 'Nenhum produto ativo encontrado. Informe o lead que vocÃª vai enviar as informaÃ§Ãµes em breve.' };
+                : { success: false, message: 'Nenhum produto ativo encontrado. Informe o lead que você vai enviar as informações em breve.' };
             }
-            // â”€â”€ Existing calendar tools â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Existing calendar tools ──────────────────────────────────────
             else if (functionName === 'consultar_horarios_disponiveis') {
 
               let targetVendedorId = args.vendedorId;
@@ -15271,7 +15271,7 @@ async function processAIResponse(
                 };
               } else {
                 toolResult = {
-                  error: "Nenhum vendedor disponÃ­vel no momento.",
+                  error: "Nenhum vendedor disponível no momento.",
                 };
               }
             } else if (functionName === "confirmar_agendamento") {
@@ -15295,7 +15295,7 @@ async function processAIResponse(
                   );
                 } else {
                   throw new Error(
-                    `Vendedor '${args.vendedorId}' nÃ£o encontrado. Use o ID correto.`,
+                    `Vendedor '${args.vendedorId}' não encontrado. Use o ID correto.`,
                   );
                 }
               }
@@ -15365,7 +15365,7 @@ async function processAIResponse(
               if (!leadId) {
                 toolResult = {
                   success: false,
-                  error: "Lead nÃ£o encontrado para cancelamento.",
+                  error: "Lead não encontrado para cancelamento.",
                 };
               } else {
                 const checkExistence = await pool.query(
@@ -15712,7 +15712,7 @@ app.post(
       if (!delayDays || !message) {
         return res
           .status(400)
-          .json({ error: "Dias de atraso e mensagem sÃ£o obrigatÃ³rios" });
+          .json({ error: "Dias de atraso e mensagem são obrigatórios" });
       }
 
       let imageUrl = null;
@@ -15783,7 +15783,7 @@ app.put(
         [id, userId],
       );
       if (currentSeq.rows.length === 0) {
-        return res.status(404).json({ error: "SequÃªncia nÃ£o encontrada" });
+        return res.status(404).json({ error: "Sequência não encontrada" });
       }
 
       let imageUrl = currentSeq.rows[0].image_url;
@@ -16150,11 +16150,11 @@ if (process.env.VERCEL !== '1') {
 }
 
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // AGENDA API ROUTES
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
-// GET /api/vendedores â€“ list all vendors for the user's organization
+// GET /api/vendedores – list all vendors for the user's organization
 app.get("/api/vendedores", verifyJWT, async (req, res) => {
   try {
     const userRes = await pool.query("SELECT organization_id FROM users WHERE id = $1", [req.userId]);
@@ -16171,7 +16171,7 @@ app.get("/api/vendedores", verifyJWT, async (req, res) => {
   }
 });
 
-// POST /api/vendedores â€“ create a vendor
+// POST /api/vendedores – create a vendor
 app.post("/api/vendedores", verifyJWT, async (req, res) => {
   try {
     const userRes = await pool.query("SELECT organization_id FROM users WHERE id = $1", [req.userId]);
@@ -16190,7 +16190,7 @@ app.post("/api/vendedores", verifyJWT, async (req, res) => {
   }
 });
 
-// DELETE /api/vendedores/:id â€“ remove a vendor
+// DELETE /api/vendedores/:id – remove a vendor
 app.delete("/api/vendedores/:id", verifyJWT, async (req, res) => {
   try {
     const userRes = await pool.query("SELECT organization_id FROM users WHERE id = $1", [req.userId]);
@@ -16205,7 +16205,7 @@ app.delete("/api/vendedores/:id", verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/vendedores/:id/disponibilidade â€“ list schedules for a vendor
+// GET /api/vendedores/:id/disponibilidade – list schedules for a vendor
 app.get("/api/vendedores/:id/disponibilidade", verifyJWT, async (req, res) => {
   try {
     const result = await pool.query(
@@ -16219,7 +16219,7 @@ app.get("/api/vendedores/:id/disponibilidade", verifyJWT, async (req, res) => {
   }
 });
 
-// POST /api/vendedores/:id/disponibilidade â€“ add a schedule slot
+// POST /api/vendedores/:id/disponibilidade – add a schedule slot
 app.post("/api/vendedores/:id/disponibilidade", verifyJWT, async (req, res) => {
   try {
     const { diaSemana, horaInicio, horaFim, intervalo } = req.body;
@@ -16234,7 +16234,7 @@ app.post("/api/vendedores/:id/disponibilidade", verifyJWT, async (req, res) => {
   }
 });
 
-// DELETE /api/disponibilidade/:id â€“ remove a schedule slot
+// DELETE /api/disponibilidade/:id – remove a schedule slot
 app.delete("/api/disponibilidade/:id", verifyJWT, async (req, res) => {
   try {
     await pool.query("DELETE FROM disponibilidade_vendedor WHERE id = $1", [req.params.id]);
@@ -16245,7 +16245,7 @@ app.delete("/api/disponibilidade/:id", verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/vendedores/:id/bloqueios â€“ list blocks for a vendor
+// GET /api/vendedores/:id/bloqueios – list blocks for a vendor
 app.get("/api/vendedores/:id/bloqueios", verifyJWT, async (req, res) => {
   try {
     const result = await pool.query(
@@ -16259,7 +16259,7 @@ app.get("/api/vendedores/:id/bloqueios", verifyJWT, async (req, res) => {
   }
 });
 
-// POST /api/vendedores/:id/bloqueios â€“ add a block
+// POST /api/vendedores/:id/bloqueios – add a block
 app.post("/api/vendedores/:id/bloqueios", verifyJWT, async (req, res) => {
   try {
     const { dataInicio, dataFim, motivo } = req.body;
@@ -16274,7 +16274,7 @@ app.post("/api/vendedores/:id/bloqueios", verifyJWT, async (req, res) => {
   }
 });
 
-// DELETE /api/bloqueios/:id â€“ remove a block
+// DELETE /api/bloqueios/:id – remove a block
 app.delete("/api/bloqueios/:id", verifyJWT, async (req, res) => {
   try {
     await pool.query("DELETE FROM bloqueios_agenda WHERE id = $1", [req.params.id]);
@@ -16285,7 +16285,7 @@ app.delete("/api/bloqueios/:id", verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/agendamentos â€“ list appointments for a date
+// GET /api/agendamentos – list appointments for a date
 app.get("/api/agendamentos", verifyJWT, async (req, res) => {
   try {
     const userRes = await pool.query("SELECT organization_id FROM users WHERE id = $1", [req.userId]);
@@ -16310,7 +16310,7 @@ app.get("/api/agendamentos", verifyJWT, async (req, res) => {
   }
 });
 
-// DELETE /api/agendamentos/:id â€“ delete an appointment
+// DELETE /api/agendamentos/:id – delete an appointment
 app.delete("/api/agendamentos/:id", verifyJWT, async (req, res) => {
   try {
     await pool.query("DELETE FROM agendamentos WHERE id = $1", [req.params.id]);
@@ -16321,7 +16321,7 @@ app.delete("/api/agendamentos/:id", verifyJWT, async (req, res) => {
   }
 });
 
-// PATCH /api/agendamentos/:id â€“ update an appointment
+// PATCH /api/agendamentos/:id – update an appointment
 app.patch("/api/agendamentos/:id", verifyJWT, async (req, res) => {
   try {
     const { dataHora, notas, status } = req.body;
@@ -16334,7 +16334,7 @@ app.patch("/api/agendamentos/:id", verifyJWT, async (req, res) => {
           "SELECT id FROM agendamentos WHERE vendedor_id = $1 AND id != $2 AND ABS(EXTRACT(EPOCH FROM (data_hora - $3::timestamptz))) < 1800",
           [vendedorId, req.params.id, dt]
         );
-        if (conflict.rows.length > 0) return res.status(409).json({ error: "Conflito de horÃ¡rio com outro agendamento" });
+        if (conflict.rows.length > 0) return res.status(409).json({ error: "Conflito de horário com outro agendamento" });
       }
     }
     const fields = [];
@@ -16356,9 +16356,9 @@ app.patch("/api/agendamentos/:id", verifyJWT, async (req, res) => {
   }
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// CONVERSATION INTELLIGENCE LAYER â€” API ROUTES
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
+// CONVERSATION INTELLIGENCE LAYER — API ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ADMIN: Summary counts (total conversations, messages, events)
 app.get("/api/admin/conversation-intelligence/summary", verifyJWT, verifyAdmin, async (req, res) => {
@@ -16578,13 +16578,13 @@ app.get("/api/leads/intelligence/alerts", verifyJWT, async (req, res) => {
   }
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // END CONVERSATION INTELLIGENCE LAYER
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// OPPORTUNITY SCORING ENGINE (OSE) â€” API ROUTES
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
+// OPPORTUNITY SCORING ENGINE (OSE) — API ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
 
 // TENANT: Get Opportunity Score for a specific lead
 app.get("/api/leads/:leadId/opportunity-score", verifyJWT, async (req, res) => {
@@ -16680,7 +16680,7 @@ app.get("/api/dashboard/revenue-intelligence", verifyJWT, async (req, res) => {
       GROUP BY temperature
     `, [orgId]);
 
-    // 3. DistribuiÃ§Ã£o de Score (Histograma)
+    // 3. Distribuição de Score (Histograma)
     const distRes = await pool.query(`
       SELECT 
         CASE 
@@ -16697,7 +16697,7 @@ app.get("/api/dashboard/revenue-intelligence", verifyJWT, async (req, res) => {
       ORDER BY range
     `, [orgId]);
 
-    // 4. Taxa de conversÃ£o por faixa (Aproximada cruzando leads.status = Cliente)
+    // 4. Taxa de conversão por faixa (Aproximada cruzando leads.status = Cliente)
     const conversionRes = await pool.query(`
       SELECT 
         CASE 
@@ -16735,7 +16735,7 @@ app.get("/api/dashboard/revenue-intelligence", verifyJWT, async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-// â”€â”€ END OSE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END OSE ────────────────────────────────────────────────────────────
 
 // Temporary Migration Route to execute schema changes against the live database pool
 app.get("/api/run-migration-temp", async (req, res) => {
@@ -16752,11 +16752,11 @@ app.get("/api/run-migration-temp", async (req, res) => {
   }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// AI FOLLOW-UP ENGINE â€” API ROUTES
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
+// AI FOLLOW-UP ENGINE — API ROUTES
+// ══════════════════════════════════════════════════════════════════════════════
 
-// GET /api/followup/sequences â€” List all sequences for this org
+// GET /api/followup/sequences — List all sequences for this org
 app.get('/api/followup/sequences', verifyJWT, async (req, res) => {
   try {
     await ensureFollowupEngineReady();
@@ -16786,7 +16786,7 @@ app.get('/api/followup/sequences', verifyJWT, async (req, res) => {
   }
 });
 
-// POST /api/followup/sequences â€” Create a new sequence
+// POST /api/followup/sequences — Create a new sequence
 app.post('/api/followup/sequences', verifyJWT, async (req, res) => {
   try {
     await ensureFollowupEngineReady();
@@ -16808,7 +16808,7 @@ app.post('/api/followup/sequences', verifyJWT, async (req, res) => {
   }
 });
 
-// PUT /api/followup/sequences/:id â€” Update a sequence
+// PUT /api/followup/sequences/:id — Update a sequence
 app.put('/api/followup/sequences/:id', verifyJWT, async (req, res) => {
   try {
     await ensureFollowupEngineReady();
@@ -16845,7 +16845,7 @@ app.put('/api/followup/sequences/:id', verifyJWT, async (req, res) => {
   }
 });
 
-// DELETE /api/followup/sequences/:id â€” Delete a sequence (cascades to steps)
+// DELETE /api/followup/sequences/:id — Delete a sequence (cascades to steps)
 app.delete('/api/followup/sequences/:id', verifyJWT, async (req, res) => {
   try {
     await ensureFollowupEngineReady();
@@ -16863,7 +16863,7 @@ app.delete('/api/followup/sequences/:id', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/followup/sequences/:id/steps â€” List steps for a sequence
+// GET /api/followup/sequences/:id/steps — List steps for a sequence
 app.get('/api/followup/sequences/:id/steps', verifyJWT, async (req, res) => {
   try {
     await ensureFollowupEngineReady();
@@ -16884,7 +16884,7 @@ app.get('/api/followup/sequences/:id/steps', verifyJWT, async (req, res) => {
   }
 });
 
-// POST /api/followup/sequences/:id/steps â€” Add a step to a sequence
+// POST /api/followup/sequences/:id/steps — Add a step to a sequence
 app.post('/api/followup/sequences/:id/steps', verifyJWT, async (req, res) => {
   try {
     await ensureFollowupEngineReady();
@@ -16917,7 +16917,7 @@ app.post('/api/followup/sequences/:id/steps', verifyJWT, async (req, res) => {
   }
 });
 
-// PUT /api/followup/steps/:id â€” Update a step
+// PUT /api/followup/steps/:id — Update a step
 app.put('/api/followup/steps/:id', verifyJWT, async (req, res) => {
   try {
     await ensureFollowupEngineReady();
@@ -16953,7 +16953,7 @@ app.put('/api/followup/steps/:id', verifyJWT, async (req, res) => {
   }
 });
 
-// DELETE /api/followup/steps/:id â€” Delete a step
+// DELETE /api/followup/steps/:id — Delete a step
 app.delete('/api/followup/steps/:id', verifyJWT, async (req, res) => {
   try {
     await ensureFollowupEngineReady();
@@ -16971,7 +16971,7 @@ app.delete('/api/followup/steps/:id', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/followup/settings â€” Get org follow-up settings
+// GET /api/followup/settings — Get org follow-up settings
 app.get('/api/followup/settings', verifyJWT, async (req, res) => {
   try {
     await ensureFollowupEngineReady();
@@ -16986,7 +16986,7 @@ app.get('/api/followup/settings', verifyJWT, async (req, res) => {
   }
 });
 
-// PUT /api/followup/settings â€” Save org follow-up settings
+// PUT /api/followup/settings — Save org follow-up settings
 app.put('/api/followup/settings', verifyJWT, async (req, res) => {
   try {
     await ensureFollowupEngineReady();
@@ -17017,7 +17017,7 @@ app.put('/api/followup/settings', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/followup/queue â€” View active queue for this org
+// GET /api/followup/queue — View active queue for this org
 app.get('/api/followup/queue', verifyJWT, async (req, res) => {
   try {
     await ensureFollowupEngineReady();
@@ -17085,7 +17085,7 @@ app.get('/api/followup/queue', verifyJWT, async (req, res) => {
   }
 });
 
-// DELETE /api/followup/queue/:id â€” Cancel a queued follow-up
+// DELETE /api/followup/queue/:id — Cancel a queued follow-up
 app.delete('/api/followup/queue/:id', verifyJWT, async (req, res) => {
   try {
     await ensureFollowupEngineReady();
@@ -17107,7 +17107,7 @@ app.delete('/api/followup/queue/:id', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/followup/dashboard â€” Recovery metrics dashboard
+// GET /api/followup/dashboard — Recovery metrics dashboard
 app.get('/api/followup/dashboard', verifyJWT, async (req, res) => {
   try {
     await ensureFollowupEngineReady();
@@ -17230,7 +17230,7 @@ app.get('/api/followup/dashboard', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/followup/status/:jid â€” Get follow-up status for a specific JID
+// GET /api/followup/status/:jid — Get follow-up status for a specific JID
 app.get('/api/followup/status/:jid', verifyJWT, async (req, res) => {
   try {
     await ensureFollowupEngineReady();
@@ -17282,11 +17282,11 @@ app.get('/api/followup/status/:jid', verifyJWT, async (req, res) => {
   }
 });
 
-// â”€â”€ END AI Follow-up Engine API Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END AI Follow-up Engine API Routes ────────────────────────────────────────
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// CONVERSATION INTELLIGENCE ENGINE â€” API ROUTES
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
+// CONVERSATION INTELLIGENCE ENGINE — API ROUTES
+// ══════════════════════════════════════════════════════════════════════════════
 
 // Helper to get orgId from JWT
 async function getCIEOrgId(userId) {
@@ -17300,7 +17300,7 @@ async function isSuperAdmin(userId) {
   return r.rows[0]?.role === 'super_admin';
 }
 
-// GET /api/intelligence/summary â€” KPIs: conversion, avg close, abandonment
+// GET /api/intelligence/summary — KPIs: conversion, avg close, abandonment
 app.get('/api/intelligence/summary', verifyJWT, async (req, res) => {
   try {
     const orgId = await getCIEOrgId(req.userId);
@@ -17342,7 +17342,7 @@ app.get('/api/intelligence/summary', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/intelligence/funnel â€” Conversion by pipeline stage
+// GET /api/intelligence/funnel — Conversion by pipeline stage
 app.get('/api/intelligence/funnel', verifyJWT, async (req, res) => {
   try {
     const orgId = await getCIEOrgId(req.userId);
@@ -17371,7 +17371,7 @@ app.get('/api/intelligence/funnel', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/intelligence/objections â€” Distribution of detected objections
+// GET /api/intelligence/objections — Distribution of detected objections
 app.get('/api/intelligence/objections', verifyJWT, async (req, res) => {
   try {
     const orgId = await getCIEOrgId(req.userId);
@@ -17393,7 +17393,7 @@ app.get('/api/intelligence/objections', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/intelligence/intents â€” Distribution of detected purchase intents
+// GET /api/intelligence/intents — Distribution of detected purchase intents
 app.get('/api/intelligence/intents', verifyJWT, async (req, res) => {
   try {
     const orgId = await getCIEOrgId(req.userId);
@@ -17416,7 +17416,7 @@ app.get('/api/intelligence/intents', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/intelligence/patterns/closing â€” Top closing phrases
+// GET /api/intelligence/patterns/closing — Top closing phrases
 app.get('/api/intelligence/patterns/closing', verifyJWT, async (req, res) => {
   try {
     const orgId = await getCIEOrgId(req.userId);
@@ -17436,7 +17436,7 @@ app.get('/api/intelligence/patterns/closing', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/intelligence/patterns/killers â€” Top killer phrases
+// GET /api/intelligence/patterns/killers — Top killer phrases
 app.get('/api/intelligence/patterns/killers', verifyJWT, async (req, res) => {
   try {
     const orgId = await getCIEOrgId(req.userId);
@@ -17456,7 +17456,7 @@ app.get('/api/intelligence/patterns/killers', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/intelligence/behavior â€” Auto-generated behavior patterns
+// GET /api/intelligence/behavior — Auto-generated behavior patterns
 app.get('/api/intelligence/behavior', verifyJWT, async (req, res) => {
   try {
     const orgId = await getCIEOrgId(req.userId);
@@ -17476,7 +17476,7 @@ app.get('/api/intelligence/behavior', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/intelligence/temperature â€” Conversion by lead temperature
+// GET /api/intelligence/temperature — Conversion by lead temperature
 app.get('/api/intelligence/temperature', verifyJWT, async (req, res) => {
   try {
     const orgId = await getCIEOrgId(req.userId);
@@ -17506,7 +17506,7 @@ app.get('/api/intelligence/temperature', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/intelligence/sellers â€” Conversion by seller (agent)
+// GET /api/intelligence/sellers — Conversion by seller (agent)
 app.get('/api/intelligence/sellers', verifyJWT, async (req, res) => {
   try {
     const orgId = await getCIEOrgId(req.userId);
@@ -17537,7 +17537,7 @@ app.get('/api/intelligence/sellers', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/intelligence/run â€” Manual trigger for the engine (admin only)
+// GET /api/intelligence/run — Manual trigger for the engine (admin only)
 app.get('/api/intelligence/run', verifyJWT, async (req, res) => {
   try {
     const admin = await isSuperAdmin(req.userId);
@@ -17550,7 +17550,7 @@ app.get('/api/intelligence/run', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/intelligence/admin/summary â€” Global platform summary (super_admin)
+// GET /api/intelligence/admin/summary — Global platform summary (super_admin)
 app.get('/api/intelligence/admin/summary', verifyJWT, async (req, res) => {
   try {
     const admin = await isSuperAdmin(req.userId);
@@ -17576,7 +17576,7 @@ app.get('/api/intelligence/admin/summary', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/intelligence/admin/objections â€” Top objections by sector (super_admin)
+// GET /api/intelligence/admin/objections — Top objections by sector (super_admin)
 app.get('/api/intelligence/admin/objections', verifyJWT, async (req, res) => {
   try {
     const admin = await isSuperAdmin(req.userId);
@@ -17598,7 +17598,7 @@ app.get('/api/intelligence/admin/objections', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/intelligence/admin/segments â€” Intent & ticket by segment (super_admin)
+// GET /api/intelligence/admin/segments — Intent & ticket by segment (super_admin)
 app.get('/api/intelligence/admin/segments', verifyJWT, async (req, res) => {
   try {
     const admin = await isSuperAdmin(req.userId);
@@ -17623,7 +17623,7 @@ app.get('/api/intelligence/admin/segments', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/intelligence/admin/regions â€” Demand by region (super_admin)
+// GET /api/intelligence/admin/regions — Demand by region (super_admin)
 app.get('/api/intelligence/admin/regions', verifyJWT, async (req, res) => {
   try {
     const admin = await isSuperAdmin(req.userId);
@@ -17646,7 +17646,7 @@ app.get('/api/intelligence/admin/regions', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/intelligence/admin/products â€” Most mentioned products (super_admin)
+// GET /api/intelligence/admin/products — Most mentioned products (super_admin)
 app.get('/api/intelligence/admin/products', verifyJWT, async (req, res) => {
   try {
     const admin = await isSuperAdmin(req.userId);
@@ -17670,7 +17670,7 @@ app.get('/api/intelligence/admin/products', verifyJWT, async (req, res) => {
   }
 });
 
-// POST /api/intelligence/run â€” frontend calls POST, existing engine uses GET
+// POST /api/intelligence/run — frontend calls POST, existing engine uses GET
 app.post('/api/intelligence/run', verifyJWT, async (req, res) => {
   try {
     const admin = await isSuperAdmin(req.userId);
@@ -17683,9 +17683,9 @@ app.post('/api/intelligence/run', verifyJWT, async (req, res) => {
   }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// KOGNA INTELLIGENCE PANEL â€” 5 cross-org anonymized metric endpoints
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
+// KOGNA INTELLIGENCE PANEL — 5 cross-org anonymized metric endpoints
+// ══════════════════════════════════════════════════════════════════════════════
 
 // GET /api/intelligence/panel/language-patterns
 // Returns sales_patterns ranked by conversion_impact_score
@@ -17834,11 +17834,11 @@ app.get('/api/intelligence/panel/objection-detail', verifyJWT, async (req, res) 
   }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// ADMIN PRODUCTS (Koins Plans) â€” global products without org filter
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
+// ADMIN PRODUCTS (Koins Plans) — global products without org filter
+// ══════════════════════════════════════════════════════════════════════════════
 
-// GET /api/admin/products â€” list all system products (Koins plans)
+// GET /api/admin/products — list all system products (Koins plans)
 app.get('/api/admin/products', verifyJWT, requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
@@ -17851,11 +17851,11 @@ app.get('/api/admin/products', verifyJWT, requireAdmin, async (req, res) => {
   }
 });
 
-// POST /api/admin/products â€” create a system product
+// POST /api/admin/products — create a system product
 app.post('/api/admin/products', verifyJWT, requireAdmin, async (req, res) => {
   try {
     const { name, description, price, koins_bonus, connections_bonus, type } = req.body;
-    if (!name || !price) return res.status(400).json({ error: 'name e price sÃ£o obrigatÃ³rios.' });
+    if (!name || !price) return res.status(400).json({ error: 'name e price são obrigatórios.' });
     const result = await pool.query(
       `INSERT INTO products (name, description, price, koins_bonus, connections_bonus, type, active)
        VALUES ($1,$2,$3,$4,$5,$6,true) RETURNING *`,
@@ -17868,7 +17868,7 @@ app.post('/api/admin/products', verifyJWT, requireAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/admin/products/:id â€” update a system product
+// PUT /api/admin/products/:id — update a system product
 app.put('/api/admin/products/:id', verifyJWT, requireAdmin, async (req, res) => {
   try {
     const { name, description, price, koins_bonus, connections_bonus, type } = req.body;
@@ -17877,7 +17877,7 @@ app.put('/api/admin/products/:id', verifyJWT, requireAdmin, async (req, res) => 
        WHERE id=$7 AND organization_id IS NULL RETURNING *`,
       [name, description || '', price, koins_bonus || 0, connections_bonus || 0, type || 'KOINS', req.params.id]
     );
-    if (!result.rows.length) return res.status(404).json({ error: 'Produto nÃ£o encontrado.' });
+    if (!result.rows.length) return res.status(404).json({ error: 'Produto não encontrado.' });
     res.json(result.rows[0]);
   } catch (err) {
     log('PUT /api/admin/products error: ' + err.message);
@@ -17885,7 +17885,7 @@ app.put('/api/admin/products/:id', verifyJWT, requireAdmin, async (req, res) => 
   }
 });
 
-// DELETE /api/admin/products/:id â€” delete a system product
+// DELETE /api/admin/products/:id — delete a system product
 app.delete('/api/admin/products/:id', verifyJWT, requireAdmin, async (req, res) => {
   try {
     await pool.query(`DELETE FROM products WHERE id=$1 AND organization_id IS NULL`, [req.params.id]);
@@ -17896,11 +17896,11 @@ app.delete('/api/admin/products/:id', verifyJWT, requireAdmin, async (req, res) 
   }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// PRODUCT & DYNAMIC OFFER ENGINE â€” CRUD API
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
+// PRODUCT & DYNAMIC OFFER ENGINE — CRUD API
+// ══════════════════════════════════════════════════════════════════════════════
 
-// GET /api/products â€” list org products
+// GET /api/products — list org products
 app.get('/api/products', verifyJWT, async (req, res) => {
   try {
     await ensureProductEngineTablesReady();
@@ -17922,7 +17922,7 @@ app.get('/api/products', verifyJWT, async (req, res) => {
   }
 });
 
-// POST /api/products â€” create product
+// POST /api/products — create product
 app.post('/api/products', verifyJWT, async (req, res) => {
   try {
     await ensureProductEngineTablesReady();
@@ -17943,7 +17943,7 @@ app.post('/api/products', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/products/:id â€” get product with images + offers
+// GET /api/products/:id — get product with images + offers
 app.get('/api/products/:id', verifyJWT, async (req, res) => {
   try {
     await ensureProductEngineTablesReady();
@@ -17971,7 +17971,7 @@ app.get('/api/products/:id', verifyJWT, async (req, res) => {
   }
 });
 
-// PUT /api/products/:id â€” update product
+// PUT /api/products/:id — update product
 app.put('/api/products/:id', verifyJWT, async (req, res) => {
   try {
     await ensureProductEngineTablesReady();
@@ -17994,7 +17994,7 @@ app.put('/api/products/:id', verifyJWT, async (req, res) => {
   }
 });
 
-// DELETE /api/products/:id â€” soft-delete (set status=inativo)
+// DELETE /api/products/:id — soft-delete (set status=inativo)
 app.delete('/api/products/:id', verifyJWT, async (req, res) => {
   try {
     await ensureProductEngineTablesReady();
@@ -18009,7 +18009,7 @@ app.delete('/api/products/:id', verifyJWT, async (req, res) => {
   }
 });
 
-// POST /api/products/:id/images â€” add image/video/pdf
+// POST /api/products/:id/images — add image/video/pdf
 app.post('/api/products/:id/images', verifyJWT, async (req, res) => {
   try {
     await ensureProductEngineTablesReady();
@@ -18029,7 +18029,7 @@ app.post('/api/products/:id/images', verifyJWT, async (req, res) => {
   }
 });
 
-// DELETE /api/products/:productId/images/:imgId â€” remove media
+// DELETE /api/products/:productId/images/:imgId — remove media
 app.delete('/api/products/:productId/images/:imgId', verifyJWT, async (req, res) => {
   try {
     await ensureProductEngineTablesReady();
@@ -18043,7 +18043,7 @@ app.delete('/api/products/:productId/images/:imgId', verifyJWT, async (req, res)
   }
 });
 
-// POST /api/products/:id/offers â€” create offer for product
+// POST /api/products/:id/offers — create offer for product
 app.post('/api/products/:id/offers', verifyJWT, async (req, res) => {
   try {
     await ensureProductEngineTablesReady();
@@ -18075,7 +18075,7 @@ app.post('/api/products/:id/offers', verifyJWT, async (req, res) => {
   }
 });
 
-// PUT /api/offers/:id â€” update offer
+// PUT /api/offers/:id — update offer
 app.put('/api/offers/:id', verifyJWT, async (req, res) => {
   try {
     await ensureProductEngineTablesReady();
@@ -18108,7 +18108,7 @@ app.put('/api/offers/:id', verifyJWT, async (req, res) => {
   }
 });
 
-// DELETE /api/offers/:id â€” delete offer
+// DELETE /api/offers/:id — delete offer
 app.delete('/api/offers/:id', verifyJWT, async (req, res) => {
   try {
     const user = await getUserById(req.userId);
@@ -18121,7 +18121,7 @@ app.delete('/api/offers/:id', verifyJWT, async (req, res) => {
   }
 });
 
-// POST /api/offers/:id/triggers â€” add trigger to offer
+// POST /api/offers/:id/triggers — add trigger to offer
 app.post('/api/offers/:id/triggers', verifyJWT, async (req, res) => {
   try {
     const user = await getUserById(req.userId);
@@ -18142,8 +18142,8 @@ app.post('/api/offers/:id/triggers', verifyJWT, async (req, res) => {
   }
 });
 
-// DELETE /api/offer-triggers/:id â€” remove trigger
-// PRODUCT CATALOG API â€” isolated namespace for the org catalog UI
+// DELETE /api/offer-triggers/:id — remove trigger
+// PRODUCT CATALOG API — isolated namespace for the org catalog UI
 app.get('/api/catalog/products', verifyJWT, async (req, res) => {
   try {
     await ensureProductEngineTablesReady();
@@ -18186,7 +18186,7 @@ app.post('/api/catalog/products', verifyJWT, async (req, res) => {
     } = req.body;
 
     if (!nome?.trim()) {
-      return res.status(400).json({ error: 'Nome do produto Ã© obrigatÃ³rio' });
+      return res.status(400).json({ error: 'Nome do produto é obrigatório' });
     }
 
     const result = await pool.query(
@@ -18281,7 +18281,7 @@ app.put('/api/catalog/products/:id', verifyJWT, async (req, res) => {
     } = req.body;
 
     if (!nome?.trim()) {
-      return res.status(400).json({ error: 'Nome do produto Ã© obrigatÃ³rio' });
+      return res.status(400).json({ error: 'Nome do produto é obrigatório' });
     }
 
     const result = await pool.query(
@@ -18458,11 +18458,11 @@ app.post('/api/catalog/products/:id/images/upload', verifyJWT, upload.single('fi
 
     const file = req.file;
     if (!file?.buffer) {
-      return res.status(400).json({ error: 'Arquivo de imagem Ã© obrigatÃ³rio' });
+      return res.status(400).json({ error: 'Arquivo de imagem é obrigatório' });
     }
 
     if (!file.mimetype?.startsWith('image/')) {
-      return res.status(400).json({ error: 'Apenas imagens sÃ£o aceitas neste upload' });
+      return res.status(400).json({ error: 'Apenas imagens são aceitas neste upload' });
     }
 
     const base64 = file.buffer.toString('base64');
@@ -18560,7 +18560,7 @@ app.delete('/api/offer-triggers/:id', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/offer-events â€” fetch offer presentation analytics for org
+// GET /api/offer-events — fetch offer presentation analytics for org
 app.get('/api/offer-events', verifyJWT, async (req, res) => {
   try {
     const user = await getUserById(req.userId);
@@ -18582,14 +18582,14 @@ app.get('/api/offer-events', verifyJWT, async (req, res) => {
   }
 });
 
-// â”€â”€ END Product & Dynamic Offer Engine CRUD API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END Product & Dynamic Offer Engine CRUD API ───────────────────────────────
 
-// â”€â”€ END Kogna Intelligence Panel API Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END Kogna Intelligence Panel API Routes ───────────────────────────────────
 
-// â”€â”€ END Conversation Intelligence Engine API Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END Conversation Intelligence Engine API Routes ───────────────────────────
 
 
-// â”€â”€ VERCEL CRONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── VERCEL CRONS ──────────────────────────────────────────────────────────────
 
 
 
@@ -18609,102 +18609,102 @@ app.get('/api/cron/process-queue', async (req, res) => {
   }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
 // INDUSTRY ACCELERATOR LAYER
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
 
 const INDUSTRY_PROFILES_SEED = [
   {
-    slug: 'educacao', name: 'EducaÃ§Ã£o', icon: 'ðŸŽ“',
-    description: 'MatrÃ­cula de alunos, cursos, faculdades, escolas e treinamentos.',
-    default_pipeline: JSON.stringify(['Novo Lead', 'Interesse no Curso', 'QualificaÃ§Ã£o', 'Agendamento', 'Comparecimento', 'MatrÃ­cula', 'Perdido']),
+    slug: 'educacao', name: 'Educação', icon: '🎓',
+    description: 'Matrícula de alunos, cursos, faculdades, escolas e treinamentos.',
+    default_pipeline: JSON.stringify(['Novo Lead', 'Interesse no Curso', 'Qualificação', 'Agendamento', 'Comparecimento', 'Matrícula', 'Perdido']),
     default_intents: JSON.stringify(['interesse_curso', 'preco_curso', 'horario_aula', 'duracao_curso', 'certificado', 'formas_pagamento', 'agendar_visita', 'bolsa_desconto']),
     default_objections: JSON.stringify(['preco_alto', 'falta_tempo', 'distancia', 'duvida_certificado', 'precisa_falar_com_pais']),
     recommended_ai_agents: JSON.stringify([
-      { id: 'edu_sdr', name: 'AI SDR â€“ CaptaÃ§Ã£o de Alunos', icon: 'ðŸ“š', role: 'SDR', description: 'Qualifica interessados e agenda visitas ou matrÃ­culas.' },
-      { id: 'edu_followup', name: 'AI Follow-up de Interessados', icon: 'ðŸ””', role: 'Follow-up', description: 'Reativa alunos que pediram informaÃ§Ãµes e nÃ£o retornaram.' }
+      { id: 'edu_sdr', name: 'AI SDR – Captação de Alunos', icon: '📚', role: 'SDR', description: 'Qualifica interessados e agenda visitas ou matrículas.' },
+      { id: 'edu_followup', name: 'AI Follow-up de Interessados', icon: '🔔', role: 'Follow-up', description: 'Reativa alunos que pediram informações e não retornaram.' }
     ]),
     recommended_followup_sequences: JSON.stringify([
-      { trigger: 'lead_pediu_preco', delay_minutes: 30, message_hint: 'Retome o contato com condiÃ§Ãµes de pagamento e bolsa disponÃ­vel.' },
-      { trigger: 'lead_pediu_informacoes', delay_minutes: 120, message_hint: 'Envie o calendÃ¡rio de turmas e reforce o diferencial.' },
-      { trigger: 'lead_interessado', delay_minutes: 1440, message_hint: 'Lembre da data de inÃ­cio da prÃ³xima turma.' }
+      { trigger: 'lead_pediu_preco', delay_minutes: 30, message_hint: 'Retome o contato com condições de pagamento e bolsa disponível.' },
+      { trigger: 'lead_pediu_informacoes', delay_minutes: 120, message_hint: 'Envie o calendário de turmas e reforce o diferencial.' },
+      { trigger: 'lead_interessado', delay_minutes: 1440, message_hint: 'Lembre da data de início da próxima turma.' }
     ])
   },
   {
-    slug: 'imobiliario', name: 'ImobiliÃ¡rio', icon: 'ðŸ ',
-    description: 'Venda e locaÃ§Ã£o de imÃ³veis, loteamentos e construtoras.',
-    default_pipeline: JSON.stringify(['Novo Lead', 'QualificaÃ§Ã£o', 'Visita Agendada', 'Proposta', 'AprovaÃ§Ã£o de CrÃ©dito', 'Contrato', 'Perdido']),
+    slug: 'imobiliario', name: 'Imobiliário', icon: '🏠',
+    description: 'Venda e locação de imóveis, loteamentos e construtoras.',
+    default_pipeline: JSON.stringify(['Novo Lead', 'Qualificação', 'Visita Agendada', 'Proposta', 'Aprovação de Crédito', 'Contrato', 'Perdido']),
     default_intents: JSON.stringify(['interesse_imovel', 'preco_imovel', 'localizacao', 'financiamento', 'agendar_visita', 'planta_baixa', 'condicoes_pagamento']),
     default_objections: JSON.stringify(['preco_alto', 'nao_aprovado_credito', 'precisa_vender_atual', 'localizacao_longe', 'nao_decidiu']),
     recommended_ai_agents: JSON.stringify([
-      { id: 'imob_sdr', name: 'AI SDR â€“ QualificaÃ§Ã£o ImobiliÃ¡ria', icon: 'ðŸ¡', role: 'SDR', description: 'Qualifica perfil de compra e agenda visitas ao imÃ³vel.' },
-      { id: 'imob_vendedor', name: 'AI Corretora Digital', icon: 'ðŸ”‘', role: 'Vendedor', description: 'Apresenta imÃ³veis, trata objeÃ§Ãµes e conduz ao fechamento.' }
+      { id: 'imob_sdr', name: 'AI SDR – Qualificação Imobiliária', icon: '🏡', role: 'SDR', description: 'Qualifica perfil de compra e agenda visitas ao imóvel.' },
+      { id: 'imob_vendedor', name: 'AI Corretora Digital', icon: '🔑', role: 'Vendedor', description: 'Apresenta imóveis, trata objeções e conduz ao fechamento.' }
     ]),
     recommended_followup_sequences: JSON.stringify([
-      { trigger: 'lead_pediu_preco', delay_minutes: 60, message_hint: 'Envie simulaÃ§Ã£o de financiamento personalizada.' },
-      { trigger: 'lead_agendou_visita', delay_minutes: 60, message_hint: 'Confirme a visita e envie o endereÃ§o com link do mapa.' }
+      { trigger: 'lead_pediu_preco', delay_minutes: 60, message_hint: 'Envie simulação de financiamento personalizada.' },
+      { trigger: 'lead_agendou_visita', delay_minutes: 60, message_hint: 'Confirme a visita e envie o endereço com link do mapa.' }
     ])
   },
   {
-    slug: 'seguros', name: 'Seguros', icon: 'ðŸ›¡ï¸',
-    description: 'Seguros de vida, auto, residencial, empresarial e saÃºde.',
-    default_pipeline: JSON.stringify(['Novo Lead', 'CotaÃ§Ã£o Solicitada', 'Proposta Enviada', 'AnÃ¡lise do Cliente', 'Fechamento', 'Perdido']),
+    slug: 'seguros', name: 'Seguros', icon: '🛡️',
+    description: 'Seguros de vida, auto, residencial, empresarial e saúde.',
+    default_pipeline: JSON.stringify(['Novo Lead', 'Cotação Solicitada', 'Proposta Enviada', 'Análise do Cliente', 'Fechamento', 'Perdido']),
     default_intents: JSON.stringify(['cotar_seguro', 'comparar_planos', 'preco_seguro', 'coberturas', 'sinistro', 'renovacao']),
     default_objections: JSON.stringify(['preco_alto', 'ja_tem_seguro', 'nao_ve_necessidade', 'nao_confia_seguradora']),
     recommended_ai_agents: JSON.stringify([
-      { id: 'seg_corretor', name: 'AI Corretor de Seguros', icon: 'ðŸ›¡ï¸', role: 'Vendedor', description: 'CotaÃ§Ã£o interativa, comparaÃ§Ã£o de coberturas e fechamento.' }
+      { id: 'seg_corretor', name: 'AI Corretor de Seguros', icon: '🛡️', role: 'Vendedor', description: 'Cotação interativa, comparação de coberturas e fechamento.' }
     ]),
     recommended_followup_sequences: JSON.stringify([
-      { trigger: 'lead_pediu_cotacao', delay_minutes: 30, message_hint: 'Envie a cotaÃ§Ã£o e destaque a principal cobertura diferencial.' },
-      { trigger: 'lead_nao_respondeu', delay_minutes: 1440, message_hint: 'Pergunte se teve alguma dÃºvida sobre a proposta.' }
+      { trigger: 'lead_pediu_cotacao', delay_minutes: 30, message_hint: 'Envie a cotação e destaque a principal cobertura diferencial.' },
+      { trigger: 'lead_nao_respondeu', delay_minutes: 1440, message_hint: 'Pergunte se teve alguma dúvida sobre a proposta.' }
     ])
   },
   {
-    slug: 'clinicas', name: 'ClÃ­nicas', icon: 'ðŸ¥',
-    description: 'ClÃ­nicas mÃ©dicas, odontolÃ³gicas, estÃ©tica e bem-estar.',
-    default_pipeline: JSON.stringify(['Novo Lead', 'Interesse', 'Consulta Agendada', 'Comparecimento', 'Tratamento', 'FidelizaÃ§Ã£o', 'Perdido']),
+    slug: 'clinicas', name: 'Clínicas', icon: '🏥',
+    description: 'Clínicas médicas, odontológicas, estética e bem-estar.',
+    default_pipeline: JSON.stringify(['Novo Lead', 'Interesse', 'Consulta Agendada', 'Comparecimento', 'Tratamento', 'Fidelização', 'Perdido']),
     default_intents: JSON.stringify(['agendar_consulta', 'preco_procedimento', 'convenio', 'duvida_tratamento', 'resultado_esperado', 'disponibilidade']),
     default_objections: JSON.stringify(['preco_alto', 'sem_convenio', 'medo_procedimento', 'indisponibilidade_horario', 'nao_urgente']),
     recommended_ai_agents: JSON.stringify([
-      { id: 'clinica_atendente', name: 'AI Atendente de ClÃ­nica', icon: 'ðŸ‘©â€âš•ï¸', role: 'Atendente', description: 'Agenda consultas, informa procedimentos e convÃªnios aceitos.' },
-      { id: 'clinica_reativacao', name: 'AI ReativaÃ§Ã£o de Pacientes', icon: 'ðŸ’Š', role: 'Follow-up', description: 'Reativa pacientes inativos e lembra de consultas de retorno.' }
+      { id: 'clinica_atendente', name: 'AI Atendente de Clínica', icon: '👩‍⚕️', role: 'Atendente', description: 'Agenda consultas, informa procedimentos e convênios aceitos.' },
+      { id: 'clinica_reativacao', name: 'AI Reativação de Pacientes', icon: '💊', role: 'Follow-up', description: 'Reativa pacientes inativos e lembra de consultas de retorno.' }
     ]),
     recommended_followup_sequences: JSON.stringify([
-      { trigger: 'lead_pediu_informacoes', delay_minutes: 60, message_hint: 'Confirme a disponibilidade de horÃ¡rios e incentive o agendamento.' },
-      { trigger: 'consulta_agendada', delay_minutes: 1440, message_hint: 'Lembre da consulta de amanhÃ£ e envie o endereÃ§o.' }
+      { trigger: 'lead_pediu_informacoes', delay_minutes: 60, message_hint: 'Confirme a disponibilidade de horários e incentive o agendamento.' },
+      { trigger: 'consulta_agendada', delay_minutes: 1440, message_hint: 'Lembre da consulta de amanhã e envie o endereço.' }
     ])
   },
   {
-    slug: 'varejo', name: 'Varejo', icon: 'ðŸ›’',
-    description: 'Lojas fÃ­sicas e e-commerce de produtos fÃ­sicos.',
+    slug: 'varejo', name: 'Varejo', icon: '🛒',
+    description: 'Lojas físicas e e-commerce de produtos físicos.',
     default_pipeline: JSON.stringify(['Novo Lead', 'Interesse', 'Carrinho', 'Checkout', 'Pedido Realizado', 'Entregue', 'Perdido']),
     default_intents: JSON.stringify(['interesse_produto', 'preco', 'disponibilidade', 'frete', 'prazo_entrega', 'troca_devolucao', 'promocao']),
     default_objections: JSON.stringify(['preco_alto', 'frete_caro', 'prazo_longo', 'desconfia_loja', 'ja_comprou_outro']),
     recommended_ai_agents: JSON.stringify([
-      { id: 'varejo_vendedor', name: 'AI Consultora de Vendas', icon: 'ðŸ›ï¸', role: 'Vendedor', description: 'Apresenta produtos, informa estoque e conduz ao pedido.' }
+      { id: 'varejo_vendedor', name: 'AI Consultora de Vendas', icon: '🛍️', role: 'Vendedor', description: 'Apresenta produtos, informa estoque e conduz ao pedido.' }
     ]),
     recommended_followup_sequences: JSON.stringify([
-      { trigger: 'carrinho_abandonado', delay_minutes: 30, message_hint: 'Lembre do produto no carrinho e ofereÃ§a um cupom de desconto.' },
-      { trigger: 'pedido_entregue', delay_minutes: 2880, message_hint: 'PeÃ§a avaliaÃ§Ã£o e sugira produto complementar.' }
+      { trigger: 'carrinho_abandonado', delay_minutes: 30, message_hint: 'Lembre do produto no carrinho e ofereça um cupom de desconto.' },
+      { trigger: 'pedido_entregue', delay_minutes: 2880, message_hint: 'Peça avaliação e sugira produto complementar.' }
     ])
   },
   {
-    slug: 'servicos', name: 'ServiÃ§os', icon: 'âš™ï¸',
-    description: 'Prestadores de serviÃ§os B2B e B2C: manutenÃ§Ã£o, consultoria, agÃªncias.',
-    default_pipeline: JSON.stringify(['Novo Lead', 'Briefing', 'Proposta', 'NegociaÃ§Ã£o', 'Contrato', 'ExecuÃ§Ã£o', 'Perdido']),
+    slug: 'servicos', name: 'Serviços', icon: '⚙️',
+    description: 'Prestadores de serviços B2B e B2C: manutenção, consultoria, agências.',
+    default_pipeline: JSON.stringify(['Novo Lead', 'Briefing', 'Proposta', 'Negociação', 'Contrato', 'Execução', 'Perdido']),
     default_intents: JSON.stringify(['solicitar_orcamento', 'prazo_execucao', 'portfolio', 'formas_pagamento', 'garantia', 'disponibilidade']),
     default_objections: JSON.stringify(['preco_alto', 'precisa_comparar', 'nao_urgente', 'ja_tem_fornecedor', 'sem_orcamento_agora']),
     recommended_ai_agents: JSON.stringify([
-      { id: 'servicos_sdr', name: 'AI SDR Comercial', icon: 'ðŸ’¼', role: 'SDR', description: 'Qualifica a necessidade, coleta briefing e agenda reuniÃ£o.' }
+      { id: 'servicos_sdr', name: 'AI SDR Comercial', icon: '💼', role: 'SDR', description: 'Qualifica a necessidade, coleta briefing e agenda reunião.' }
     ]),
     recommended_followup_sequences: JSON.stringify([
-      { trigger: 'orcamento_enviado', delay_minutes: 120, message_hint: 'Pergunte se teve alguma dÃºvida sobre a proposta enviada.' },
+      { trigger: 'orcamento_enviado', delay_minutes: 120, message_hint: 'Pergunte se teve alguma dúvida sobre a proposta enviada.' },
       { trigger: 'lead_nao_respondeu', delay_minutes: 1440, message_hint: 'Retome o contato perguntando se ainda tem interesse.' }
     ])
   },
   {
-    slug: 'generico', name: 'GenÃ©rico', icon: 'âš¡',
-    description: 'ConfiguraÃ§Ã£o padrÃ£o sem perfil especÃ­fico. Ideal para negÃ³cios Ãºnicos.',
+    slug: 'generico', name: 'Genérico', icon: '⚡',
+    description: 'Configuração padrão sem perfil específico. Ideal para negócios únicos.',
     default_pipeline: JSON.stringify([]),
     default_intents: JSON.stringify([]),
     default_objections: JSON.stringify([]),
@@ -18760,9 +18760,9 @@ const ensureIndustryProfileTables = async () => {
   }
 };
 
-// â”€â”€ Industry Accelerator Layer API Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Industry Accelerator Layer API Routes ─────────────────────────────────────
 
-// GET /api/industry/profiles â€” List all profiles (no auth required â€” used in onboarding)
+// GET /api/industry/profiles — List all profiles (no auth required — used in onboarding)
 app.get('/api/industry/profiles', async (req, res) => {
   try {
     const result = await pool.query(`SELECT slug, name, icon, description, default_pipeline, default_intents, default_objections, recommended_ai_agents FROM industry_profiles ORDER BY name`);
@@ -18773,7 +18773,7 @@ app.get('/api/industry/profiles', async (req, res) => {
   }
 });
 
-// GET /api/industry/my-profile â€” Get current org's industry profile (JWT)
+// GET /api/industry/my-profile — Get current org's industry profile (JWT)
 app.get('/api/industry/my-profile', verifyJWT, async (req, res) => {
   try {
     const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
@@ -18797,7 +18797,7 @@ app.get('/api/industry/my-profile', verifyJWT, async (req, res) => {
   }
 });
 
-// POST /api/industry/select â€” Save org's industry profile selection (JWT)
+// POST /api/industry/select — Save org's industry profile selection (JWT)
 app.post('/api/industry/select', verifyJWT, async (req, res) => {
   try {
     const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [req.userId]);
@@ -18825,7 +18825,7 @@ app.post('/api/industry/select', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/industry/agents/:slug â€” Get recommended agents for a profile (JWT)
+// GET /api/industry/agents/:slug — Get recommended agents for a profile (JWT)
 app.get('/api/industry/agents/:slug', verifyJWT, async (req, res) => {
   try {
     const result = await pool.query(
@@ -18840,7 +18840,7 @@ app.get('/api/industry/agents/:slug', verifyJWT, async (req, res) => {
   }
 });
 
-// GET /api/industry/intents/:slug â€” Get intents + objections for a profile (JWT)
+// GET /api/industry/intents/:slug — Get intents + objections for a profile (JWT)
 app.get('/api/industry/intents/:slug', verifyJWT, async (req, res) => {
   try {
     const result = await pool.query(
@@ -18860,9 +18860,9 @@ app.get('/api/industry/intents/:slug', verifyJWT, async (req, res) => {
   }
 });
 
-// â”€â”€ END Industry Accelerator Layer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── END Industry Accelerator Layer ────────────────────────────────────────────
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 
 // Start Server only if NOT running on Vercel
