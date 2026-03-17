@@ -9,7 +9,7 @@ import { agentTemplates, type AgentTemplate } from '../../data/agentTemplates';
 import { IndustryPicker } from '../../components/onboarding/IndustryPicker';
 import confetti from 'canvas-confetti';
 import { DebugModal, DebugLog } from '../../components/DebugModal';
-import { formatCurrencyInputBRL, getCurrencyEditingValue, sanitizeCurrencyEditingValue } from '../../lib/currencyInput';
+import { formatCurrencyInputBRL } from '../../lib/currencyInput';
 
 // API Configuration
 const API_URL = '/api';
@@ -142,7 +142,7 @@ export function Onboarding() {
     const [logs, setLogs] = useState<DebugLog[]>([]);
 
     const handleCurrencyFieldChange = (field: 'productPrice' | 'desiredRevenue', value: string) => {
-        setFormData(prev => ({ ...prev, [field]: sanitizeCurrencyEditingValue(value) }));
+        setFormData(prev => ({ ...prev, [field]: formatCurrencyInputBRL(value) }));
     };
 
     const handleCurrencyFieldBlur = (field: 'productPrice' | 'desiredRevenue') => {
@@ -150,7 +150,7 @@ export function Onboarding() {
     };
 
     const handleCurrencyFieldFocus = (field: 'productPrice' | 'desiredRevenue') => {
-        setFormData(prev => ({ ...prev, [field]: getCurrencyEditingValue(prev[field]) }));
+        setFormData(prev => ({ ...prev, [field]: formatCurrencyInputBRL(prev[field]) }));
     };
 
     const addLog = (type: DebugLog['type'], message: string, details?: any) => {

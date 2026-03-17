@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { BrandLogo } from '../../components/branding/BrandLogo';
-import { formatCurrencyInputBRL, getCurrencyEditingValue, sanitizeCurrencyEditingValue } from '../../lib/currencyInput';
+import { formatCurrencyInputBRL } from '../../lib/currencyInput';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface FormData {
@@ -186,13 +186,13 @@ export function OnboardingV2() {
         set(k, arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
     };
     const handleCurrencyChange = (key: 'productPrice' | 'revenueGoal', value: string) => {
-        set(key, sanitizeCurrencyEditingValue(value));
+        set(key, formatCurrencyInputBRL(value));
     };
     const handleCurrencyBlur = (key: 'productPrice' | 'revenueGoal') => {
         set(key, formatCurrencyInputBRL(form[key]));
     };
     const handleCurrencyFocus = (key: 'productPrice' | 'revenueGoal') => {
-        set(key, getCurrencyEditingValue(form[key]));
+        set(key, formatCurrencyInputBRL(form[key]));
     };
 
     const go = (n: number) => { setError(''); setStep(n); window.scrollTo(0, 0); };
