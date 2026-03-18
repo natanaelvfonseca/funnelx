@@ -1591,8 +1591,7 @@ export function LiveChat() {
                             </div>
                             <h1 className="mb-4 text-3xl font-display font-bold tracking-tight text-gray-900 dark:text-white">Kogna Live Chat</h1>
                             <p className="max-w-md text-sm leading-7 text-gray-500 dark:text-gray-400">
-                                Envie e receba mensagens sem precisar manter seu celular conectado à internet.<br />
-                                Use o Kogna em até 4 aparelhos e 1 celular ao mesmo tempo.
+                                Envie e receba mensagens sem precisar manter seu celular conectado à internet.
                             </p>
                             <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-black/[0.06] bg-white/70 px-3 py-1.5 text-xs text-gray-500 dark:border-white/[0.08] dark:bg-white/[0.04]">
                                 <LockIcon size={12} />
