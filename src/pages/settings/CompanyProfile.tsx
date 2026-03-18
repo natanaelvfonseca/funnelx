@@ -8,7 +8,7 @@ import {
     parseListInput,
     serializeListInput,
 } from '../../lib/companyProfile';
-import { formatCurrencyInputBRL } from '../../lib/currencyInput';
+import { formatCurrencyInputBRL, getCurrencyEditingValue, sanitizeCurrencyEditingValue } from '../../lib/currencyInput';
 
 const OBJECTIVES = [
     { value: 'fechar_venda', label: 'Fechar vendas no WhatsApp' },
@@ -71,6 +71,18 @@ export function CompanyProfile() {
 
     const setField = <K extends keyof CompanyProfileData>(key: K, value: CompanyProfileData[K]) => {
         setData((current) => ({ ...current, [key]: value }));
+    };
+
+    const handleCurrencyFieldChange = (key: 'productPrice' | 'revenueGoal', value: string) => {
+        setField(key, sanitizeCurrencyEditingValue(value));
+    };
+
+    const handleCurrencyFieldBlur = (key: 'productPrice' | 'revenueGoal', value: string) => {
+        setField(key, formatCurrencyInputBRL(value));
+    };
+
+    const handleCurrencyFieldFocus = (key: 'productPrice' | 'revenueGoal', value: string) => {
+        setField(key, getCurrencyEditingValue(value));
     };
 
     useEffect(() => {
@@ -159,8 +171,8 @@ export function CompanyProfile() {
                         <div><Label>Dor principal</Label><Textarea rows={4} value={data.customerPain} onChange={(e) => setField('customerPain', e.target.value)} placeholder="Qual dor a empresa resolve?" /></div>
                         <div><Label>Desejo / resultado</Label><Textarea rows={4} value={data.customerDesires} onChange={(e) => setField('customerDesires', e.target.value)} placeholder="Qual transformacao o cliente quer?" /></div>
                         <div><Label>Diferenciais</Label><Textarea rows={4} value={data.differentiators} onChange={(e) => setField('differentiators', e.target.value)} placeholder="Por que a oferta vence?" /></div>
-                        <div><Label>Ticket medio</Label><Input value={data.productPrice} onChange={(e) => setField('productPrice', formatCurrencyInputBRL(e.target.value))} placeholder="Ex: 1.497,00" /></div>
-                        <div><Label>Meta mensal</Label><Input value={data.revenueGoal} onChange={(e) => setField('revenueGoal', formatCurrencyInputBRL(e.target.value))} placeholder="Ex: 100.000,00" /></div>
+                        <div><Label>Ticket medio</Label><Input value={data.productPrice} onChange={(e) => handleCurrencyFieldChange('productPrice', e.target.value)} onBlur={(e) => handleCurrencyFieldBlur('productPrice', e.target.value)} onFocus={(e) => handleCurrencyFieldFocus('productPrice', e.target.value)} inputMode="decimal" placeholder="Ex: 1.497,00" /></div>
+                        <div><Label>Meta mensal</Label><Input value={data.revenueGoal} onChange={(e) => handleCurrencyFieldChange('revenueGoal', e.target.value)} onBlur={(e) => handleCurrencyFieldBlur('revenueGoal', e.target.value)} onFocus={(e) => handleCurrencyFieldFocus('revenueGoal', e.target.value)} inputMode="decimal" placeholder="Ex: 100.000,00" /></div>
                         <div className="md:col-span-2"><Label>Canais</Label><div className="flex flex-wrap gap-2">{CHANNELS.map((channel) => { const active = data.channels.includes(channel); return <button key={channel} type="button" onClick={() => setField('channels', active ? data.channels.filter((item) => item !== channel) : [...data.channels, channel])} className={`rounded-full border px-3 py-1.5 text-sm transition ${active ? 'border-primary/40 bg-primary/10 text-primary' : 'border-black/[0.08] bg-white text-gray-600 hover:border-primary/30 dark:border-white/[0.08] dark:bg-[#171718] dark:text-gray-300'}`}>{channel}</button>; })}</div></div>
                     </div>
                 </Surface>

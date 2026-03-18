@@ -9,7 +9,7 @@ import { agentTemplates, type AgentTemplate } from '../../data/agentTemplates';
 import { IndustryPicker } from '../../components/onboarding/IndustryPicker';
 import confetti from 'canvas-confetti';
 import { DebugModal, DebugLog } from '../../components/DebugModal';
-import { formatCurrencyInputBRL } from '../../lib/currencyInput';
+import { formatCurrencyInputBRL, getCurrencyEditingValue, sanitizeCurrencyEditingValue } from '../../lib/currencyInput';
 
 // API Configuration
 const API_URL = '/api';
@@ -142,15 +142,15 @@ export function Onboarding() {
     const [logs, setLogs] = useState<DebugLog[]>([]);
 
     const handleCurrencyFieldChange = (field: 'productPrice' | 'desiredRevenue', value: string) => {
+        setFormData(prev => ({ ...prev, [field]: sanitizeCurrencyEditingValue(value) }));
+    };
+
+    const handleCurrencyFieldBlur = (field: 'productPrice' | 'desiredRevenue', value: string) => {
         setFormData(prev => ({ ...prev, [field]: formatCurrencyInputBRL(value) }));
     };
 
-    const handleCurrencyFieldBlur = (field: 'productPrice' | 'desiredRevenue') => {
-        setFormData(prev => ({ ...prev, [field]: formatCurrencyInputBRL(prev[field]) }));
-    };
-
-    const handleCurrencyFieldFocus = (field: 'productPrice' | 'desiredRevenue') => {
-        setFormData(prev => ({ ...prev, [field]: formatCurrencyInputBRL(prev[field]) }));
+    const handleCurrencyFieldFocus = (field: 'productPrice' | 'desiredRevenue', value: string) => {
+        setFormData(prev => ({ ...prev, [field]: getCurrencyEditingValue(value) }));
     };
 
     const addLog = (type: DebugLog['type'], message: string, details?: any) => {
@@ -792,12 +792,13 @@ export function Onboarding() {
                                                 <label className="text-sm font-medium text-foreground mb-1.5 block">Preço / Ticket Médio (Opcional)</label>
                                                 <input
                                                     type="text"
+                                                    inputMode="decimal"
                                                     className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none text-sm"
                                                     placeholder="Ex: 1.500,00"
                                                     value={formData.productPrice}
                                                     onChange={e => handleCurrencyFieldChange('productPrice', e.target.value)}
-                                                    onBlur={() => handleCurrencyFieldBlur('productPrice')}
-                                                    onFocus={() => handleCurrencyFieldFocus('productPrice')}
+                                                    onBlur={e => handleCurrencyFieldBlur('productPrice', e.target.value)}
+                                                    onFocus={e => handleCurrencyFieldFocus('productPrice', e.target.value)}
                                                 />
                                             </div>
 
@@ -851,12 +852,13 @@ export function Onboarding() {
                                             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">R$</span>
                                             <input
                                                 type="text"
+                                                inputMode="decimal"
                                                 className="w-full pl-12 pr-4 py-6 bg-background border-2 border-primary/20 rounded-2xl focus:border-primary focus:shadow-lg focus:shadow-primary/20 transition-all outline-none text-3xl font-bold text-center text-primary"
                                                 placeholder="50.000,00"
                                                 value={formData.desiredRevenue}
                                                 onChange={e => handleCurrencyFieldChange('desiredRevenue', e.target.value)}
-                                                onBlur={() => handleCurrencyFieldBlur('desiredRevenue')}
-                                                onFocus={() => handleCurrencyFieldFocus('desiredRevenue')}
+                                                onBlur={e => handleCurrencyFieldBlur('desiredRevenue', e.target.value)}
+                                                onFocus={e => handleCurrencyFieldFocus('desiredRevenue', e.target.value)}
                                             />
                                         </div>
 

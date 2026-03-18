@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { BrandLogo } from '../../components/branding/BrandLogo';
-import { formatCurrencyInputBRL } from '../../lib/currencyInput';
+import { formatCurrencyInputBRL, getCurrencyEditingValue, sanitizeCurrencyEditingValue } from '../../lib/currencyInput';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface FormData {
@@ -186,13 +186,13 @@ export function OnboardingV2() {
         set(k, arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
     };
     const handleCurrencyChange = (key: 'productPrice' | 'revenueGoal', value: string) => {
+        set(key, sanitizeCurrencyEditingValue(value));
+    };
+    const handleCurrencyBlur = (key: 'productPrice' | 'revenueGoal', value: string) => {
         set(key, formatCurrencyInputBRL(value));
     };
-    const handleCurrencyBlur = (key: 'productPrice' | 'revenueGoal') => {
-        set(key, formatCurrencyInputBRL(form[key]));
-    };
-    const handleCurrencyFocus = (key: 'productPrice' | 'revenueGoal') => {
-        set(key, formatCurrencyInputBRL(form[key]));
+    const handleCurrencyFocus = (key: 'productPrice' | 'revenueGoal', value: string) => {
+        set(key, getCurrencyEditingValue(value));
     };
 
     const go = (n: number) => { setError(''); setStep(n); window.scrollTo(0, 0); };
@@ -601,10 +601,10 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                     <FieldLabel>Preço ou ticket médio <span className="text-gray-400 normal-case tracking-normal">(opcional)</span></FieldLabel>
                     <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-gray-500 pointer-events-none select-none">R$</span>
-                        <Input placeholder="1.500,00" value={form.productPrice} className="pl-10"
+                        <Input placeholder="1.500,00" value={form.productPrice} className="pl-10" inputMode="decimal"
                             onChange={e => handleCurrencyChange('productPrice', e.target.value)}
-                            onBlur={() => handleCurrencyBlur('productPrice')}
-                            onFocus={() => handleCurrencyFocus('productPrice')} />
+                            onBlur={e => handleCurrencyBlur('productPrice', e.target.value)}
+                            onFocus={e => handleCurrencyFocus('productPrice', e.target.value)} />
                     </div>
                 </div>
             </div>
@@ -675,10 +675,10 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                 <FieldLabel>Meta mensal (R$)</FieldLabel>
                 <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-gray-500 pointer-events-none select-none">R$</span>
-                    <Input placeholder="50.000,00" value={form.revenueGoal} className="pl-10"
+                    <Input placeholder="50.000,00" value={form.revenueGoal} className="pl-10" inputMode="decimal"
                         onChange={e => handleCurrencyChange('revenueGoal', e.target.value)}
-                        onBlur={() => handleCurrencyBlur('revenueGoal')}
-                        onFocus={() => handleCurrencyFocus('revenueGoal')} />
+                        onBlur={e => handleCurrencyBlur('revenueGoal', e.target.value)}
+                        onFocus={e => handleCurrencyFocus('revenueGoal', e.target.value)} />
                 </div>
             </div>
             <div className="flex flex-wrap gap-2 mt-1">

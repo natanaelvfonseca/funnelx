@@ -27,15 +27,18 @@ export function formatCurrencyInputBRL(value: string) {
 }
 
 export function getCurrencyEditingValue(value: string) {
-  if (!value) return "";
+  const sanitized = sanitizeCurrencyEditingValue(value).trim();
+  if (!sanitized) return "";
 
-  if (/[.,]/.test(value)) {
-    const normalized = value.replace(/\./g, "").replace(",", ".");
-    const parsed = Number(normalized);
-    if (Number.isFinite(parsed)) {
-      return String(Math.trunc(parsed));
+  const commaIndex = sanitized.lastIndexOf(",");
+  if (commaIndex >= 0) {
+    const integerPart = sanitized.slice(0, commaIndex).replace(/\./g, "").replace(/\D/g, "");
+    const decimalPart = sanitized.slice(commaIndex + 1).replace(/\D/g, "");
+    if (!decimalPart || /^0+$/.test(decimalPart)) {
+      return integerPart;
     }
+    return `${integerPart},${decimalPart}`;
   }
 
-  return value.replace(/\D/g, "");
+  return sanitized.replace(/\D/g, "");
 }
