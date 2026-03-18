@@ -1,16 +1,63 @@
-import { useState, useEffect } from 'react';
-import { Package, BarChart2, ServerCog, ArrowUpRight } from 'lucide-react';
+import { type ReactNode, useEffect, useState } from 'react';
 import {
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    ResponsiveContainer,
-    Cell
-} from 'recharts';
+    Coins,
+    Package2,
+    Receipt,
+    ServerCog,
+    Wallet,
+} from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
+
+function formatBrl(value?: number) {
+    return Number(value || 0).toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+    });
+}
+
+function formatUsd(value?: number) {
+    return Number(value || 0).toLocaleString('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 4,
+    });
+}
+
+function formatNumber(value?: number) {
+    return Number(value || 0).toLocaleString('pt-BR');
+}
+
+function formatKoins(value?: number) {
+    return `${formatNumber(value)} koins`;
+}
+
+function TopCard({
+    label,
+    value,
+    detail,
+    icon,
+}: {
+    label: string;
+    value: string;
+    detail: string;
+    icon: ReactNode;
+}) {
+    return (
+        <article className="rounded-[28px] border border-black/[0.06] bg-white/80 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-white/[0.04]">
+            <div className="flex items-start justify-between gap-4">
+                <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">{label}</p>
+                    <p className="mt-3 text-2xl font-semibold tracking-tight text-text-primary">{value}</p>
+                    <p className="mt-2 text-sm leading-6 text-text-muted">{detail}</p>
+                </div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-200">
+                    {icon}
+                </div>
+            </div>
+        </article>
+    );
+}
 
 export function ProductsTab({ data }: { data: any }) {
     const { token } = useAuth();
@@ -20,195 +67,181 @@ export function ProductsTab({ data }: { data: any }) {
     useEffect(() => {
         const fetchConsumption = async () => {
             try {
-                // Using standard vite env import format, fallback to hardcoded if omitted in context
-                const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+                const apiBase = import.meta.env.VITE_API_BASE_URL || '';
                 const res = await fetch(`${apiBase}/api/admin/consumption`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    headers: { Authorization: `Bearer ${token}` },
                 });
                 const logs = await res.json();
                 setConsumptionLogs(Array.isArray(logs) ? logs : []);
-            } catch (e) {
-                console.error("Failed to fetch consumption logs", e);
+            } catch (error) {
+                console.error('Failed to fetch admin consumption logs', error);
             } finally {
                 setLoadingCons(false);
             }
         };
-        fetchConsumption();
+
+        if (token) {
+            fetchConsumption();
+        }
     }, [token]);
 
-    if (!data || !data.products) return (
-        <div className="h-[400px] flex items-center justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
-        </div>
-    );
-
-    const { list: products, topProducts } = data.products;
-
-    return (
-        <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-            {/* Top Cards for Overview of Products */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-card border border-purple-500/20 rounded-xl p-6 shadow-xl flex items-center gap-4">
-                    <div className="p-4 bg-purple-500/10 rounded-full">
-                        <Package className="w-8 h-8 text-purple-500" />
-                    </div>
-                    <div>
-                        <h3 className="text-sm font-medium text-muted-foreground uppercase">Portfólio Ativo</h3>
-                        <p className="text-2xl font-bold font-mono">{products.length} Produtos</p>
-                    </div>
-                </div>
-                <div className="bg-card border border-amber-500/20 rounded-xl p-6 shadow-xl flex items-center gap-4">
-                    <div className="p-4 bg-amber-500/10 rounded-full">
-                        <BarChart2 className="w-8 h-8 text-amber-500" />
-                    </div>
-                    <div>
-                        <h3 className="text-sm font-medium text-muted-foreground uppercase">Top Seller Atual</h3>
-                        <p className="text-2xl font-bold">{topProducts?.[0]?.name || "N/A"}</p>
-                    </div>
+    if (!data?.products) {
+        return (
+            <div className="flex min-h-[380px] items-center justify-center rounded-[32px] border border-black/[0.06] bg-white/75 dark:border-white/[0.08] dark:bg-white/[0.04]">
+                <div className="inline-flex items-center gap-3 rounded-full border border-orange-200 bg-orange-50 px-5 py-3 text-sm font-medium text-orange-700 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-200">
+                    <span className="h-3 w-3 animate-pulse rounded-full bg-orange-500" />
+                    Carregando produtos e consumo
                 </div>
             </div>
+        );
+    }
 
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                {/* Product Sales Table */}
-                <div className="xl:col-span-2 bg-card border border-purple-500/20 rounded-xl overflow-hidden shadow-xl shadow-purple-500/5">
-                    <div className="p-6 border-b border-purple-500/10 flex justify-between items-center">
-                        <div>
-                            <h3 className="text-xl font-semibold flex items-center gap-2">
-                                <Package className="w-5 h-5 text-purple-500" />
-                                Performance de Vendas
-                            </h3>
-                            <p className="text-sm text-muted-foreground mt-1">Produtos cadastrados e receita gerada no período filtrado</p>
-                        </div>
+    const products = data.products;
+    const catalog = products.list || [];
+
+    return (
+        <div className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <TopCard
+                    label="Portfolio ativo"
+                    value={formatNumber(catalog.length)}
+                    detail="Produtos ja cadastrados para venda na operacao."
+                    icon={<Package2 className="h-5 w-5" />}
+                />
+                <TopCard
+                    label="Koins vendidos"
+                    value={formatKoins(products.koinsSold)}
+                    detail="Total de Koins creditados por vendas desde a nova virada."
+                    icon={<Coins className="h-5 w-5" />}
+                />
+                <TopCard
+                    label="Koins consumidos"
+                    value={formatKoins(products.koinsConsumed)}
+                    detail="Queima real registrada no ledger operacional."
+                    icon={<Receipt className="h-5 w-5" />}
+                />
+                <TopCard
+                    label="Custo OpenAI"
+                    value={formatUsd(products.apiCost)}
+                    detail={`${formatNumber(products.messagesProcessed)} mensagens processadas no periodo atual.`}
+                    icon={<ServerCog className="h-5 w-5" />}
+                />
+            </div>
+
+            <section className="overflow-hidden rounded-[32px] border border-black/[0.06] bg-white/80 shadow-[0_20px_60px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-white/[0.04]">
+                <div className="flex flex-col gap-3 border-b border-black/[0.06] px-6 py-6 dark:border-white/[0.08] lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Catalogo e faturamento</p>
+                        <h3 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">Produtos do painel comercial</h3>
+                        <p className="mt-1 text-sm text-text-muted">
+                            As vendas por produto entram quando o pagamento consegue ser conciliado de forma confiavel com o catalogo.
+                        </p>
                     </div>
+
+                    <div className="rounded-2xl border border-black/[0.06] bg-[#F8F8F8] px-4 py-3 text-sm text-text-muted dark:border-white/[0.08] dark:bg-white/[0.03]">
+                        Match por catalogo: {products.matchedBillingRows || 0} de {products.totalBillingRows || 0} vendas no periodo.
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-left">
+                        <thead className="bg-[#FAFAFA] text-xs font-semibold uppercase tracking-[0.18em] text-text-muted dark:bg-white/[0.03]">
+                            <tr>
+                                <th className="px-6 py-4">Produto</th>
+                                <th className="px-6 py-4">Tipo</th>
+                                <th className="px-6 py-4">Preco</th>
+                                <th className="px-6 py-4">Vendas</th>
+                                <th className="px-6 py-4">Receita</th>
+                                <th className="px-6 py-4">Tracking</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-black/[0.06] dark:divide-white/[0.08]">
+                            {catalog.map((product: any) => (
+                                <tr key={product.id} className="transition-colors hover:bg-[#FCFCFC] dark:hover:bg-white/[0.02]">
+                                    <td className="px-6 py-5">
+                                        <div className="flex flex-col">
+                                            <span className="font-semibold text-text-primary">{product.name}</span>
+                                            <span className="mt-1 text-sm text-text-muted">
+                                                {product.active ? 'Ativo para venda' : 'Inativo no catalogo'}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-5">
+                                        <span className="inline-flex items-center rounded-full border border-black/[0.06] bg-[#F7F7F7] px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-text-muted dark:border-white/[0.08] dark:bg-white/[0.04]">
+                                            {product.type || 'KOINS'}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-5 text-sm text-text-primary">{formatBrl(product.price)}</td>
+                                    <td className="px-6 py-5 text-sm font-semibold text-text-primary">{formatNumber(product.sales)}</td>
+                                    <td className="px-6 py-5 text-sm font-semibold text-orange-600 dark:text-orange-300">{formatBrl(product.revenue)}</td>
+                                    <td className="px-6 py-5 text-sm text-text-muted">
+                                        {product.tracking_status === 'catalog_match' ? 'Conciliado por catalogo' : 'Aguardando venda ou match'}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section className="overflow-hidden rounded-[32px] border border-black/[0.06] bg-white/80 shadow-[0_20px_60px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-white/[0.04]">
+                <div className="flex flex-col gap-3 border-b border-black/[0.06] px-6 py-6 dark:border-white/[0.08] lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Consumo por cliente</p>
+                        <h3 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">Uso real de API e Koins</h3>
+                        <p className="mt-1 text-sm text-text-muted">Sem estimativa. Tokens, custo OpenAI, consumo de Koins e saldo atual por cliente.</p>
+                    </div>
+
+                    <div className="inline-flex items-center gap-2 rounded-full border border-black/[0.06] bg-[#F8F8F8] px-4 py-2 text-xs font-medium text-text-muted dark:border-white/[0.08] dark:bg-white/[0.03]">
+                        <Wallet className="h-4 w-4 text-orange-500" />
+                        {formatNumber(products.usersWithKoins)} clientes ainda tem saldo
+                    </div>
+                </div>
+
+                {loadingCons ? (
+                    <div className="px-6 py-12 text-sm text-text-muted">Carregando consumo individual...</div>
+                ) : (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead className="bg-purple-500/5 text-muted-foreground font-medium text-sm">
+                        <table className="min-w-full text-left">
+                            <thead className="bg-[#FAFAFA] text-xs font-semibold uppercase tracking-[0.18em] text-text-muted dark:bg-white/[0.03]">
                                 <tr>
-                                    <th className="px-6 py-4">Produto</th>
-                                    <th className="px-6 py-4">Tipo</th>
-                                    <th className="px-6 py-4">Preço (R$)</th>
-                                    <th className="px-6 py-4 text-center">Volume</th>
-                                    <th className="px-6 py-4 text-right">Receita Bruta</th>
+                                    <th className="px-6 py-4">Cliente</th>
+                                    <th className="px-6 py-4">Mensagens</th>
+                                    <th className="px-6 py-4">Tokens</th>
+                                    <th className="px-6 py-4">OpenAI</th>
+                                    <th className="px-6 py-4">Koins consumidos</th>
+                                    <th className="px-6 py-4">Saldo atual</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-purple-500/10">
-                                {products.map((p: any) => (
-                                    <tr key={p.id} className="hover:bg-purple-500/5 transition-colors">
-                                        <td className="px-6 py-4 font-medium">{p.name}</td>
-                                        <td className="px-6 py-4">
-                                            <span className={`px-2 py-1 text-xs rounded-full ${p.type === 'KOINS' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-blue-500/10 text-blue-500 border border-blue-500/20'}`}>
-                                                {p.type}
-                                            </span>
+                            <tbody className="divide-y divide-black/[0.06] dark:divide-white/[0.08]">
+                                {consumptionLogs.map((log) => (
+                                    <tr key={log.id || log.email || log.user_name} className="transition-colors hover:bg-[#FCFCFC] dark:hover:bg-white/[0.02]">
+                                        <td className="px-6 py-5">
+                                            <div className="flex flex-col">
+                                                <span className="font-semibold text-text-primary">{log.company_name || 'Sem empresa'}</span>
+                                                <span className="mt-1 text-sm text-text-muted">{log.user_name}</span>
+                                            </div>
                                         </td>
-                                        <td className="px-6 py-4">{(p.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                                        <td className="px-6 py-4 text-center font-mono font-bold text-purple-400">{p.sales}</td>
-                                        <td className="px-6 py-4 text-right font-mono font-bold text-green-400">
-                                            R$ {p.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        <td className="px-6 py-5 text-sm text-text-primary">{formatNumber(log.total_messages)}</td>
+                                        <td className="px-6 py-5 text-sm text-text-muted">
+                                            {formatNumber(log.total_prompt_tokens)} / {formatNumber(log.total_completion_tokens)}
                                         </td>
+                                        <td className="px-6 py-5 text-sm font-semibold text-text-primary">{formatUsd(log.total_cost)}</td>
+                                        <td className="px-6 py-5 text-sm font-semibold text-orange-600 dark:text-orange-300">{formatKoins(log.koins_spent_real)}</td>
+                                        <td className="px-6 py-5 text-sm text-text-primary">{formatKoins(log.current_koins_balance)}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
-                    </div>
-                </div>
 
-                {/* Top Products Chart */}
-                <div className="bg-card border border-purple-500/20 rounded-xl p-6 shadow-xl shadow-purple-500/5">
-                    <h3 className="text-xl font-semibold mb-6">Top 5 Produtos em Receita</h3>
-                    <div className="h-[400px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={topProducts} layout="vertical" margin={{ top: 0, right: 30, left: 10, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#333" />
-                                <XAxis type="number" hide />
-                                <YAxis dataKey="name" type="category" width={100} tick={{ fill: '#888', fontSize: 12 }} axisLine={false} tickLine={false} />
-                                <Tooltip
-                                    cursor={{ fill: 'rgba(124, 58, 237, 0.1)' }}
-                                    contentStyle={{ backgroundColor: '#111', borderColor: '#7C3AED', borderRadius: '8px' }}
-                                    formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Receita']}
-                                />
-                                <Bar dataKey="revenue" radius={[0, 4, 4, 0]} barSize={32}>
-                                    {topProducts.map((_: any, index: number) => (
-                                        <Cell key={`cell-${index}`} fill={index === 0 ? '#7C3AED' : '#D4AF37'} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-            </div>
-
-            {/* Consumption vs Costs Table */}
-            <div className="bg-card border border-purple-500/20 rounded-xl overflow-hidden shadow-xl mt-8 shadow-purple-500/5">
-                <div className="p-6 border-b border-purple-500/10">
-                    <h3 className="text-xl font-semibold flex items-center gap-2">
-                        <ServerCog className="w-5 h-5 text-amber-500" />
-                        Análise de Lucratividade: Consumo IA (Koins vs Custo OpenAI)
-                    </h3>
-                    <p className="text-sm text-muted-foreground mt-1 text-amber-500 font-medium tracking-wide flex items-center gap-1">
-                        <ArrowUpRight className="w-4 h-4" /> Margem saudável: Receita Estimada em Koins {'>'} Custo Real de API
-                    </p>
-                </div>
-                {loadingCons ? (
-                    <div className="p-8 text-center text-muted-foreground animate-pulse">Buscando rastros de consumo na infraestrutura...</div>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead className="bg-amber-500/5 text-muted-foreground font-medium text-sm border-b border-amber-500/10">
-                                <tr>
-                                    <th className="px-6 py-4">Cliente Associado</th>
-                                    <th className="px-6 py-4">Tokens Processados (In/Out)</th>
-                                    <th className="px-6 py-4 text-red-400">Custo API Gerado (USD)</th>
-                                    <th className="px-6 py-4 text-amber-400">Koins Cobrados</th>
-                                    <th className="px-6 py-4">ROE (Retorno s/ Eficiência)</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-purple-500/10">
-                                {consumptionLogs.map((log, i) => {
-                                    const costUSD = Number(log.total_cost) || 0;
-                                    const costBRL = costUSD * 5.0; // Rough peg for BRL
-                                    const estimatedKoinRevenue = (Number(log.estimated_koins_spent) / 100); // Ex: 100 Koins = R$1.00 roughly based on packages
-                                    const profitRatio = costBRL > 0.001 ? estimatedKoinRevenue / costBRL : 9.9;
-
-                                    return (
-                                        <tr key={i} className="hover:bg-purple-500/5 transition-colors">
-                                            <td className="px-6 py-4 font-medium flex items-center gap-2">
-                                                {log.user_name}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm font-mono text-muted-foreground">
-                                                {log.total_prompt_tokens?.toLocaleString()} / {log.total_completion_tokens?.toLocaleString()}
-                                            </td>
-                                            <td className="px-6 py-4 text-red-500 font-mono font-bold">
-                                                ${costUSD.toFixed(4)}
-                                            </td>
-                                            <td className="px-6 py-4 text-amber-500 font-bold font-mono">
-                                                {log.estimated_koins_spent?.toLocaleString()}
-                                            </td>
-                                            <td className="px-6 py-4 w-[200px]">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-full h-2 bg-muted/50 rounded-full overflow-hidden shrink-0 shadow-inner">
-                                                        <div
-                                                            className={`h-full transition-all duration-1000 ${profitRatio > 2.5 ? 'bg-gradient-to-r from-green-600 to-green-400' : profitRatio > 1.2 ? 'bg-gradient-to-r from-amber-600 to-amber-400' : 'bg-gradient-to-r from-red-600 to-red-400'}`}
-                                                            style={{ width: `${Math.min(profitRatio * 20, 100)}%` }}
-                                                        ></div>
-                                                    </div>
-                                                    <span className={`text-xs font-bold font-mono shrink-0 ${profitRatio > 2.5 ? 'text-green-500' : profitRatio > 1.2 ? 'text-amber-500' : 'text-red-500'}`}>
-                                                        {profitRatio.toFixed(1)}x
-                                                    </span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
                         {consumptionLogs.length === 0 && (
-                            <div className="p-8 text-center text-muted-foreground border-t border-purple-500/10">
-                                Nenhum cliente consumiu recursos da API OpenAI recentemente.
+                            <div className="px-6 py-12 text-sm text-text-muted">
+                                Ainda nao ha consumo consolidado para exibir.
                             </div>
                         )}
                     </div>
                 )}
-            </div>
+            </section>
         </div>
     );
 }

@@ -1,45 +1,123 @@
-import { useState, useEffect } from 'react';
-import { MessageSquare, Zap, CalendarClock, TrendingUp, AlertTriangle } from 'lucide-react';
-
+import { type ReactNode, useEffect, useState } from 'react';
 import {
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
+    AlertTriangle,
+    BrainCircuit,
+    CalendarClock,
+    MessageSquare,
+    Sparkles,
+    TrendingUp,
+    Zap,
+} from 'lucide-react';
+import {
+    Bar,
+    BarChart,
+    CartesianGrid,
+    Cell,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
 } from 'recharts';
 import { useAuth } from '../../../context/AuthContext';
 
 const STAGE_ORDER = ['novo_lead', 'qualificacao', 'interesse', 'proposta', 'negociacao', 'fechamento'];
 const STAGE_LABELS: Record<string, string> = {
-    novo_lead: 'Novo Lead', qualificacao: 'Qualificação', interesse: 'Interesse',
-    proposta: 'Proposta', negociacao: 'Negociação', fechamento: 'Fechamento',
+    novo_lead: 'Novo lead',
+    qualificacao: 'Qualificacao',
+    interesse: 'Interesse',
+    proposta: 'Proposta',
+    negociacao: 'Negociacao',
+    fechamento: 'Fechamento',
 };
 const INTENT_LABELS: Record<string, string> = {
-    informacao: 'Informação', comparacao: 'Comparação', compra: 'Compra',
-    suporte: 'Suporte', outro: 'Outro',
+    informacao: 'Informacao',
+    comparacao: 'Comparacao',
+    compra: 'Compra',
+    suporte: 'Suporte',
+    outro: 'Outro',
 };
-const INTENT_COLORS = ['#7C3AED', '#D4AF37', '#10B981', '#3B82F6', '#6B7280'];
+const INTENT_COLORS = ['#FF5B22', '#F59E0B', '#10B981', '#2563EB', '#64748B'];
 const STAGE_COLORS: Record<string, string> = {
-    novo_lead: '#3B82F6', qualificacao: '#8B5CF6', interesse: '#F59E0B',
-    proposta: '#EC4899', negociacao: '#EF4444', fechamento: '#10B981',
+    novo_lead: '#2563EB',
+    qualificacao: '#7C3AED',
+    interesse: '#F59E0B',
+    proposta: '#EC4899',
+    negociacao: '#EF4444',
+    fechamento: '#10B981',
 };
 
-function KpiCard({ title, value, icon, sub }: { title: string; value: string | number; icon: React.ReactNode; sub?: string }) {
+function formatDateTime(value?: string) {
+    if (!value) return 'Aguardando marco';
+    return new Date(value).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
+function KpiCard({
+    title,
+    value,
+    icon,
+    sub,
+}: {
+    title: string;
+    value: string | number;
+    icon: ReactNode;
+    sub?: string;
+}) {
     return (
-        <div className="bg-card border border-purple-500/15 rounded-xl p-5 relative overflow-hidden group hover:-translate-y-0.5 transition-all shadow-lg shadow-black/20">
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-            <div className="flex items-start justify-between relative z-10">
-                <div className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</p>
-                    <h2 className="text-2xl font-bold font-mono text-foreground">{value}</h2>
-                    {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+        <article className="rounded-[28px] border border-black/[0.06] bg-white/80 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-white/[0.04]">
+            <div className="flex items-start justify-between gap-4">
+                <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">{title}</p>
+                    <p className="mt-3 text-2xl font-semibold tracking-tight text-text-primary">{value}</p>
+                    {sub && <p className="mt-2 text-sm leading-6 text-text-muted">{sub}</p>}
                 </div>
-                <div className="p-2.5 bg-background border border-purple-500/10 rounded-lg group-hover:scale-110 group-hover:bg-purple-500/10 transition-all">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-200">
                     {icon}
                 </div>
             </div>
+        </article>
+    );
+}
+
+function EmptyState({ label }: { label: string }) {
+    return (
+        <div className="flex h-[180px] items-center justify-center rounded-[24px] border border-dashed border-black/[0.10] bg-[#FBFBFB] text-sm text-text-muted dark:border-white/[0.12] dark:bg-white/[0.03]">
+            {label}
         </div>
     );
 }
 
-export function ConversationIntelligenceTab() {
+function TopList({
+    title,
+    items,
+}: {
+    title: string;
+    items: { name: string; count: string | number }[];
+}) {
+    return (
+        <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">{title}</p>
+            {items.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                    {items.slice(0, 6).map((item, index) => (
+                        <span key={`${title}-${index}`} className="inline-flex items-center rounded-full border border-black/[0.06] bg-[#F7F7F7] px-3 py-1 text-xs font-medium text-text-primary dark:border-white/[0.08] dark:bg-white/[0.04]">
+                            {item.name} <span className="ml-1 text-text-muted">{item.count}x</span>
+                        </span>
+                    ))}
+                </div>
+            ) : (
+                <p className="mt-3 text-sm text-text-muted">Sem dados ainda.</p>
+            )}
+        </div>
+    );
+}
+
+export function ConversationIntelligenceTab({ metricsStartAt }: { metricsStartAt?: string }) {
     const { token } = useAuth();
     const [loading, setLoading] = useState(true);
     const [summary, setSummary] = useState<any>(null);
@@ -57,188 +135,194 @@ export function ConversationIntelligenceTab() {
 
         setLoading(true);
         Promise.all([
-            fetch(`${base}/summary`, { headers }).then(r => r.json()),
-            fetch(`${base}/intents`, { headers }).then(r => r.json()),
-            fetch(`${base}/objections`, { headers }).then(r => r.json()),
-            fetch(`${base}/stages`, { headers }).then(r => r.json()),
-            fetch(`${base}/top-segments`, { headers }).then(r => r.json()),
-            fetch(`${base}/avg-metrics`, { headers }).then(r => r.json()),
-        ]).then(([sum, int, obj, stg, seg, avg]) => {
-            setSummary(sum);
-            setIntents(Array.isArray(int) ? int.map((r: any) => ({ ...r, name: INTENT_LABELS[r.intent] || r.intent, count: parseInt(r.count) })) : []);
-            setObjections(Array.isArray(obj) ? obj.map((r: any) => ({ ...r, count: parseInt(r.count) })) : []);
-            setStages(Array.isArray(stg) ? stg.map((r: any) => ({ ...r, count: parseInt(r.count) })) : []);
-            setSegments(seg);
-            setAvgMetrics(avg);
-        }).catch(console.error).finally(() => setLoading(false));
-    }, [token]);
+            fetch(`${base}/summary`, { headers }).then((response) => response.json()),
+            fetch(`${base}/intents`, { headers }).then((response) => response.json()),
+            fetch(`${base}/objections`, { headers }).then((response) => response.json()),
+            fetch(`${base}/stages`, { headers }).then((response) => response.json()),
+            fetch(`${base}/top-segments`, { headers }).then((response) => response.json()),
+            fetch(`${base}/avg-metrics`, { headers }).then((response) => response.json()),
+        ])
+            .then(([sum, int, obj, stg, seg, avg]) => {
+                setSummary(sum);
+                setIntents(Array.isArray(int) ? int.map((row: any) => ({ ...row, name: INTENT_LABELS[row.intent] || row.intent, count: parseInt(row.count, 10) })) : []);
+                setObjections(Array.isArray(obj) ? obj.map((row: any) => ({ ...row, count: parseInt(row.count, 10) })) : []);
+                setStages(Array.isArray(stg) ? stg.map((row: any) => ({ ...row, count: parseInt(row.count, 10) })) : []);
+                setSegments(seg);
+                setAvgMetrics(avg);
+            })
+            .catch(console.error)
+            .finally(() => setLoading(false));
+    }, [apiBase, token]);
 
-    const maxObj = Math.max(...objections.map(o => o.count), 1);
+    if (loading) {
+        return (
+            <div className="flex min-h-[380px] items-center justify-center rounded-[32px] border border-black/[0.06] bg-white/75 dark:border-white/[0.08] dark:bg-white/[0.04]">
+                <div className="inline-flex items-center gap-3 rounded-full border border-orange-200 bg-orange-50 px-5 py-3 text-sm font-medium text-orange-700 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-200">
+                    <span className="h-3 w-3 animate-pulse rounded-full bg-orange-500" />
+                    Carregando inteligencia de conversa
+                </div>
+            </div>
+        );
+    }
 
-    const stageMap = Object.fromEntries(stages.map(s => [s.stage, parseInt(s.count)]));
-    const maxStage = Math.max(...Object.values(stageMap) as number[], 1);
-
-    if (loading) return (
-        <div className="h-[60vh] flex items-center justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500" />
-        </div>
-    );
-
-    const avgProb = avgMetrics?.avg_purchase_probability != null ? (parseFloat(avgMetrics.avg_purchase_probability) * 100).toFixed(1) : '—';
+    const maxObjection = Math.max(...objections.map((objection) => objection.count), 1);
+    const avgProb = avgMetrics?.avg_purchase_probability != null ? `${(parseFloat(avgMetrics.avg_purchase_probability) * 100).toFixed(1)}%` : '0%';
     const avgTime = avgMetrics?.avg_time_to_decision_seconds != null
-        ? `${Math.round(parseInt(avgMetrics.avg_time_to_decision_seconds) / 3600)}h`
-        : '—';
+        ? `${Math.round(parseInt(avgMetrics.avg_time_to_decision_seconds, 10) / 3600)}h`
+        : '0h';
+    const stageMap = Object.fromEntries(stages.map((stage) => [stage.stage, stage.count]));
+    const maxStage = Math.max(...Object.values(stageMap) as number[], 1);
+    const effectiveStartAt = summary?.metrics_start_at || metricsStartAt;
 
     return (
-        <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-            {/* KPI Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="space-y-6">
+            <section className="rounded-[32px] border border-black/[0.06] bg-white/80 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-white/[0.04]">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Conversation intelligence</p>
+                        <h2 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">Leitura da operacao conversacional</h2>
+                        <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
+                            Os dados abaixo consideram somente o que aconteceu depois do novo marco do admin.
+                        </p>
+                    </div>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-black/[0.06] bg-[#F8F8F8] px-4 py-2 text-xs font-medium text-text-muted dark:border-white/[0.08] dark:bg-white/[0.03]">
+                        <CalendarClock className="h-4 w-4 text-orange-500" />
+                        Desde {formatDateTime(effectiveStartAt)}
+                    </div>
+                </div>
+            </section>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <KpiCard
-                    title="Conversas Analisadas"
-                    value={(summary?.total_conversations ?? 0).toLocaleString()}
-                    icon={<MessageSquare className="w-5 h-5 text-purple-400" />}
-                    sub="Conversas únicas"
+                    title="Conversas analisadas"
+                    value={Number(summary?.total_conversations || 0).toLocaleString('pt-BR')}
+                    icon={<MessageSquare className="h-5 w-5" />}
+                    sub="Conversas unicas processadas."
                 />
                 <KpiCard
-                    title="Mensagens Processadas"
-                    value={(summary?.total_messages ?? 0).toLocaleString()}
-                    icon={<Zap className="w-5 h-5 text-amber-400" />}
-                    sub="Total analisadas pela IA"
+                    title="Mensagens analisadas"
+                    value={Number(summary?.total_messages || 0).toLocaleString('pt-BR')}
+                    icon={<Zap className="h-5 w-5" />}
+                    sub="Mensagens com enriquecimento de inteligencia."
                 />
                 <KpiCard
-                    title="Eventos Detectados"
-                    value={(summary?.total_events ?? 0).toLocaleString()}
-                    icon={<TrendingUp className="w-5 h-5 text-green-400" />}
-                    sub="Intenções, objeções, etc."
+                    title="Eventos detectados"
+                    value={Number(summary?.total_events || 0).toLocaleString('pt-BR')}
+                    icon={<TrendingUp className="h-5 w-5" />}
+                    sub="Intencoes, objecoes e sinais de compra."
                 />
                 <KpiCard
-                    title="Prob. Média de Compra"
-                    value={`${avgProb}%`}
-                    icon={<CalendarClock className="w-5 h-5 text-blue-400" />}
-                    sub={`Tempo médio p/ decisão: ${avgTime}`}
+                    title="Compra media"
+                    value={avgProb}
+                    icon={<Sparkles className="h-5 w-5" />}
+                    sub={`Tempo medio para decisao: ${avgTime}`}
                 />
             </div>
 
-            {/* Intent Distribution + Funnel Heatmap */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Intent BarChart */}
-                <div className="bg-card border border-purple-500/15 rounded-xl p-6 shadow-xl shadow-purple-500/5">
-                    <h3 className="text-base font-semibold mb-1">Distribuição de Intenções</h3>
-                    <p className="text-xs text-muted-foreground mb-5">O que os leads estão buscando nas conversas</p>
-                    {intents.length > 0 ? (
-                        <div className="h-[220px]">
+            <div className="grid gap-6 xl:grid-cols-2">
+                <section className="rounded-[32px] border border-black/[0.06] bg-white/80 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-white/[0.04]">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Intencoes</p>
+                    <h3 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">Distribuicao de motivos de contato</h3>
+                    <div className="mt-6 h-[260px]">
+                        {intents.length > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={intents} margin={{ top: 4, right: 8, left: -24, bottom: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#333" />
-                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#888', fontSize: 11 }} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#888', fontSize: 11 }} />
-                                    <Tooltip contentStyle={{ backgroundColor: '#111', borderColor: '#7C3AED', borderRadius: '8px' }} />
-                                    <Bar dataKey="count" name="Mensagens" radius={[4, 4, 0, 0]} barSize={36}>
-                                        {intents.map((_, i) => <Cell key={i} fill={INTENT_COLORS[i % INTENT_COLORS.length]} />)}
+                                <BarChart data={intents} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                                    <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="rgba(38,38,38,0.09)" />
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#7A7A7A', fontSize: 12 }} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#7A7A7A', fontSize: 12 }} />
+                                    <Tooltip
+                                        contentStyle={{
+                                            borderRadius: '18px',
+                                            border: '1px solid rgba(38,38,38,0.08)',
+                                            background: 'rgba(255,255,255,0.96)',
+                                            boxShadow: '0 20px 50px rgba(15,23,42,0.12)',
+                                        }}
+                                    />
+                                    <Bar dataKey="count" radius={[16, 16, 0, 0]} barSize={40}>
+                                        {intents.map((_, index) => (
+                                            <Cell key={`intent-${index}`} fill={INTENT_COLORS[index % INTENT_COLORS.length]} />
+                                        ))}
                                     </Bar>
                                 </BarChart>
                             </ResponsiveContainer>
-                        </div>
-                    ) : (
-                        <EmptyState label="Nenhuma intenção detectada ainda" />
-                    )}
-                </div>
+                        ) : (
+                            <EmptyState label="Nenhuma intencao detectada ainda." />
+                        )}
+                    </div>
+                </section>
 
-                {/* Funnel Stage Heatmap */}
-                <div className="bg-card border border-purple-500/15 rounded-xl p-6 shadow-xl shadow-purple-500/5">
-                    <h3 className="text-base font-semibold mb-1">Mapa de Calor do Funil</h3>
-                    <p className="text-xs text-muted-foreground mb-5">Frequência de conversas por etapa do pipeline</p>
-                    <div className="grid grid-cols-3 gap-3">
-                        {STAGE_ORDER.map(stage => {
-                            const count = stageMap[stage] || 0;
+                <section className="rounded-[32px] border border-black/[0.06] bg-white/80 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-white/[0.04]">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Funil</p>
+                    <h3 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">Mapa de calor por etapa</h3>
+                    <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3">
+                        {STAGE_ORDER.map((stage) => {
+                            const count = Number(stageMap[stage] || 0);
                             const intensity = maxStage > 0 ? count / maxStage : 0;
                             const opacity = Math.max(0.08, intensity * 0.9);
-                            const color = STAGE_COLORS[stage] || '#7C3AED';
+                            const color = STAGE_COLORS[stage] || '#FF5B22';
+
                             return (
                                 <div
                                     key={stage}
-                                    className="rounded-xl p-3 flex flex-col items-center justify-center text-center transition-all"
-                                    style={{ backgroundColor: `${color}${Math.round(opacity * 255).toString(16).padStart(2, '0')}`, border: `1px solid ${color}33` }}
+                                    className="rounded-[24px] border p-4 text-center"
+                                    style={{
+                                        borderColor: `${color}24`,
+                                        background: `${color}${Math.round(opacity * 255).toString(16).padStart(2, '0')}`,
+                                    }}
                                 >
-                                    <span className="text-xl font-bold font-mono" style={{ color }}>{count}</span>
-                                    <span className="text-[10px] font-medium text-muted-foreground mt-0.5 leading-tight">{STAGE_LABELS[stage]}</span>
+                                    <p className="text-2xl font-semibold" style={{ color }}>{count}</p>
+                                    <p className="mt-1 text-xs font-medium uppercase tracking-[0.14em] text-text-muted">{STAGE_LABELS[stage]}</p>
                                 </div>
                             );
                         })}
                     </div>
-                </div>
+                </section>
             </div>
 
-            {/* Objections + Top Tables */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Top Objections */}
-                <div className="bg-card border border-purple-500/15 rounded-xl p-6 shadow-xl shadow-purple-500/5">
-                    <div className="flex items-center gap-2 mb-5">
-                        <AlertTriangle className="w-4 h-4 text-amber-400" />
-                        <h3 className="text-base font-semibold">Principais Objeções Detectadas</h3>
+            <div className="grid gap-6 xl:grid-cols-2">
+                <section className="rounded-[32px] border border-black/[0.06] bg-white/80 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-white/[0.04]">
+                    <div className="flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-orange-500" />
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Objecoes</p>
                     </div>
-                    {objections.length > 0 ? (
-                        <div className="space-y-3">
-                            {objections.slice(0, 8).map((obj, i) => (
-                                <div key={i} className="flex items-center gap-3">
-                                    <span className="text-xs text-muted-foreground w-4 text-right flex-shrink-0">{i + 1}</span>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-center mb-1">
-                                            <span className="text-xs font-medium truncate">{obj.objection}</span>
-                                            <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">{obj.count}x</span>
+                    <h3 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">Top objecoes detectadas</h3>
+                    <div className="mt-6">
+                        {objections.length > 0 ? (
+                            <div className="space-y-4">
+                                {objections.slice(0, 8).map((objection, index) => (
+                                    <div key={`objection-${index}`} className="space-y-2">
+                                        <div className="flex items-center justify-between gap-4">
+                                            <span className="truncate text-sm font-medium text-text-primary">{objection.objection}</span>
+                                            <span className="text-sm text-text-muted">{objection.count}x</span>
                                         </div>
-                                        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                        <div className="h-2 rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
                                             <div
-                                                className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500"
-                                                style={{ width: `${(obj.count / maxObj) * 100}%` }}
+                                                className="h-2 rounded-full bg-gradient-to-r from-[#FF6A1A] to-[#FF4C00]"
+                                                style={{ width: `${(objection.count / maxObjection) * 100}%` }}
                                             />
                                         </div>
                                     </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <EmptyState label="Nenhuma objeção detectada ainda" />
-                    )}
-                </div>
-
-                {/* Top Products / Segments / Cities */}
-                <div className="bg-card border border-purple-500/15 rounded-xl p-6 shadow-xl shadow-purple-500/5">
-                    <h3 className="text-base font-semibold mb-5">Tabela de Explorações</h3>
-                    <div className="space-y-6">
-                        <TopList title="🏷️ Top Produtos" items={segments?.top_products || []} />
-                        <TopList title="🏢 Top Segmentos" items={segments?.top_segments || []} />
-                        <TopList title="📍 Top Cidades" items={segments?.top_cities || []} />
+                                ))}
+                            </div>
+                        ) : (
+                            <EmptyState label="Nenhuma objecao detectada ainda." />
+                        )}
                     </div>
-                </div>
+                </section>
+
+                <section className="rounded-[32px] border border-black/[0.06] bg-white/80 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-white/[0.04]">
+                    <div className="flex items-center gap-2">
+                        <BrainCircuit className="h-4 w-4 text-orange-500" />
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-text-muted">Exploracoes</p>
+                    </div>
+                    <h3 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">Produtos, segmentos e cidades</h3>
+                    <div className="mt-6 space-y-6">
+                        <TopList title="Top produtos" items={segments?.top_products || []} />
+                        <TopList title="Top segmentos" items={segments?.top_segments || []} />
+                        <TopList title="Top cidades" items={segments?.top_cities || []} />
+                    </div>
+                </section>
             </div>
-        </div>
-    );
-}
-
-function TopList({ title, items }: { title: string; items: { name: string; count: string | number }[] }) {
-    return (
-        <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{title}</p>
-            {items.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                    {items.slice(0, 6).map((item, i) => (
-                        <span key={i} className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                            {item.name} <span className="opacity-70 ml-1">{item.count}x</span>
-                        </span>
-                    ))}
-                </div>
-            ) : (
-                <p className="text-xs text-muted-foreground italic">Sem dados ainda</p>
-            )}
-        </div>
-    );
-}
-
-function EmptyState({ label }: { label: string }) {
-    return (
-        <div className="h-[120px] flex items-center justify-center">
-            <p className="text-sm text-muted-foreground italic">{label}</p>
         </div>
     );
 }

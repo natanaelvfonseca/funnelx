@@ -146,6 +146,261 @@ function normalizeStringList(value) {
   return [];
 }
 
+const ADMIN_METRICS_SCOPE = "global";
+const ADMIN_USD_TO_BRL = Number.isFinite(Number(process.env.ADMIN_USD_TO_BRL))
+  ? Number(process.env.ADMIN_USD_TO_BRL)
+  : 5;
+
+function cloneDate(value) {
+  return value ? new Date(value) : null;
+}
+
+function startOfDay(value) {
+  const date = cloneDate(value) || new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function startOfMonth(value) {
+  const date = startOfDay(value);
+  date.setDate(1);
+  return date;
+}
+
+function startOfYear(value) {
+  const date = startOfDay(value);
+  date.setMonth(0, 1);
+  return date;
+}
+
+function addDays(value, amount) {
+  const date = cloneDate(value) || new Date();
+  date.setDate(date.getDate() + amount);
+  return date;
+}
+
+function addMonths(value, amount) {
+  const date = cloneDate(value) || new Date();
+  date.setMonth(date.getMonth() + amount);
+  return date;
+}
+
+function maxDate(...values) {
+  const dates = values.filter(Boolean).map((value) => new Date(value));
+  if (dates.length === 0) return null;
+  return dates.reduce((latest, current) => (current > latest ? current : latest));
+}
+
+function buildWindowedQuery(baseSql, column, start, end, values = []) {
+  const params = [...values];
+  let text = baseSql;
+
+  if (start) {
+    params.push(start);
+    text += ` AND ${column} >= $${params.length}`;
+  }
+
+  if (end) {
+    params.push(end);
+    text += ` AND ${column} < $${params.length}`;
+  }
+
+  return { text, values: params };
+}
+
+function buildAdminMetricsWindow(period, metricsStartAt) {
+  const now = new Date();
+  const baseline = cloneDate(metricsStartAt) || new Date(0);
+  let start = baseline;
+  let end = null;
+  let previousStart = null;
+  let previousEnd = null;
+
+  switch (period) {
+    case "today": {
+      start = maxDate(baseline, startOfDay(now));
+      end = now;
+      previousEnd = startOfDay(now);
+      previousStart = maxDate(baseline, addDays(previousEnd, -1));
+      break;
+    }
+    case "7d": {
+      start = maxDate(baseline, addDays(now, -7));
+      end = now;
+      previousEnd = addDays(now, -7);
+      previousStart = maxDate(baseline, addDays(now, -14));
+      break;
+    }
+    case "30d": {
+      start = maxDate(baseline, addDays(now, -30));
+      end = now;
+      previousEnd = addDays(now, -30);
+      previousStart = maxDate(baseline, addDays(now, -60));
+      break;
+    }
+    case "this_month": {
+      start = maxDate(baseline, startOfMonth(now));
+      end = now;
+      previousEnd = startOfMonth(now);
+      previousStart = maxDate(baseline, addMonths(previousEnd, -1));
+      break;
+    }
+    case "last_month": {
+      end = startOfMonth(now);
+      start = maxDate(baseline, addMonths(end, -1));
+      previousEnd = addMonths(end, -1);
+      previousStart = maxDate(baseline, addMonths(end, -2));
+      break;
+    }
+    case "this_year": {
+      start = maxDate(baseline, startOfYear(now));
+      end = now;
+      previousEnd = startOfYear(now);
+      previousStart = maxDate(baseline, addMonths(previousEnd, -12));
+      break;
+    }
+    case "all":
+    default: {
+      start = baseline;
+      end = now;
+      previousStart = null;
+      previousEnd = null;
+      break;
+    }
+  }
+
+  if (start && end && start > end) {
+    start = end;
+  }
+
+  const previous =
+    previousStart && previousEnd && previousStart < previousEnd
+      ? { start: previousStart, end: previousEnd }
+      : null;
+
+  return {
+    baseline,
+    now,
+    start,
+    end,
+    previous,
+  };
+}
+
+function buildRecentRevenueChartData(rows, range) {
+  const chartEnd = startOfDay(range.end || range.now || new Date());
+  const chartStart = maxDate(range.start, addDays(chartEnd, -6)) || addDays(chartEnd, -6);
+  const buckets = new Map(
+    (rows || []).map((row) => [startOfDay(row.bucket).toISOString(), Number(row.total || 0)]),
+  );
+  const formatter = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" });
+  const points = [];
+
+  for (let cursor = cloneDate(chartStart); cursor <= chartEnd; cursor = addDays(cursor, 1)) {
+    const key = startOfDay(cursor).toISOString();
+    const total = Number(buckets.get(key) || 0);
+    points.push({
+      date: formatter.format(cursor),
+      total,
+      koins: total,
+      connections: 0,
+    });
+  }
+
+  return points;
+}
+
+let adminMetricsTablesReadyPromise = null;
+
+async function ensureAdminMetricsTables() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS admin_metric_settings (
+      scope TEXT PRIMARY KEY,
+      metrics_start_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(
+    `INSERT INTO admin_metric_settings (scope) VALUES ($1)
+     ON CONFLICT (scope) DO NOTHING`,
+    [ADMIN_METRICS_SCOPE],
+  );
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS koins_ledger (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      organization_id TEXT,
+      delta INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      balance_after INTEGER,
+      metadata JSONB DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_koins_ledger_user_created_at ON koins_ledger(user_id, created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_koins_ledger_created_at ON koins_ledger(created_at DESC)`);
+  log("[ADMIN] Dashboard metric tables verified.");
+}
+
+function ensureAdminMetricsTablesReady() {
+  if (!adminMetricsTablesReadyPromise) {
+    adminMetricsTablesReadyPromise = ensureAdminMetricsTables().catch((err) => {
+      adminMetricsTablesReadyPromise = null;
+      throw err;
+    });
+  }
+  return adminMetricsTablesReadyPromise;
+}
+
+async function getAdminMetricsStartAt(client = pool) {
+  await ensureAdminMetricsTablesReady();
+  const result = await client.query(
+    `SELECT metrics_start_at
+     FROM admin_metric_settings
+     WHERE scope = $1
+     LIMIT 1`,
+    [ADMIN_METRICS_SCOPE],
+  );
+  return cloneDate(result.rows[0]?.metrics_start_at) || new Date();
+}
+
+async function adjustUserKoinsBalance({ userId, delta, source, metadata = {}, client = pool }) {
+  const numericDelta = Number.parseInt(delta, 10);
+  if (!Number.isFinite(numericDelta) || numericDelta === 0) return null;
+
+  await ensureAdminMetricsTablesReady();
+
+  const updateResult = await client.query(
+    `UPDATE users
+     SET koins_balance = koins_balance + $1
+     WHERE id = $2
+     RETURNING id, organization_id, koins_balance`,
+    [numericDelta, userId],
+  );
+
+  if (updateResult.rows.length === 0) {
+    return null;
+  }
+
+  const updatedUser = updateResult.rows[0];
+
+  await client.query(
+    `INSERT INTO koins_ledger (user_id, organization_id, delta, source, balance_after, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [
+      updatedUser.id,
+      updatedUser.organization_id || null,
+      numericDelta,
+      source || "system_adjustment",
+      updatedUser.koins_balance,
+      metadata,
+    ],
+  );
+
+  return updatedUser;
+}
+
 function createDefaultCompanyProfile() {
   return {
     companyName: "",
@@ -4184,6 +4439,7 @@ initPool().then(() => {
   setTimeout(ensureMessageBuffer, 3000);
   setTimeout(ensureRevenueOSColumns, 5000); // Revenue OS: ensure intent_label, last_ia_briefing, assigned_to
   setTimeout(ensureCoachingTables, 7000); // Revenue OS Coaching: insights table
+  setTimeout(() => ensureAdminMetricsTablesReady().catch((err) => log("[ERROR] ensureAdminMetricsTables: " + err.message)), 8500);
   setTimeout(ensureConversationIntelligenceTables, 9000); // CIL: Conversation Intelligence tables
   setTimeout(ensureOpportunityScoresTable, 10000); // OSE: Opportunity Scores table
   setTimeout(ensureFollowupEngineReady, 12000); // AI Follow-up Engine tables + legacy sync
@@ -7309,9 +7565,15 @@ app.post("/api/onboarding/complete", verifyJWT, async (req, res) => {
 
     // Update status and add reward (100 Koins)
     await pool.query(
-      "UPDATE users SET onboarding_completed = true, koins_balance = koins_balance + 100 WHERE id = $1",
+      "UPDATE users SET onboarding_completed = true WHERE id = $1",
       [userId],
     );
+    await adjustUserKoinsBalance({
+      userId,
+      delta: 100,
+      source: "onboarding_reward",
+      metadata: { trigger: "onboarding_completed" },
+    });
     await runAdminEventAutomations('onboarding_completed', {
       userId,
       eventKey: `onboarding_completed:${userId}`,
@@ -7748,27 +8010,47 @@ app.get("/api/admin/users", verifyJWT, verifyAdmin, async (req, res) => {
 // Admin: Get Consumption Stats
 app.get("/api/admin/consumption", verifyJWT, verifyAdmin, async (req, res) => {
   try {
-    // Aggregate token usage per user (via agents)
-    // Link: chat_messages -> agents -> organizations -> users (owner)
-    // Note: This assumes simplified ownership model where org owner pays.
+    const metricsStartAt = await getAdminMetricsStartAt();
     const consumptions = await pool.query(`
-            SELECT 
-                u.name as user_name,
-                COALESCE(SUM(cm.prompt_tokens), 0) as total_prompt_tokens,
-                COALESCE(SUM(cm.completion_tokens), 0) as total_completion_tokens,
-                COALESCE(SUM(cm.token_cost), 0) as total_cost,
-                -- Estimate Koins spent (assuming 1 Koin = $0.0001 roughly, or specific rate)
-                -- For display, we can just use a multiplier or track actual koins deducted if we had that log
-                -- Let's assume 1000 tokens ~ 100 Koins for visualization
-                CAST(COALESCE(SUM(cm.prompt_tokens + cm.completion_tokens) / 10, 0) AS INTEGER) as estimated_koins_spent
-            FROM users u
-            JOIN organizations o ON u.organization_id = o.id
-            JOIN agents a ON a.organization_id = o.id
-            JOIN chat_messages cm ON cm.agent_id = a.id
-            GROUP BY u.id, u.name
-            ORDER BY total_cost DESC
-            LIMIT 50
-        `);
+      WITH message_usage AS (
+        SELECT
+          a.organization_id,
+          COUNT(*)::int AS total_messages,
+          COALESCE(SUM(cm.prompt_tokens), 0)::bigint AS total_prompt_tokens,
+          COALESCE(SUM(cm.completion_tokens), 0)::bigint AS total_completion_tokens,
+          COALESCE(SUM(cm.token_cost), 0)::numeric AS total_cost
+        FROM chat_messages cm
+        JOIN agents a ON a.id = cm.agent_id
+        WHERE cm.created_at >= $1
+        GROUP BY a.organization_id
+      ),
+      koins_usage AS (
+        SELECT
+          user_id,
+          COALESCE(SUM(ABS(delta)) FILTER (WHERE delta < 0), 0)::int AS koins_spent_real
+        FROM koins_ledger
+        WHERE created_at >= $1
+        GROUP BY user_id
+      )
+      SELECT
+        u.id,
+        u.name AS user_name,
+        u.email,
+        COALESCE(o.name, 'Sem empresa') AS company_name,
+        COALESCE(mu.total_messages, 0) AS total_messages,
+        COALESCE(mu.total_prompt_tokens, 0) AS total_prompt_tokens,
+        COALESCE(mu.total_completion_tokens, 0) AS total_completion_tokens,
+        COALESCE(mu.total_cost, 0)::float AS total_cost,
+        COALESCE(ku.koins_spent_real, 0) AS koins_spent_real,
+        COALESCE(u.koins_balance, 0) AS current_koins_balance
+      FROM users u
+      LEFT JOIN organizations o ON u.organization_id = o.id
+      LEFT JOIN message_usage mu ON mu.organization_id = o.id
+      LEFT JOIN koins_usage ku ON ku.user_id = u.id
+      WHERE u.role = 'user'
+      ORDER BY COALESCE(mu.total_cost, 0) DESC, COALESCE(ku.koins_spent_real, 0) DESC, u.created_at DESC
+      LIMIT 50
+    `, [metricsStartAt]);
 
     res.json(consumptions.rows);
   } catch (err) {
@@ -7780,134 +8062,298 @@ app.get("/api/admin/consumption", verifyJWT, verifyAdmin, async (req, res) => {
 // Admin: Get Strategic Metrics for New Dashboard
 app.get("/api/admin/strategic-metrics", verifyJWT, verifyAdmin, async (req, res) => {
   try {
-    const { period } = req.query; // 'today', '7d', '30d', 'this_month', 'last_month', 'this_year', 'all'
+    const period = String(req.query.period || "30d");
+    const metricsStartAt = await getAdminMetricsStartAt();
+    const currentWindow = buildAdminMetricsWindow(period, metricsStartAt);
+    const chartWindowStart = maxDate(currentWindow.start, addDays(startOfDay(currentWindow.end || currentWindow.now), -6))
+      || addDays(startOfDay(currentWindow.end || currentWindow.now), -6);
+    const chartWindowEnd = addDays(startOfDay(currentWindow.end || currentWindow.now), 1);
 
-    // Determine Date Filter
-    let dateFilter = "";
-    let previousDateFilter = "";
+    const revenueQuery = buildWindowedQuery(
+      `SELECT
+         COALESCE(SUM(value), 0)::numeric AS total_revenue,
+         COALESCE(SUM(value) FILTER (WHERE COALESCE(amount, 0) > 0), 0)::numeric AS koins_revenue,
+         COALESCE(SUM(value) FILTER (WHERE COALESCE(amount, 0) <= 0), 0)::numeric AS connections_revenue,
+         COALESCE(SUM(amount), 0)::int AS koins_sold
+       FROM billing_history
+       WHERE status = 'approved'`,
+      "created_at",
+      currentWindow.start,
+      currentWindow.end,
+    );
+    const previousRevenueQuery = currentWindow.previous
+      ? buildWindowedQuery(
+        `SELECT COALESCE(SUM(value), 0)::numeric AS total_revenue
+         FROM billing_history
+         WHERE status = 'approved'`,
+        "created_at",
+        currentWindow.previous.start,
+        currentWindow.previous.end,
+      )
+      : null;
+    const messageUsageQuery = buildWindowedQuery(
+      `SELECT
+         COUNT(*)::int AS total_messages,
+         COALESCE(SUM(prompt_tokens), 0)::bigint AS total_prompt_tokens,
+         COALESCE(SUM(completion_tokens), 0)::bigint AS total_completion_tokens,
+         COALESCE(SUM(token_cost), 0)::numeric AS total_api_cost
+       FROM chat_messages
+       WHERE 1 = 1`,
+      "created_at",
+      currentWindow.start,
+      currentWindow.end,
+    );
+    const newClientsQuery = buildWindowedQuery(
+      `SELECT COUNT(*)::int AS total
+       FROM users
+       WHERE role = 'user'`,
+      "created_at",
+      currentWindow.start,
+      currentWindow.end,
+    );
+    const koinsConsumedQuery = buildWindowedQuery(
+      `SELECT COALESCE(SUM(ABS(delta)) FILTER (WHERE delta < 0), 0)::int AS total
+       FROM koins_ledger
+       WHERE 1 = 1`,
+      "created_at",
+      currentWindow.start,
+      currentWindow.end,
+    );
+    const revenueChartQuery = buildWindowedQuery(
+      `SELECT
+         DATE_TRUNC('day', created_at) AS bucket,
+         COALESCE(SUM(value), 0)::numeric AS total
+       FROM billing_history
+       WHERE status = 'approved'`,
+      "created_at",
+      chartWindowStart,
+      chartWindowEnd,
+    );
+    const billingRowsQuery = buildWindowedQuery(
+      `SELECT id, amount, value
+       FROM billing_history
+       WHERE status = 'approved'`,
+      "created_at",
+      currentWindow.start,
+      currentWindow.end,
+    );
 
-    switch (period) {
-      case 'today':
-        dateFilter = "AND created_at >= CURRENT_DATE";
-        previousDateFilter = "AND created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE";
-        break;
-      case '7d':
-        dateFilter = "AND created_at >= NOW() - INTERVAL '7 days'";
-        previousDateFilter = "AND created_at >= NOW() - INTERVAL '14 days' AND created_at < NOW() - INTERVAL '7 days'";
-        break;
-      case '30d':
-        dateFilter = "AND created_at >= NOW() - INTERVAL '30 days'";
-        previousDateFilter = "AND created_at >= NOW() - INTERVAL '60 days' AND created_at < NOW() - INTERVAL '30 days'";
-        break;
-      case 'this_month':
-        dateFilter = "AND created_at >= DATE_TRUNC('month', CURRENT_DATE)";
-        previousDateFilter = "AND created_at >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') AND created_at < DATE_TRUNC('month', CURRENT_DATE)";
-        break;
-      case 'last_month':
-        dateFilter = "AND created_at >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') AND created_at < DATE_TRUNC('month', CURRENT_DATE)";
-        previousDateFilter = "AND created_at >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '2 months') AND created_at < DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')";
-        break;
-      case 'this_year':
-        dateFilter = "AND created_at >= DATE_TRUNC('year', CURRENT_DATE)";
-        previousDateFilter = "AND created_at >= DATE_TRUNC('year', CURRENT_DATE - INTERVAL '1 year') AND created_at < DATE_TRUNC('year', CURRENT_DATE)";
-        break;
-      default:
-        dateFilter = "";
-        previousDateFilter = "AND 1=0"; // Dummy to return 0 for previous
-    }
-
-    // Execução em PARALELO para evitar Timeouts na Vercel (limite de 10-15s)
-    const [revenueRes, prevRevenueRes, usersRes, orgsRes, tokensRes, productsRes] = await Promise.all([
-      pool.query(`SELECT COALESCE(SUM(value), 0) as total FROM billing_history WHERE status = 'approved' ${dateFilter}`),
-      pool.query(`SELECT COALESCE(SUM(value), 0) as prev_total FROM billing_history WHERE status = 'approved' ${previousDateFilter}`),
-      pool.query(`SELECT COUNT(id) as total FROM users WHERE 1=1 ${dateFilter}`),
-      pool.query(`SELECT SUM(whatsapp_connections_limit) as total_conn FROM organizations`),
-      pool.query(`SELECT COALESCE(SUM(token_cost), 0) as total_api_cost FROM chat_messages WHERE 1=1 ${dateFilter}`),
-      pool.query(`SELECT * FROM products`)
+    const [
+      revenueRes,
+      previousRevenueRes,
+      clientsRes,
+      partnersRes,
+      organizationsRes,
+      koinsBalancesRes,
+      messageUsageRes,
+      newClientsRes,
+      koinsConsumedRes,
+      productsRes,
+      chartRevenueRes,
+      billingRowsRes,
+    ] = await Promise.all([
+      pool.query(revenueQuery.text, revenueQuery.values),
+      previousRevenueQuery
+        ? pool.query(previousRevenueQuery.text, previousRevenueQuery.values)
+        : Promise.resolve({ rows: [{ total_revenue: 0 }] }),
+      pool.query(`SELECT COUNT(*)::int AS total_clients FROM users WHERE role = 'user'`),
+      pool.query(`SELECT COUNT(*)::int AS total_partners FROM partners`),
+      pool.query(`
+        SELECT
+          COUNT(*)::int AS total_organizations,
+          COALESCE(SUM(whatsapp_connections_limit), 0)::int AS total_whatsapp_slots
+        FROM organizations
+      `),
+      pool.query(`
+        SELECT
+          COALESCE(SUM(koins_balance), 0)::int AS total_koins_balance,
+          COUNT(*) FILTER (WHERE COALESCE(koins_balance, 0) > 0)::int AS users_with_koins
+        FROM users
+        WHERE role = 'user'
+      `),
+      pool.query(messageUsageQuery.text, messageUsageQuery.values),
+      pool.query(newClientsQuery.text, newClientsQuery.values),
+      pool.query(koinsConsumedQuery.text, koinsConsumedQuery.values),
+      pool.query(`
+        SELECT
+          id,
+          name,
+          price,
+          type,
+          active,
+          koins_bonus,
+          connections_bonus,
+          created_at,
+          updated_at
+        FROM products
+        ORDER BY active DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, name ASC
+      `),
+      pool.query(`${revenueChartQuery.text} GROUP BY 1 ORDER BY 1 ASC`, revenueChartQuery.values),
+      pool.query(billingRowsQuery.text, billingRowsQuery.values),
     ]);
 
-    const totalRevenue = parseFloat(revenueRes.rows[0]?.total || 0);
-    const prevRevenue = parseFloat(prevRevenueRes.rows[0]?.prev_total || 0);
-    const usersTotal = parseInt(usersRes.rows[0]?.total || 0);
-    const totalConnections = parseInt(orgsRes.rows[0]?.total_conn || 0);
-    const totalApiCostReal = parseFloat(tokensRes.rows[0]?.total_api_cost || 0);
+    const totalRevenue = Number(revenueRes.rows[0]?.total_revenue || 0);
+    const koinsRevenue = Number(revenueRes.rows[0]?.koins_revenue || 0);
+    const connectionsRevenue = Number(revenueRes.rows[0]?.connections_revenue || 0);
+    const prevRevenue = Number(previousRevenueRes.rows[0]?.total_revenue || 0);
+    const totalClients = Number(clientsRes.rows[0]?.total_clients || 0);
+    const totalPartners = Number(partnersRes.rows[0]?.total_partners || 0);
+    const totalOrganizations = Number(organizationsRes.rows[0]?.total_organizations || 0);
+    const totalWhatsappSlots = Number(organizationsRes.rows[0]?.total_whatsapp_slots || 0);
+    const totalKoinsBalance = Number(koinsBalancesRes.rows[0]?.total_koins_balance || 0);
+    const usersWithKoins = Number(koinsBalancesRes.rows[0]?.users_with_koins || 0);
+    const totalMessages = Number(messageUsageRes.rows[0]?.total_messages || 0);
+    const totalPromptTokens = Number(messageUsageRes.rows[0]?.total_prompt_tokens || 0);
+    const totalCompletionTokens = Number(messageUsageRes.rows[0]?.total_completion_tokens || 0);
+    const apiCost = Number(messageUsageRes.rows[0]?.total_api_cost || 0);
+    const newClients = Number(newClientsRes.rows[0]?.total || 0);
+    const koinsConsumed = Number(koinsConsumedRes.rows[0]?.total || 0);
+    const koinsSold = Number(revenueRes.rows[0]?.koins_sold || 0);
+    const growthPercentage = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
+    const ticketMedio = totalClients > 0 ? totalRevenue / totalClients : 0;
+    const revenueChartData = buildRecentRevenueChartData(chartRevenueRes.rows, currentWindow);
 
-    // Business Logic Calculations (Hybrid Mocks + Real data)
-    let koinsRevenue = totalRevenue > 0 ? totalRevenue * 0.85 : 0;
-    let connectionsRevenue = totalRevenue > 0 ? totalRevenue * 0.15 : 0;
+    const productCatalog = (productsRes.rows || []).map((product) => ({
+      id: product.id,
+      name: product.name,
+      type:
+        product.type ||
+        (Number(product.connections_bonus || 0) > 0 && Number(product.koins_bonus || 0) === 0
+          ? "CONNECTIONS"
+          : "KOINS"),
+      price: Number(product.price || 0),
+      active: Boolean(product.active),
+      koinsBonus: Number(product.koins_bonus || 0),
+      connectionsBonus: Number(product.connections_bonus || 0),
+    }));
+    const productStats = new Map(
+      productCatalog.map((product) => [
+        product.id,
+        {
+          sales: 0,
+          revenue: 0,
+        },
+      ]),
+    );
+    let matchedBillingRows = 0;
 
-    // Se o banco estiver zerado (totalRevenue == 0), usamos mocks estratégicos para preencher o visual
-    const isMockedBase = totalRevenue === 0;
-    if (isMockedBase) {
-      koinsRevenue = 15400.00;
-      connectionsRevenue = 4150.00;
+    for (const billingRow of billingRowsRes.rows || []) {
+      const billingAmount = Number(billingRow.amount || 0);
+      const billingValue = Number(billingRow.value || 0);
+      const exactMatches = productCatalog.filter((product) => {
+        const typeMatches =
+          billingAmount > 0
+            ? product.koinsBonus === billingAmount
+            : product.connectionsBonus > 0;
+        const priceMatches = Math.abs(product.price - billingValue) < 0.01;
+        return typeMatches && priceMatches;
+      });
+      const fallbackMatches = productCatalog.filter((product) => {
+        const typeMatches =
+          billingAmount > 0
+            ? product.koinsBonus > 0
+            : product.connectionsBonus > 0;
+        return typeMatches && Math.abs(product.price - billingValue) < 0.01;
+      });
+      const matchedProduct =
+        exactMatches.length === 1
+          ? exactMatches[0]
+          : fallbackMatches.length === 1
+            ? fallbackMatches[0]
+            : null;
+
+      if (!matchedProduct) continue;
+
+      matchedBillingRows += 1;
+      const stats = productStats.get(matchedProduct.id);
+      if (stats) {
+        stats.sales += 1;
+        stats.revenue += billingValue;
+      }
     }
 
-    const displayTotalRev = isMockedBase ? (koinsRevenue + connectionsRevenue) : totalRevenue;
-    const apiCost = totalApiCostReal > 0 ? totalApiCostReal : (isMockedBase ? 1500.00 : koinsRevenue * 0.12);
-    const adsCost = isMockedBase ? 2300.00 : (displayTotalRev > 0 ? displayTotalRev * 0.20 : 0);
-    const estimatedProfit = displayTotalRev - apiCost - adsCost;
-
-    // Mapeamento de produtos com fallback defensivo
-    const products = (productsRes.rows || []).map((p) => {
-      const isKoins = p.type === 'KOINS';
-      const mockSales = isKoins ? 50 : 10;
-      const sales = isMockedBase ? mockSales : (totalRevenue > 0 ? Math.max(1, Math.floor(mockSales * (totalRevenue / 10000))) : 0);
+    const products = productCatalog.map((product) => {
+      const stats = productStats.get(product.id) || { sales: 0, revenue: 0 };
       return {
-        id: p.id,
-        name: p.name,
-        type: p.type,
-        price: parseFloat(p.price || 0),
-        sales: sales,
-        revenue: sales * parseFloat(p.price || 0)
+        id: product.id,
+        name: product.name,
+        type: product.type,
+        price: product.price,
+        sales: stats.sales,
+        revenue: stats.revenue,
+        active: product.active,
+        tracking_status: matchedBillingRows > 0 ? "catalog_match" : "awaiting_sales_data",
       };
-    }).sort((a, b) => b.revenue - a.revenue);
-
-    // Dados do gráfico com distribuição temporal simulada
-    const revenueChartData = Array.from({ length: 7 }).map((_, i) => ({
-      date: i === 6 ? 'Hoje' : `-${6 - i}d`,
-      koins: Math.floor((koinsRevenue / 7) * (0.8 + Math.random() * 0.4)),
-      connections: Math.floor((connectionsRevenue / 7) * (0.8 + Math.random() * 0.4))
-    }));
-
-    // Kogna Health Index (Growth + Margin + Activation average)
-    const growthPercent = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : (isMockedBase ? 15 : 0);
-    const marginPercent = displayTotalRev > 0 ? (estimatedProfit / displayTotalRev) * 100 : 0;
-    const healthIndex = Math.min(100, Math.max(0, Math.floor((growthPercent + marginPercent + 80) / 3))); // 80 is nominal activation
+    });
 
     res.json({
+      meta: {
+        metricsStartAt,
+        period,
+        totalClients,
+        totalPartners,
+        totalOrganizations,
+        totalKoinsBalance,
+        usersWithKoins,
+        totalWhatsappSlots,
+        usdToBrlRate: ADMIN_USD_TO_BRL,
+      },
       overview: {
-        totalRevenue: displayTotalRev,
-        prevRevenue: isMockedBase ? 18000.00 : prevRevenue,
+        totalRevenue,
+        prevRevenue,
         koinsRevenue,
         connectionsRevenue,
-        estimatedProfit,
         apiCost,
-        adsCost,
-        activeClients: isMockedBase ? 342 : usersTotal + 10, // Avoid zero for empty UI
-        newClients: isMockedBase ? 45 : usersTotal,
-        churn: isMockedBase ? 12 : Math.floor(usersTotal * 0.1),
-        ticketMedio: displayTotalRev > 0 ? displayTotalRev / (usersTotal || 45) : 0,
-        growthPercentage: growthPercent,
-        revenueChartData
+        apiCostCurrency: "USD",
+        activeClients: totalClients,
+        totalClients,
+        newClients,
+        churn: 0,
+        ticketMedio,
+        growthPercentage,
+        revenueChartData,
+        totalMessages,
+        totalPromptTokens,
+        totalCompletionTokens,
+        koinsSold,
+        koinsConsumed,
       },
       products: {
         list: products,
-        topProducts: products.slice(0, 5),
-        koinsSold: Math.floor(koinsRevenue * 10), // Base Koins parity
-        koinsConsumed: Math.floor(koinsRevenue * 8.5), // Example consumption
+        topProducts: [...products].sort((a, b) => b.revenue - a.revenue || b.sales - a.sales || a.name.localeCompare(b.name)).slice(0, 5),
+        koinsSold,
+        koinsConsumed,
+        totalPromptTokens,
+        totalCompletionTokens,
+        apiCost,
+        apiCostCurrency: "USD",
+        messagesProcessed: totalMessages,
+        totalKoinsBalance,
+        usersWithKoins,
+        productRevenueTracked: matchedBillingRows > 0,
+        matchedBillingRows,
+        totalBillingRows: billingRowsRes.rows?.length || 0,
+        koinsConsumptionTracked: true,
       },
       connections: {
-        totalActive: isMockedBase ? 153 : totalConnections,
-        mrr: connectionsRevenue,
+        totalActive: totalWhatsappSlots,
+        mrr: 0,
       },
       ads: {
-        investmentTotal: adsCost,
-        leadsGenerated: Math.floor(adsCost / 12),
-        cpl: 12.00,
-        roas: adsCost > 0 ? displayTotalRev / adsCost : 0,
+        investmentTotal: 0,
+        leadsGenerated: 0,
+        cpl: 0,
+        roas: 0,
+        tracked: false,
       },
-      healthIndex
+      tracking: {
+        metricsStartAt,
+        adsTracked: false,
+        productRevenueTracked: matchedBillingRows > 0,
+        koinsConsumptionTracked: true,
+        revenueSplitUsesBillingHeuristic: true,
+        productSalesMatchMode: "catalog_signature",
+      },
     });
   } catch (err) {
     log("Strategic Metrics Error: " + err.message);
@@ -7927,10 +8373,12 @@ app.patch(
 
       if (!amount) return res.status(400).json({ error: "Invalid amount" });
 
-      await pool.query(
-        "UPDATE users SET koins_balance = koins_balance + $1 WHERE id = $2",
-        [amount, userId],
-      );
+      await adjustUserKoinsBalance({
+        userId,
+        delta: amount,
+        source: "admin_adjustment",
+        metadata: { actor_user_id: req.userId || null },
+      });
 
       log(`Admin adjusted koins for user ${userId} by ${amount} `);
       res.json({ success: true });
@@ -10405,12 +10853,14 @@ app.post("/api/webhooks/whatsapp", async (req, res) => {
             return res.json({ success: true }); // Stop processing
           }
 
-          await pool.query(
-            "UPDATE users SET koins_balance = koins_balance - $1 WHERE id = $2",
-            [reductionAmount, user.id],
-          );
+          const updatedUser = await adjustUserKoinsBalance({
+            userId: user.id,
+            delta: -reductionAmount,
+            source: "multimodal_input",
+            metadata: { reduction_amount: reductionAmount },
+          });
           log(
-            `[KOINS] Deducted ${reductionAmount} for Multimodal Input.Balance: ${user.koins_balance - reductionAmount} `,
+            `[KOINS] Deducted ${reductionAmount} for Multimodal Input.Balance: ${updatedUser?.koins_balance ?? user.koins_balance - reductionAmount} `,
           );
         }
       }
@@ -13549,11 +13999,16 @@ app.patch("/api/admin/users/:id/koins", verifyAdmin, async (req, res) => {
   const { id } = req.params;
   const { amount } = req.body; // e.g., +100 or -50
   try {
-    const update = await pool.query(
-      "UPDATE users SET koins_balance = koins_balance + $1 WHERE id = $2 RETURNING koins_balance",
-      [amount, id],
-    );
-    res.json({ success: true, newBalance: update.rows[0].koins_balance });
+    const update = await adjustUserKoinsBalance({
+      userId: id,
+      delta: amount,
+      source: "admin_adjustment",
+      metadata: { actor_user_id: req.userId || null },
+    });
+    if (!update) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json({ success: true, newBalance: update.koins_balance });
   } catch (err) {
     log("PATCH /api/admin/users/:id/koins error: " + err.toString());
     res.status(500).json({ error: "Internal server error" });
@@ -13562,19 +14017,47 @@ app.patch("/api/admin/users/:id/koins", verifyAdmin, async (req, res) => {
 
 app.get("/api/admin/consumption", verifyAdmin, async (req, res) => {
   try {
+    const metricsStartAt = await getAdminMetricsStartAt();
     const stats = await pool.query(`
-            SELECT 
-                u.name as user_name,
-                SUM(cm.prompt_tokens) as total_prompt_tokens,
-                SUM(cm.completion_tokens) as total_completion_tokens,
-                SUM(cm.token_cost) as total_cost,
-                COUNT(cm.id) * 5 as estimated_koins_spent
-            FROM chat_messages cm
-            JOIN agents a ON a.id = cm.agent_id
-            JOIN organizations o ON o.id = a.organization_id
-            JOIN users u ON u.organization_id = o.id
-            GROUP BY u.name
-        `);
+      WITH message_usage AS (
+        SELECT
+          a.organization_id,
+          COUNT(*)::int AS total_messages,
+          COALESCE(SUM(cm.prompt_tokens), 0)::bigint AS total_prompt_tokens,
+          COALESCE(SUM(cm.completion_tokens), 0)::bigint AS total_completion_tokens,
+          COALESCE(SUM(cm.token_cost), 0)::numeric AS total_cost
+        FROM chat_messages cm
+        JOIN agents a ON a.id = cm.agent_id
+        WHERE cm.created_at >= $1
+        GROUP BY a.organization_id
+      ),
+      koins_usage AS (
+        SELECT
+          user_id,
+          COALESCE(SUM(ABS(delta)) FILTER (WHERE delta < 0), 0)::int AS koins_spent_real
+        FROM koins_ledger
+        WHERE created_at >= $1
+        GROUP BY user_id
+      )
+      SELECT
+        u.id,
+        u.name AS user_name,
+        u.email,
+        COALESCE(o.name, 'Sem empresa') AS company_name,
+        COALESCE(mu.total_messages, 0) AS total_messages,
+        COALESCE(mu.total_prompt_tokens, 0) AS total_prompt_tokens,
+        COALESCE(mu.total_completion_tokens, 0) AS total_completion_tokens,
+        COALESCE(mu.total_cost, 0)::float AS total_cost,
+        COALESCE(ku.koins_spent_real, 0) AS koins_spent_real,
+        COALESCE(u.koins_balance, 0) AS current_koins_balance
+      FROM users u
+      LEFT JOIN organizations o ON u.organization_id = o.id
+      LEFT JOIN message_usage mu ON mu.organization_id = o.id
+      LEFT JOIN koins_usage ku ON ku.user_id = u.id
+      WHERE u.role = 'user'
+      ORDER BY COALESCE(mu.total_cost, 0) DESC, COALESCE(ku.koins_spent_real, 0) DESC, u.created_at DESC
+      LIMIT 50
+    `, [metricsStartAt]);
     res.json(stats.rows);
   } catch (err) {
     log("GET /api/admin/consumption error: " + err.toString());
@@ -13606,19 +14089,21 @@ app.post("/api/payments/webhook", async (req, res) => {
       return res.status(400).json({ error: "Missing userId or amount" });
     }
 
-    const result = await pool.query(
-      "UPDATE users SET koins_balance = koins_balance + $1 WHERE id = $2 RETURNING koins_balance",
-      [amount, userId],
-    );
+    const result = await adjustUserKoinsBalance({
+      userId,
+      delta: amount,
+      source: "payment_webhook_credit",
+      metadata: { payment_amount: amount },
+    });
 
-    if (result.rows.length === 0) {
+    if (!result) {
       return res.status(404).json({ error: "User not found" });
     }
 
     log(
-      `[PAYMENT] Added ${amount} koins to user ${userId}. New balance: ${result.rows[0].koins_balance}`,
+      `[PAYMENT] Added ${amount} koins to user ${userId}. New balance: ${result.koins_balance}`,
     );
-    res.json({ success: true, newBalance: result.rows[0].koins_balance });
+    res.json({ success: true, newBalance: result.koins_balance });
   } catch (err) {
     log("POST /api/payments/webhook error: " + err.toString());
     res.status(500).json({ error: "Payment processing failed" });
@@ -13868,12 +14353,17 @@ app.post("/api/payments/process-payment", verifyJWT, async (req, res) => {
           }
         }
 
-        await pool.query(
-          "UPDATE users SET koins_balance = koins_balance + $1 WHERE id = $2",
-          [koinsToCredit, userId],
-        );
+        const creditedUser = await adjustUserKoinsBalance({
+          userId,
+          delta: koinsToCredit,
+          source: "mercadopago_status_credit",
+          metadata: {
+            payment_amount: paymentAmount,
+            mp_payment_id: String(mpData.id),
+          },
+        });
         log(
-          `[KOINS] Credited ${koinsToCredit} koins to user ${userId} for payment of R$${paymentAmount}`,
+          `[KOINS] Credited ${koinsToCredit} koins to user ${userId} for payment of R$${paymentAmount}. Balance: ${creditedUser?.koins_balance ?? "n/a"}`,
         );
 
         // Record in billing history
@@ -14076,18 +14566,23 @@ app.post("/api/payments/mercadopago-ipn", async (req, res) => {
     }
 
     // Credit Koins
-    const updateResult = await pool.query(
-      "UPDATE users SET koins_balance = koins_balance + $1 WHERE id = $2 RETURNING koins_balance",
-      [koinsToCredit, userId],
-    );
+    const updateResult = await adjustUserKoinsBalance({
+      userId,
+      delta: koinsToCredit,
+      source: "mercadopago_ipn_credit",
+      metadata: {
+        payment_amount: paymentAmount,
+        mp_payment_id: String(dataId),
+      },
+    });
 
-    if (updateResult.rows.length === 0) {
+    if (!updateResult) {
       log(`[MP-IPN] User ${userId} not found in database. Cannot credit Koins.`);
       return res.status(200).send("OK");
     }
 
     log(
-      `[MP-IPN] ✅ Credited ${koinsToCredit} Koins to user ${userId}. New balance: ${updateResult.rows[0].koins_balance}`,
+      `[MP-IPN] ✅ Credited ${koinsToCredit} Koins to user ${userId}. New balance: ${updateResult.koins_balance}`,
     );
 
     // Credit Connections if applicable
@@ -14304,14 +14799,19 @@ app.get("/api/payments/verify/:paymentId", verifyJWT, async (req, res) => {
       );
     }
 
-    const updateResult = await pool.query(
-      "UPDATE users SET koins_balance = koins_balance + $1 WHERE id = $2 RETURNING koins_balance",
-      [koinsToCredit, userId],
-    );
+    const updateResult = await adjustUserKoinsBalance({
+      userId,
+      delta: koinsToCredit,
+      source: "payment_verify_credit",
+      metadata: {
+        payment_amount: paymentAmount,
+        payment_id: String(paymentId),
+      },
+    });
 
-    if (updateResult.rows.length > 0) {
+    if (updateResult) {
       log(
-        `[PAYMENT-VERIFY] ✅ Credited ${koinsToCredit} Koins to user ${userId}. New balance: ${updateResult.rows[0].koins_balance}`,
+        `[PAYMENT-VERIFY] ✅ Credited ${koinsToCredit} Koins to user ${userId}. New balance: ${updateResult.koins_balance}`,
       );
     } else {
       log(`[PAYMENT-VERIFY] User ${userId} not found during credit attempt.`);
@@ -14736,12 +15236,14 @@ async function sendTextResponse(
       log(
         `[AI] Response part ${index + 1}/${responseParts.length} sent to ${remoteJid}`,
       );
-      const deductRes = await pool.query(
-        "UPDATE users SET koins_balance = koins_balance - 2 WHERE id = $1 RETURNING koins_balance",
-        [user.id],
-      );
+      const deductRes = await adjustUserKoinsBalance({
+        userId: user.id,
+        delta: -2,
+        source: "assistant_text_response",
+        metadata: { part_index: index + 1, total_parts: responseParts.length },
+      });
       log(
-        `[KOINS] Deducted 2 koins for part ${index + 1}. New balance: ${deductRes.rows[0].koins_balance}`,
+        `[KOINS] Deducted 2 koins for part ${index + 1}. New balance: ${deductRes?.koins_balance ?? "n/a"}`,
       );
     } else {
       log(`[AI] Failed to send part ${index + 1}: ${sendResponse.statusText}`);
@@ -15860,12 +16362,14 @@ async function processAIResponse(
         if (sendResponse.ok) {
           log(`[AI] Audio response sent to ${remoteJid} `);
           // Deduct 10 Koins for audio response
-          const deductRes = await pool.query(
-            "UPDATE users SET koins_balance = koins_balance - 10 WHERE id = $1 RETURNING koins_balance",
-            [user.id],
-          );
+          const deductRes = await adjustUserKoinsBalance({
+            userId: user.id,
+            delta: -10,
+            source: "assistant_audio_response",
+            metadata: { remote_jid: remoteJid || null },
+          });
           log(
-            `[KOINS] Deducted 10 koins for audio response.New balance: ${deductRes.rows[0].koins_balance} `,
+            `[KOINS] Deducted 10 koins for audio response.New balance: ${deductRes?.koins_balance ?? "n/a"} `,
           );
         } else {
           const errBody = await sendResponse.text();
@@ -16344,10 +16848,12 @@ setInterval(async () => {
 
         if (sent) {
           // Deduct Koins
-          await pool.query(
-            "UPDATE users SET koins_balance = koins_balance - 5 WHERE id = $1",
-            [seq.user_id],
-          );
+          await adjustUserKoinsBalance({
+            userId: seq.user_id,
+            delta: -5,
+            source: "followup_recovery_message",
+            metadata: { lead_id: lead.id, sequence_id: seq.id || null },
+          });
           // Update Lead
           await pool.query(
             "UPDATE leads SET last_interaction_at = NOW(), followup_step = $1 WHERE id = $2",
@@ -16672,15 +17178,17 @@ app.patch("/api/agendamentos/:id", verifyJWT, async (req, res) => {
 // ADMIN: Summary counts (total conversations, messages, events)
 app.get("/api/admin/conversation-intelligence/summary", verifyJWT, verifyAdmin, async (req, res) => {
   try {
+    const metricsStartAt = await getAdminMetricsStartAt();
     const [convRes, msgRes, evtRes] = await Promise.all([
-      pool.query(`SELECT COUNT(DISTINCT conversation_id) AS total FROM conversation_intelligence`),
-      pool.query(`SELECT COUNT(*) AS total FROM conversation_intelligence`),
-      pool.query(`SELECT COUNT(*) AS total FROM conversation_events`)
+      pool.query(`SELECT COUNT(DISTINCT conversation_id) AS total FROM conversation_intelligence WHERE created_at >= $1`, [metricsStartAt]),
+      pool.query(`SELECT COUNT(*) AS total FROM conversation_intelligence WHERE created_at >= $1`, [metricsStartAt]),
+      pool.query(`SELECT COUNT(*) AS total FROM conversation_events WHERE created_at >= $1`, [metricsStartAt])
     ]);
     res.json({
       total_conversations: parseInt(convRes.rows[0]?.total || 0),
       total_messages: parseInt(msgRes.rows[0]?.total || 0),
-      total_events: parseInt(evtRes.rows[0]?.total || 0)
+      total_events: parseInt(evtRes.rows[0]?.total || 0),
+      metrics_start_at: metricsStartAt,
     });
   } catch (err) {
     log(`[CIL] GET /api/admin/conversation-intelligence/summary error: ${err.message}`);
@@ -16691,13 +17199,14 @@ app.get("/api/admin/conversation-intelligence/summary", verifyJWT, verifyAdmin, 
 // ADMIN: Intent distribution
 app.get("/api/admin/conversation-intelligence/intents", verifyJWT, verifyAdmin, async (req, res) => {
   try {
+    const metricsStartAt = await getAdminMetricsStartAt();
     const result = await pool.query(`
       SELECT intent, COUNT(*) AS count
       FROM conversation_intelligence
-      WHERE intent IS NOT NULL
+      WHERE intent IS NOT NULL AND created_at >= $1
       GROUP BY intent
       ORDER BY count DESC
-    `);
+    `, [metricsStartAt]);
     res.json(result.rows);
   } catch (err) {
     log(`[CIL] GET /api/admin/conversation-intelligence/intents error: ${err.message}`);
@@ -16708,14 +17217,15 @@ app.get("/api/admin/conversation-intelligence/intents", verifyJWT, verifyAdmin, 
 // ADMIN: Top objections
 app.get("/api/admin/conversation-intelligence/objections", verifyJWT, verifyAdmin, async (req, res) => {
   try {
+    const metricsStartAt = await getAdminMetricsStartAt();
     const result = await pool.query(`
       SELECT unnest(objections) AS objection, COUNT(*) AS count
       FROM conversation_intelligence
-      WHERE objections IS NOT NULL AND array_length(objections, 1) > 0
+      WHERE objections IS NOT NULL AND array_length(objections, 1) > 0 AND created_at >= $1
       GROUP BY objection
       ORDER BY count DESC
       LIMIT 20
-    `);
+    `, [metricsStartAt]);
     res.json(result.rows);
   } catch (err) {
     log(`[CIL] GET /api/admin/conversation-intelligence/objections error: ${err.message}`);
@@ -16726,13 +17236,14 @@ app.get("/api/admin/conversation-intelligence/objections", verifyJWT, verifyAdmi
 // ADMIN: Funnel stage heatmap
 app.get("/api/admin/conversation-intelligence/stages", verifyJWT, verifyAdmin, async (req, res) => {
   try {
+    const metricsStartAt = await getAdminMetricsStartAt();
     const result = await pool.query(`
       SELECT stage, COUNT(*) AS count
       FROM conversation_intelligence
-      WHERE stage IS NOT NULL
+      WHERE stage IS NOT NULL AND created_at >= $1
       GROUP BY stage
       ORDER BY count DESC
-    `);
+    `, [metricsStartAt]);
     res.json(result.rows);
   } catch (err) {
     log(`[CIL] GET /api/admin/conversation-intelligence/stages error: ${err.message}`);
@@ -16743,25 +17254,26 @@ app.get("/api/admin/conversation-intelligence/stages", verifyJWT, verifyAdmin, a
 // ADMIN: Top segments, products, cities
 app.get("/api/admin/conversation-intelligence/top-segments", verifyJWT, verifyAdmin, async (req, res) => {
   try {
+    const metricsStartAt = await getAdminMetricsStartAt();
     const [products, segments, cities] = await Promise.all([
       pool.query(`
         SELECT product_interest AS name, COUNT(*) AS count
         FROM conversation_intelligence
-        WHERE product_interest IS NOT NULL
+        WHERE product_interest IS NOT NULL AND created_at >= $1
         GROUP BY product_interest ORDER BY count DESC LIMIT 10
-      `),
+      `, [metricsStartAt]),
       pool.query(`
         SELECT segment AS name, COUNT(*) AS count
         FROM conversation_intelligence
-        WHERE segment IS NOT NULL
+        WHERE segment IS NOT NULL AND created_at >= $1
         GROUP BY segment ORDER BY count DESC LIMIT 10
-      `),
+      `, [metricsStartAt]),
       pool.query(`
         SELECT city AS name, COUNT(*) AS count
         FROM conversation_intelligence
-        WHERE city IS NOT NULL
+        WHERE city IS NOT NULL AND created_at >= $1
         GROUP BY city ORDER BY count DESC LIMIT 10
-      `)
+      `, [metricsStartAt])
     ]);
     res.json({
       top_products: products.rows,
@@ -16777,13 +17289,15 @@ app.get("/api/admin/conversation-intelligence/top-segments", verifyJWT, verifyAd
 // ADMIN: Average metrics
 app.get("/api/admin/conversation-intelligence/avg-metrics", verifyJWT, verifyAdmin, async (req, res) => {
   try {
+    const metricsStartAt = await getAdminMetricsStartAt();
     const result = await pool.query(`
       SELECT
         ROUND(AVG(purchase_probability)::numeric, 3) AS avg_purchase_probability,
         ROUND(AVG(sbg.time_to_decision)::numeric, 0) AS avg_time_to_decision_seconds
       FROM conversation_intelligence ci
       LEFT JOIN sales_behavior_graph sbg ON ci.conversation_id = sbg.conversation_id
-    `);
+      WHERE ci.created_at >= $1
+    `, [metricsStartAt]);
     res.json(result.rows[0] || { avg_purchase_probability: null, avg_time_to_decision_seconds: null });
   } catch (err) {
     log(`[CIL] GET /api/admin/conversation-intelligence/avg-metrics error: ${err.message}`);
