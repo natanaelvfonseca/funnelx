@@ -2428,15 +2428,25 @@ async function sendFollowupWhatsApp(instanceName, remoteJid, message, mediaUrl) 
 
     // Optional media
     if (mediaUrl) {
-      await fetch(`${evoBase}/message/sendMedia/${instanceName}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: evoKey },
-        body: JSON.stringify({
-          number: remoteJid,
-          mediatype: 'image',
-          media: mediaUrl
-        })
-      });
+      const normalizedMedia = normalizeMediaForEvolution(mediaUrl);
+      if (!normalizedMedia) {
+        log('[FOLLOWUP] Media skipped: empty media payload');
+      } else {
+        const mediaRes = await fetch(`${evoBase}/message/sendMedia/${instanceName}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: evoKey },
+          body: JSON.stringify({
+            number: remoteJid,
+            mediatype: 'image',
+            media: normalizedMedia,
+            fileName: buildProductMediaFileName('followup', mediaUrl)
+          })
+        });
+        if (!mediaRes.ok) {
+          const errorText = await mediaRes.text();
+          log(`[FOLLOWUP] sendMedia failed: ${mediaRes.status} ${errorText}`);
+        }
+      }
     }
 
     return true;
@@ -2453,6 +2463,7 @@ async function processFollowupQueue() {
   try {
     await ensureFollowupEngineReady();
     await backfillMissedFollowupQueue();
+    const stats = { processed: 0, sent: 0, skipped: 0 };
     const pendingRes = await pool.query(`
       SELECT fq.*, fs.ai_mode AS sequence_ai_mode
       FROM followup_queue fq
@@ -2461,12 +2472,13 @@ async function processFollowupQueue() {
       LIMIT 50
     `);
 
-    if (pendingRes.rows.length === 0) return;
+    if (pendingRes.rows.length === 0) return stats;
 
     log(`[FOLLOWUP] Processing ${pendingRes.rows.length} queued follow-ups`);
 
     for (const queueEntry of pendingRes.rows) {
       try {
+        stats.processed += 1;
         // Fetch the step
         const stepRes = await pool.query(
           `SELECT * FROM followup_steps WHERE sequence_id = $1 AND step_number = $2`,
@@ -2474,6 +2486,7 @@ async function processFollowupQueue() {
         );
         if (stepRes.rows.length === 0) {
           // No more steps, close
+          stats.skipped += 1;
           await pool.query(`UPDATE followup_queue SET status = 'completed', updated_at = NOW() WHERE id = $1`, [queueEntry.id]);
           continue;
         }
@@ -2493,6 +2506,7 @@ async function processFollowupQueue() {
         const sent = await sendFollowupWhatsApp(queueEntry.instance_name, queueEntry.remote_jid, finalMessage, step.media_url);
 
         if (sent) {
+          stats.sent += 1;
           // Record event
           await pool.query(`
             INSERT INTO followup_events (followup_queue_id, organization_id, sequence_id, step_number, final_message_sent, template_used, message_sent_at)
@@ -2520,15 +2534,19 @@ async function processFollowupQueue() {
 
           log(`[FOLLOWUP] Sent follow-up step ${queueEntry.current_step} to ${queueEntry.remote_jid}`);
         } else {
+          stats.skipped += 1;
           // Mark as failed temporarily — retry on next run
           await pool.query(`UPDATE followup_queue SET updated_at = NOW() WHERE id = $1`, [queueEntry.id]);
         }
       } catch (itemErr) {
+        stats.skipped += 1;
         log(`[FOLLOWUP] Error processing queue item ${queueEntry.id}: ${itemErr.message}`);
       }
     }
+    return stats;
   } catch (err) {
     log(`[FOLLOWUP] processFollowupQueue error: ${err.message}`);
+    throw err;
   }
 }
 
@@ -4573,11 +4591,12 @@ function buildProductMediaFileName(productName = "produto", mediaUrl = "") {
 
 function normalizeMediaForEvolution(mediaUrl = "") {
   if (typeof mediaUrl !== "string") return "";
-  if (mediaUrl.startsWith("data:")) {
-    const parts = mediaUrl.split(",", 2);
+  const sanitized = mediaUrl.trim();
+  if (sanitized.startsWith("data:")) {
+    const parts = sanitized.split(",", 2);
     return parts[1] || "";
   }
-  return mediaUrl.trim();
+  return sanitized;
 }
 
 /**
@@ -4621,21 +4640,25 @@ async function sendProductToLead(orgId, instanceName, remoteJid, leadStage, user
     if (imgRes.rows.length > 0) {
       const img = imgRes.rows[0];
       const mediaPayload = normalizeMediaForEvolution(img.url);
-      const mediaResponse = await fetch(`${evoBase}/message/sendMedia/${instanceName}`, {
-        method: 'POST', headers,
-        body: JSON.stringify({
-          number: remoteJid,
-          mediatype: 'image',
-          media: mediaPayload,
-          fileName: buildProductMediaFileName(product.nome, img.url),
-          caption: img.caption || product.nome,
-        }),
-      });
-      if (!mediaResponse.ok) {
-        const errorText = await mediaResponse.text();
-        log(`[PRODUCT SEND] Image failed for ${product.nome}: ${mediaResponse.status} ${errorText}`);
+      if (!mediaPayload) {
+        log(`[PRODUCT SEND] Image skipped for ${product.nome}: empty media payload`);
       } else {
-        log(`[PRODUCT SEND] Image sent for ${product.nome}`);
+        const mediaResponse = await fetch(`${evoBase}/message/sendMedia/${instanceName}`, {
+          method: 'POST', headers,
+          body: JSON.stringify({
+            number: remoteJid,
+            mediatype: 'image',
+            media: mediaPayload,
+            fileName: buildProductMediaFileName(product.nome, img.url),
+            caption: img.caption || product.nome,
+          }),
+        });
+        if (!mediaResponse.ok) {
+          const errorText = await mediaResponse.text();
+          log(`[PRODUCT SEND] Image failed for ${product.nome}: ${mediaResponse.status} ${errorText}`);
+        } else {
+          log(`[PRODUCT SEND] Image sent for ${product.nome}`);
+        }
       }
     }
 
@@ -19903,8 +19926,8 @@ app.get('/api/cron/process-queue', async (req, res) => {
 
   try {
     log('[VERCEL CRON] Running processFollowupQueue...');
-    await processFollowupQueue();
-    res.json({ success: true, message: 'Queue processed successfully' });
+    const stats = await processFollowupQueue();
+    res.json({ success: true, message: 'Queue processed successfully', stats });
   } catch (err) {
     log(`[VERCEL CRON] processQueue Error: ${err.message}`);
     res.status(500).json({ error: 'Internal Server Error' });
