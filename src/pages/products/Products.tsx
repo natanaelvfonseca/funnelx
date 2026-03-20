@@ -72,7 +72,7 @@ const TRIGGER_TYPES = [
     color: "bg-teal-500/15 text-teal-400",
   },
 ];
-const TABS = ["Informações", "Imagens", "FAQ"];
+const TABS = ["Informações", "Imagens"];
 
 function StatusPill({ status }: { status: string }) {
   return (
@@ -269,7 +269,6 @@ export function Products() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [offerForm, setOfferForm] = useState<any>(EMPTY_OFFER);
   const [editingOffer, setEditingOffer] = useState<string | null>(null);
-  const [faqForm, setFaqForm] = useState({ pergunta: "", resposta: "" });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = (
@@ -602,17 +601,6 @@ export function Products() {
     fetchProducts();
     fetchPromotions();
   };
-  const addFaq = () => {
-    if (!faqForm.pergunta || !faqForm.resposta) return;
-    setForm((f: any) => ({ ...f, faq: [...(f.faq || []), { ...faqForm }] }));
-    setFaqForm({ pergunta: "", resposta: "" });
-  };
-  const removeFaq = (i: number) =>
-    setForm((f: any) => ({
-      ...f,
-      faq: f.faq.filter((_: any, idx: number) => idx !== i),
-    }));
-
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredProducts = products.filter((product) => {
     if (!normalizedQuery) return true;
@@ -1389,90 +1377,6 @@ export function Products() {
                   </ModalSection>
                 </div>
               )}
-              {activeTab === "FAQ" && (
-                <div className="space-y-5">
-                  <ModalSection
-                    eyebrow="FAQ"
-                    title="Perguntas frequentes"
-                    description="Cadastre respostas que ajudam a IA a lidar melhor com objeções e dúvidas comuns."
-                  >
-                    <div className="space-y-4">
-                      <div>
-                        <FieldLabel label="Pergunta" />
-                        <input
-                          value={faqForm.pergunta}
-                          onChange={(e) =>
-                            setFaqForm((f) => ({
-                              ...f,
-                              pergunta: e.target.value,
-                            }))
-                          }
-                          className={inputClass}
-                          placeholder="Pergunta frequente..."
-                        />
-                      </div>
-                      <div>
-                        <FieldLabel label="Resposta" />
-                        <textarea
-                          value={faqForm.resposta}
-                          onChange={(e) =>
-                            setFaqForm((f) => ({
-                              ...f,
-                              resposta: e.target.value,
-                            }))
-                          }
-                          rows={4}
-                          placeholder="Resposta da IA..."
-                          className={textareaClass}
-                        />
-                      </div>
-                      <button
-                        onClick={addFaq}
-                        className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-primary px-5 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(245,121,59,0.25)] transition-all hover:-translate-y-0.5"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Adicionar FAQ
-                      </button>
-                    </div>
-                  </ModalSection>
-                  <ModalSection
-                    eyebrow="Lista"
-                    title="Itens cadastrados"
-                    description="Revise as FAQs adicionadas antes de salvar o produto."
-                  >
-                    <div className="space-y-3">
-                      {(form.faq || []).map((item: any, i: number) => (
-                        <div
-                          key={i}
-                          className="rounded-[24px] border border-black/[0.06] bg-background/80 p-4 dark:border-white/[0.08] dark:bg-white/[0.03]"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-foreground">
-                                {item.pergunta}
-                              </p>
-                              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                                {item.resposta}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => removeFaq(i)}
-                              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-500"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      {(form.faq || []).length === 0 && (
-                        <div className="py-8 text-center text-sm text-muted-foreground">
-                          Nenhuma FAQ adicionada ainda.
-                        </div>
-                      )}
-                    </div>
-                  </ModalSection>
-                </div>
-              )}
             </div>
             <div className="relative shrink-0 flex flex-col gap-3 border-t border-black/[0.06] px-5 py-5 dark:border-white/[0.08] sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <button
@@ -1481,7 +1385,7 @@ export function Products() {
               >
                 Cancelar
               </button>
-              {(activeTab === "Informações" || activeTab === "FAQ") && (
+              {activeTab === "Informações" && (
                 <button
                   onClick={saveProduct}
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-primary px-5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(245,121,59,0.28)] transition-all hover:-translate-y-0.5 sm:min-w-[180px]"

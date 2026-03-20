@@ -3895,7 +3895,7 @@ const TOOL_DEFINITIONS = {
     type: 'function',
     function: {
       name: 'present_product',
-      description: 'Apresenta automaticamente o produto mais relevante ao lead no WhatsApp. Envia imagem, descrição curta, benefício principal e oferta selecionada pelo sistema. Use quando o lead pedir informações sobre produtos, preços ou soluções.',
+      description: 'Apresenta automaticamente o produto mais relevante ao lead no WhatsApp. Envia imagem, descrição curta, benefício principal e, se existir, a melhor oferta ativa. Use quando o lead pedir informações sobre produtos, preços, catálogo, planos, soluções ou quiser ver opções.',
       parameters: {
         type: 'object',
         properties: {
@@ -3915,11 +3915,11 @@ const TOOL_DEFINITIONS = {
 const STAGE_TOOL_MAP = {
   novo: { tools: [], tool_choice: 'none' },
   qualificacao: { tools: ['crm_update_lead'], tool_choice: 'none' },
-  diagnostico: { tools: ['crm_update_lead'], tool_choice: 'none' },
-  apresentacao: { tools: ['crm_update_lead', 'present_product'], tool_choice: 'none' },
-  proposta: { tools: ['crm_update_lead', 'present_product'], tool_choice: 'none' },
+  diagnostico: { tools: ['crm_update_lead', 'present_product'], tool_choice: 'auto' },
+  apresentacao: { tools: ['crm_update_lead', 'present_product'], tool_choice: 'auto' },
+  proposta: { tools: ['crm_update_lead', 'present_product'], tool_choice: 'auto' },
   agendamento: { tools: ['consultar_horarios_disponiveis', 'confirmar_agendamento', 'cancelar_agendamento'], tool_choice: 'auto' },
-  followup: { tools: ['send_followup_message', 'crm_update_lead', 'present_product'], tool_choice: 'none' },
+  followup: { tools: ['send_followup_message', 'crm_update_lead', 'present_product'], tool_choice: 'auto' },
 };
 
 /**
@@ -4320,7 +4320,64 @@ async function selectBestOffer(orgId, leadStage, userIntent = '') {
       GROUP BY o.id, p.nome, p.categoria, p.tags, p.preco_base, p.descricao_curta, p.descricao_detalhada, p.beneficios, p.id
     `, [orgId]);
 
-    if (result.rows.length === 0) return null;
+    if (result.rows.length === 0) {
+      const fallbackProducts = await pool.query(`
+        SELECT id, nome, categoria, tags, preco_base, descricao_curta, descricao_detalhada, beneficios
+        FROM products
+        WHERE organization_id = $1
+          AND status = 'ativo'
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+      `, [orgId]);
+
+      if (fallbackProducts.rows.length === 0) return null;
+
+      let bestProduct = null;
+      let bestProductScore = -1;
+
+      for (const product of fallbackProducts.rows) {
+        let score = 1;
+        const productName = normalizeMatchText(product.nome);
+        const category = normalizeMatchText(product.categoria);
+        const tags = Array.isArray(product.tags) ? product.tags.map((tag) => normalizeMatchText(tag)) : [];
+
+        if (productName && intentLower.includes(productName)) score += 30;
+        if (category && intentLower.includes(category)) score += 8;
+        for (const tag of tags) {
+          if (tag && intentLower.includes(tag)) {
+            score += 6;
+            break;
+          }
+        }
+
+        if (score > bestProductScore) {
+          bestProductScore = score;
+          bestProduct = product;
+        }
+      }
+
+      if (!bestProduct) return null;
+
+      return {
+        offer: {
+          id: null,
+          nome: bestProduct.nome,
+          preco: bestProduct.preco_base,
+          descricao: bestProduct.descricao_curta || bestProduct.descricao_detalhada || null,
+          mensagem_sugerida: null,
+          starts_at: null,
+          ends_at: null,
+        },
+        product: {
+          id: bestProduct.id,
+          nome: bestProduct.nome,
+          categoria: bestProduct.categoria,
+          preco_base: bestProduct.preco_base,
+          descricao_curta: bestProduct.descricao_curta,
+          descricao_detalhada: bestProduct.descricao_detalhada,
+          beneficios: bestProduct.beneficios || [],
+        },
+      };
+    }
 
     let best = null;
     let bestScore = -1;
@@ -4483,14 +4540,21 @@ async function sendProductToLead(orgId, instanceName, remoteJid, leadStage, user
       const basePrice = formatCurrencyBRL(product.preco_base);
       const hasDiscountPrice = promotionalPrice && basePrice && Number(offer.preco) < Number(product.preco_base);
       const validityText = formatPromotionDate(offer.ends_at);
-      promotionText = [
-        `*Promoção: ${offer.nome}*`,
-        hasDiscountPrice
-          ? `De ${basePrice} por ${promotionalPrice}`
-          : promotionalPrice || null,
-        offer.descricao || null,
-        validityText ? `Válida até ${validityText}.` : null,
-      ].filter(Boolean).join('\n\n');
+      const hasOfferWindow = Boolean(offer.starts_at || offer.ends_at || offer.id);
+      promotionText = hasOfferWindow
+        ? [
+          `*Promoção: ${offer.nome}*`,
+          hasDiscountPrice
+            ? `De ${basePrice} por ${promotionalPrice}`
+            : promotionalPrice || null,
+          offer.descricao || null,
+          validityText ? `Válida até ${validityText}.` : null,
+        ].filter(Boolean).join('\n\n')
+        : [
+          `*${product.nome}*`,
+          promotionalPrice || basePrice || null,
+          offer.descricao || null,
+        ].filter(Boolean).join('\n\n');
     }
     if (promotionText) {
       await fetch(`${evoBase}/message/sendText/${instanceName}`, {
