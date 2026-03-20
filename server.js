@@ -17112,8 +17112,8 @@ if (process.env.VERCEL !== '1') {
 // AGENDA API ROUTES
 // ─────────────────────────────────────────────────────────────────────────────
 
-// GET /api/vendedores – list all vendors for the user's organization
-app.get("/api/vendedores", verifyJWT, async (req, res) => {
+// GET /api/vendedores/all – list all vendors for the user's organization, including inactive ones
+app.get("/api/vendedores/all", verifyJWT, async (req, res) => {
   try {
     const userRes = await pool.query("SELECT organization_id FROM users WHERE id = $1", [req.userId]);
     const orgId = userRes.rows[0]?.organization_id;

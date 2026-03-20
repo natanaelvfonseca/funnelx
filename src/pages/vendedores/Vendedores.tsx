@@ -58,7 +58,7 @@ export function Vendedores() {
     });
 
     const fetchVendedores = async () => {
-        const res = await fetch(`${API_URL}/vendedores`, { headers: h() });
+        const res = await fetch(`${API_URL}/vendedores/all`, { headers: h() });
         if (res.ok) setVendedores(await res.json());
     };
 
