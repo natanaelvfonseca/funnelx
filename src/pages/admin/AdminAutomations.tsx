@@ -60,6 +60,7 @@ interface AutomationFormState {
     channels: string[];
     message_template: string;
     wa_instance: string;
+    whatsapp_number: string;
 }
 
 const TRIGGER_EVENTS = [
@@ -288,7 +289,9 @@ function AutomationCard({
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">
                             {automation.audience_type === 'filtered'
                                 ? `Tags: ${((automation.audience_filter?.tags as string[]) || []).join(', ') || 'nenhuma'}`
-                                : 'Para gatilhos automaticos, o disparo vai para quem gerou o evento.'}
+                                : typeof automation.audience_filter?.whatsapp_number === 'string' && automation.audience_filter.whatsapp_number
+                                    ? `WhatsApp de destino manual: ${String(automation.audience_filter.whatsapp_number)}`
+                                    : 'Para gatilhos automaticos, o disparo vai para quem gerou o evento.'}
                         </p>
                     </div>
 
@@ -637,6 +640,7 @@ function AutomationModal({
         channels: automation?.channels ?? ['internal'],
         message_template: automation?.message_template ?? '',
         wa_instance: automation?.wa_instance ?? '',
+        whatsapp_number: typeof automation?.audience_filter?.whatsapp_number === 'string' ? automation.audience_filter.whatsapp_number : '',
     });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
@@ -713,11 +717,17 @@ function AutomationModal({
         setSaving(true);
         const url = isEdit ? `/api/admin/automations/${automation!.id}` : '/api/admin/automations';
         const method = isEdit ? 'PATCH' : 'POST';
+        const nextAudienceFilter = { ...form.audience_filter };
+        delete nextAudienceFilter.whatsapp_number;
+        if (form.channels.includes('whatsapp') && form.whatsapp_number.trim()) {
+            nextAudienceFilter.whatsapp_number = form.whatsapp_number.trim();
+        }
         const response = await fetch(url, {
             method,
             headers: apiHeaders(),
             body: JSON.stringify({
                 ...form,
+                audience_filter: nextAudienceFilter,
                 wa_instance: form.channels.includes('whatsapp') ? form.wa_instance : '',
             }),
         });
@@ -826,21 +836,33 @@ function AutomationModal({
                                     </div>
 
                                     {form.channels.includes('whatsapp') && (
-                                        <div className="space-y-2">
-                                            <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                                                <Smartphone size={14} />
-                                                Conexao do WhatsApp
-                                            </label>
-                                            {waInstances.length === 0 ? (
-                                                <div className="rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
-                                                    Nenhuma conexao encontrada. Conecte um numero em /whatsapp antes de salvar esta automacao.
-                                                </div>
-                                            ) : (
-                                                <select value={form.wa_instance} onChange={(event) => setField('wa_instance', event.target.value)} className="h-12 w-full rounded-2xl border border-black/[0.08] bg-white px-4 text-sm text-foreground outline-none transition focus:border-primary/35 dark:border-white/[0.08] dark:bg-white/[0.04]">
-                                                    <option value="">Selecione uma conexao...</option>
-                                                    {waInstances.map((instance) => <option key={instance.instance_name} value={instance.instance_name}>{formatInstanceLabel(instance.instance_name)}{instance.agent_name ? ` - ${instance.agent_name}` : ''} ({instance.status})</option>)}
-                                                </select>
-                                            )}
+                                        <div className="grid gap-4 md:grid-cols-2">
+                                            <div className="space-y-2">
+                                                <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                                                    <Smartphone size={14} />
+                                                    Conexao do WhatsApp
+                                                </label>
+                                                {waInstances.length === 0 ? (
+                                                    <div className="rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                                                        Nenhuma conexao encontrada. Conecte um numero em /whatsapp antes de salvar esta automacao.
+                                                    </div>
+                                                ) : (
+                                                    <select value={form.wa_instance} onChange={(event) => setField('wa_instance', event.target.value)} className="h-12 w-full rounded-2xl border border-black/[0.08] bg-white px-4 text-sm text-foreground outline-none transition focus:border-primary/35 dark:border-white/[0.08] dark:bg-white/[0.04]">
+                                                        <option value="">Selecione uma conexao...</option>
+                                                        {waInstances.map((instance) => <option key={instance.instance_name} value={instance.instance_name}>{formatInstanceLabel(instance.instance_name)}{instance.agent_name ? ` - ${instance.agent_name}` : ''} ({instance.status})</option>)}
+                                                    </select>
+                                                )}
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">WhatsApp de destino opcional</label>
+                                                <input
+                                                    value={form.whatsapp_number}
+                                                    onChange={(event) => setField('whatsapp_number', event.target.value)}
+                                                    placeholder="Ex: 5547991935149"
+                                                    className="h-12 w-full rounded-2xl border border-black/[0.08] bg-white px-4 text-sm text-foreground outline-none transition focus:border-primary/35 dark:border-white/[0.08] dark:bg-white/[0.04]"
+                                                />
+                                                <p className="text-xs leading-6 text-muted-foreground">Se preencher, o WhatsApp sera enviado para esse numero em vez do usuario do evento.</p>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -871,6 +893,7 @@ function AutomationModal({
                                     <div className="rounded-[22px] border border-black/[0.06] bg-[#F8F8FA] px-4 py-4 dark:border-white/[0.08] dark:bg-[#111214]">
                                         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Publico</p>
                                         <p className="mt-2 text-sm font-semibold text-foreground">{form.audience_type === 'filtered' ? 'Usuario do evento + filtro de tags' : 'Usuario do evento'}</p>
+                                        {form.channels.includes('whatsapp') && form.whatsapp_number.trim() && <p className="mt-1 text-xs leading-6 text-muted-foreground">Destino manual: {form.whatsapp_number.trim()}</p>}
                                     </div>
                                     <div className="rounded-[22px] border border-black/[0.06] bg-[#F8F8FA] px-4 py-4 dark:border-white/[0.08] dark:bg-[#111214]">
                                         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Canais ativos</p>

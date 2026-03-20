@@ -6291,6 +6291,12 @@ function getAutomationTemplateVars(user, extraVars = {}) {
   };
 }
 
+function getAutomationTargetWhatsAppNumber(automation, recipient) {
+  const manualNumber = normalizeWhatsAppNumber(automation?.audience_filter?.whatsapp_number || '');
+  if (manualNumber) return manualNumber;
+  return normalizeWhatsAppNumber(recipient?.personal_phone || recipient?.company_phone || '');
+}
+
 async function hasProcessedAutomationEvent(automationId, eventKey) {
   if (!automationId || !eventKey) return false;
 
@@ -6372,7 +6378,7 @@ async function dispatchAutomationToRecipient(automation, recipient, options = {}
       if (!automation.wa_instance) {
         errors.push('whatsapp: nenhuma conexao selecionada');
       } else {
-        const phone = normalizeWhatsAppNumber(recipient.personal_phone || recipient.company_phone);
+        const phone = getAutomationTargetWhatsAppNumber(automation, recipient);
         if (!phone) {
           errors.push('whatsapp: usuario sem numero cadastrado');
         } else {
@@ -6561,6 +6567,13 @@ app.post('/api/admin/automations/:id/trigger', verifyJWT, requireAdmin, async (r
 
     let userPhones = {};
     if (channels.includes('whatsapp') && auto.wa_instance) {
+      const manualTargetPhone = normalizeWhatsAppNumber(auto?.audience_filter?.whatsapp_number || '');
+      if (manualTargetPhone) {
+        for (const recipient of recipients) {
+          userPhones[recipient.id] = manualTargetPhone;
+        }
+      }
+
       const phoneRes = await pool.query(
         `SELECT id, personal_phone, company_phone
          FROM users
@@ -6569,6 +6582,7 @@ app.post('/api/admin/automations/:id/trigger', verifyJWT, requireAdmin, async (r
       ).catch(() => ({ rows: [] }));
 
       for (const row of phoneRes.rows) {
+        if (manualTargetPhone) continue;
         const phone = normalizeWhatsAppNumber(row.personal_phone || row.company_phone);
         if (phone) userPhones[row.id] = phone;
       }
