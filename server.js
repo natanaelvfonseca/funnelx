@@ -4571,6 +4571,15 @@ function buildProductMediaFileName(productName = "produto", mediaUrl = "") {
   return `${safeBase}.jpg`;
 }
 
+function normalizeMediaForEvolution(mediaUrl = "") {
+  if (typeof mediaUrl !== "string") return "";
+  if (mediaUrl.startsWith("data:")) {
+    const parts = mediaUrl.split(",", 2);
+    return parts[1] || "";
+  }
+  return mediaUrl.trim();
+}
+
 /**
  * Records an offer presentation event for CIL telemetry.
  */
@@ -4611,17 +4620,23 @@ async function sendProductToLead(orgId, instanceName, remoteJid, leadStage, user
     );
     if (imgRes.rows.length > 0) {
       const img = imgRes.rows[0];
-      await fetch(`${evoBase}/message/sendMedia/${instanceName}`, {
+      const mediaPayload = normalizeMediaForEvolution(img.url);
+      const mediaResponse = await fetch(`${evoBase}/message/sendMedia/${instanceName}`, {
         method: 'POST', headers,
         body: JSON.stringify({
           number: remoteJid,
           mediatype: 'image',
-          media: img.url,
+          media: mediaPayload,
           fileName: buildProductMediaFileName(product.nome, img.url),
           caption: img.caption || product.nome,
         }),
       });
-      log(`[PRODUCT SEND] Image sent for ${product.nome}`);
+      if (!mediaResponse.ok) {
+        const errorText = await mediaResponse.text();
+        log(`[PRODUCT SEND] Image failed for ${product.nome}: ${mediaResponse.status} ${errorText}`);
+      } else {
+        log(`[PRODUCT SEND] Image sent for ${product.nome}`);
+      }
     }
 
     // Step 2: Send description + main benefit
