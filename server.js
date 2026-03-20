@@ -1912,6 +1912,29 @@ function minutesToLegacyDelayDays(minutes) {
   return Math.max(1, Math.round(numeric / 1440));
 }
 
+const optionalColumnExistsCache = new Map();
+
+async function doesColumnExist(tableName, columnName) {
+  const cacheKey = `${tableName}.${columnName}`;
+  if (optionalColumnExistsCache.has(cacheKey)) {
+    return optionalColumnExistsCache.get(cacheKey);
+  }
+
+  const result = await pool.query(
+    `SELECT 1
+       FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+        AND column_name = $2
+      LIMIT 1`,
+    [tableName, columnName],
+  );
+
+  const exists = result.rows.length > 0;
+  optionalColumnExistsCache.set(cacheKey, exists);
+  return exists;
+}
+
 async function getOrganizationIdForUser(userId) {
   const orgRes = await pool.query('SELECT organization_id FROM users WHERE id = $1', [userId]);
   return orgRes.rows[0]?.organization_id || null;
@@ -2105,11 +2128,15 @@ async function scheduleFollowupEvent(orgId, remoteJid, instanceName) {
 
     // Get lead temperature
     const phone = remoteJid.split('@')[0];
+    const hasMobilePhoneColumn = await doesColumnExist('leads', 'mobile_phone');
+    const leadPhoneFilter = hasMobilePhoneColumn
+      ? '(l.phone LIKE $2 OR l.mobile_phone LIKE $2)'
+      : 'l.phone LIKE $2';
     const leadRes = await pool.query(
       `SELECT l.id AS lead_id, os.temperature, os.intent, os.product_interest, os.top_objection, os.score, l.status AS pipeline_stage
        FROM leads l
        LEFT JOIN opportunity_scores os ON os.lead_id = l.id
-       WHERE l.organization_id = $1 AND (l.phone LIKE $2 OR l.mobile_phone LIKE $2)
+       WHERE l.organization_id = $1 AND ${leadPhoneFilter}
        LIMIT 1`,
       [orgId, `%${phone}%`]
     );
