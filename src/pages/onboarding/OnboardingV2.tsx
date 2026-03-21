@@ -130,21 +130,10 @@ function NextBtn({ onClick, loading, label = 'Continuar' }: { onClick: () => voi
 }
 
 // ── Progress Sidebar ──────────────────────────────────────────────────────────
-const STEP_LABELS = [
-    'Bem-vindo', 'Agente', 'Mercado', 'Identidade', 'Produto',
-    'Público', 'Canais', 'Ciclo', 'Meta', 'Objecoes',
-    'Conducao', 'Conhecimento', 'Pipeline', 'Ativacao', 'Teste',
-    'Melhorar', 'WhatsApp', 'Concluído'
-];
 
-
-function MobileProgress({ step, label }: { step: number; label: string }) {
+function MobileProgress({ step }: { step: number }) {
     return (
         <div className="lg:hidden mb-6">
-            <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
-                <span className="font-mono">Passo {step} de {TOTAL_STEPS}</span>
-                <span className="text-[#FF4C00] font-semibold">{label}</span>
-            </div>
             <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
                 <div className="h-full bg-gradient-to-r from-[#FF4C00] to-[#FF6A30] rounded-full transition-all duration-500"
                     style={{ width: `${(step / TOTAL_STEPS) * 100}%` }} />
@@ -647,7 +636,6 @@ export function OnboardingV2() {
                     {!(step === 1 && stepOneStage === 'welcome') && (
                         <MobileProgress
                             step={step}
-                            label={step === 1 ? (stepOneStage === 'welcome' ? 'Bem-vindo' : 'Conta') : STEP_LABELS[step - 1]}
                         />
                     )}
                     {error && <ErrorBanner msg={error} />}
@@ -706,7 +694,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                 <div className="w-20 h-20 bg-gradient-to-br from-[#FF4C00]/20 to-[#FF6A30]/10 rounded-3xl flex items-center justify-center mx-auto border border-[#FF4C00]/20">
                     <Rocket className="w-10 h-10 text-[#FF4C00]" />
                 </div>
-                <p className="mt-5 text-xs font-bold text-[#FF4C00] uppercase tracking-widest mb-2">Passo 1 - Conta</p>
                 <h1 className="text-3xl font-bold text-gray-900 leading-tight">
                     {token ? 'Sua conta ja esta pronta' : 'Crie sua conta para montar sua IA'}
                 </h1>
@@ -846,7 +833,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 2) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 2 — Agente</p>
                 <h2 className="text-2xl font-bold text-gray-900">Crie seu primeiro Agente de Vendas</h2>
                 <p className="text-gray-500 text-sm mt-2">Esse será o primeiro agente da sua empresa responsável por conduzir oportunidades no WhatsApp.</p>
             </div>
@@ -866,7 +852,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 3) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 3 — Mercado</p>
                 <h2 className="text-2xl font-bold text-gray-900">Em qual mercado sua empresa atua?</h2>
                 <p className="text-gray-500 text-sm mt-2">Isso adapta linguagem, objeções e padrões de conversa da sua IA.</p>
             </div>
@@ -895,7 +880,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 4) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 4 — Identidade</p>
                 <h2 className="text-2xl font-bold text-gray-900">Quem representará sua empresa?</h2>
                 <p className="text-gray-500 text-sm mt-2">Esse será o nome que aparecerá nas conversas do WhatsApp.</p>
             </div>
@@ -922,7 +906,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 5) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 5 — Produto</p>
                 <h2 className="text-2xl font-bold text-gray-900">O que sua empresa vende?</h2>
             </div>
             <div className="space-y-4">
@@ -962,7 +945,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 6) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 6 — Público</p>
                 <h2 className="text-2xl font-bold text-gray-900">Para quem você vende?</h2>
                 <p className="text-gray-500 text-sm mt-2">Pode selecionar ambos.</p>
             </div>
@@ -980,7 +962,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 7) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 7 — Canais</p>
                 <h2 className="text-2xl font-bold text-gray-900">Como seus clientes chegam até você?</h2>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -995,7 +976,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 8) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 8 — Ciclo</p>
                 <h2 className="text-2xl font-bold text-gray-900">Quanto tempo leva para fechar uma venda?</h2>
                 <p className="text-gray-500 text-sm mt-2">A IA vai adaptar o timing das mensagens ao seu ciclo.</p>
             </div>
@@ -1014,7 +994,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 9) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 9 — Meta</p>
                 <h2 className="text-2xl font-bold text-gray-900">Qual sua meta mensal de vendas?</h2>
                 <p className="text-gray-500 text-sm mt-2">A Kogna usará essa meta para gerar recomendações e priorizar oportunidades.</p>
             </div>
@@ -1043,7 +1022,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 10) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 10 - Objecoes</p>
                 <h2 className="text-2xl font-bold text-gray-900">Como a IA deve quebrar objecoes?</h2>
                 <p className="text-gray-500 text-sm mt-2">Mapeie as objecoes mais comuns, diga o que funciona e qual proximo passo ideal a IA deve puxar.</p>
             </div>
@@ -1098,7 +1076,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 11) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 11 - Conducao</p>
                 <h2 className="text-2xl font-bold text-gray-900">Como a IA deve operar no dia a dia?</h2>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -1141,7 +1118,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 12) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 12 — Conhecimento</p>
                 <h2 className="text-2xl font-bold text-gray-900">Transfira conhecimento para sua IA</h2>
                 <p className="text-gray-500 text-sm mt-2">Envie materiais que ajudam a IA a entender melhor seu negócio.</p>
             </div>
@@ -1179,7 +1155,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 13) return (
         <div className="space-y-6 animate-fade-in text-center">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 13 — Pipeline</p>
                 <h2 className="text-2xl font-bold text-gray-900">Seu sistema de vendas está sendo criado</h2>
                 <p className="text-gray-500 text-sm mt-2">A Kogna organiza automaticamente suas conversas em um pipeline inteligente.</p>
             </div>
@@ -1207,7 +1182,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 14) return (
         <div className="space-y-6 animate-fade-in text-center">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 14 - Ativacao</p>
                 <h2 className="text-2xl font-bold text-gray-900">Estamos criando sua IA agora</h2>
                 <p className="text-gray-500 text-sm mt-2">Com a conta pronta, a Kogna esta salvando o perfil da sua empresa e provisionando seu primeiro agente.</p>
             </div>
@@ -1242,7 +1216,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 140) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 14 — Conta</p>
                 <h2 className="text-2xl font-bold text-gray-900">Crie sua conta para ativar sua IA</h2>
                 <p className="text-gray-500 text-sm mt-2">Falta apenas um passo para ativar sua IA.</p>
             </div>
@@ -1263,7 +1236,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
         return (
             <div className="space-y-4 animate-fade-in">
                 <div>
-                    <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 15 — Teste</p>
                     <h2 className="text-2xl font-bold text-gray-900">Vamos fazer um teste rápido</h2>
                     <p className="text-gray-500 text-sm mt-1">Converse com sua IA como se fosse um cliente. Limite de 5 troca de mensagens.</p>
                 </div>
@@ -1347,7 +1319,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                 <div className="w-16 h-16 rounded-2xl bg-green-500/15 border border-green-500/25 flex items-center justify-center mb-4">
                     <Check className="w-8 h-8 text-green-400" />
                 </div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 16 — Melhorar IA</p>
                 <h2 className="text-2xl font-bold text-gray-900">Sua IA já está funcionando</h2>
                 <p className="text-gray-500 text-sm mt-2">Mas você pode melhorar ela rapidamente.</p>
             </div>
@@ -1408,7 +1379,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
     if (step === 17) return (
         <div className="space-y-5 animate-fade-in">
             <div>
-                <p className="text-xs text-[#FF4C00] font-bold uppercase tracking-widest mb-1">Passo 17 — WhatsApp</p>
                 <h2 className="text-2xl font-bold text-gray-900">Conecte sua IA ao WhatsApp</h2>
                 <p className="text-gray-500 text-sm mt-2">Agora vamos dar voz à sua IA no WhatsApp.</p>
             </div>
