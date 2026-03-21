@@ -83,7 +83,11 @@ function trackMetaPixelOnce(key: string, method: MetaPixelMethod, eventName: str
 
 function WelcomeMetaPixelTracker() {
     useEffect(() => {
-        trackMetaPixelOnce('onboarding-welcome-view-content', 'track', 'ViewContent');
+        const timeoutId = window.setTimeout(() => {
+            trackMetaPixelOnce('onboarding-welcome-view-content', 'track', 'ViewContent');
+        }, 200);
+
+        return () => window.clearTimeout(timeoutId);
     }, []);
 
     return null;
@@ -221,6 +225,10 @@ export function OnboardingV2() {
     const knowledgeUploadedAgentRef = useRef<string | null>(null);
     const onboardingCompletionRef = useRef<'idle' | 'done'>('idle');
     const accountStepConfettiRef = useRef(false);
+    const registrationTrackingVersionRef = useRef(0);
+    const aiCreationTrackingVersionRef = useRef(0);
+    const [registrationTrackingVersion, setRegistrationTrackingVersion] = useState(0);
+    const [aiCreationTrackingVersion, setAiCreationTrackingVersion] = useState(0);
 
     const set = (k: keyof FormData, v: any) => setForm(f => ({ ...f, [k]: v }));
     const toggleArr = (k: keyof FormData, v: string) => {
@@ -257,6 +265,26 @@ export function OnboardingV2() {
             phone: current.phone || '',
         }));
     }, [user]);
+
+    useEffect(() => {
+        if (!registrationTrackingVersion) return;
+
+        const timeoutId = window.setTimeout(() => {
+            trackMetaPixelOnce('onboarding-complete-registration', 'track', 'CompleteRegistration', 30000);
+        }, 250);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [registrationTrackingVersion]);
+
+    useEffect(() => {
+        if (!aiCreationTrackingVersion) return;
+
+        const timeoutId = window.setTimeout(() => {
+            trackMetaPixelOnce('onboarding-created-ai', 'trackCustom', 'Created_AI', 30000);
+        }, 250);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [aiCreationTrackingVersion]);
 
     useEffect(() => {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -401,7 +429,8 @@ export function OnboardingV2() {
             localStorage.setItem('kogna_user', JSON.stringify(data.user));
             token.current = data.token;
             setAccountReady(true);
-            trackMetaPixelOnce('onboarding-complete-registration', 'track', 'CompleteRegistration', 30000);
+            registrationTrackingVersionRef.current += 1;
+            setRegistrationTrackingVersion(registrationTrackingVersionRef.current);
             refreshUser().catch(() => { });
             go(2);
         } catch (e: any) {
@@ -489,7 +518,8 @@ export function OnboardingV2() {
 
             setCreatedAgentId(agentId);
             await uploadKnowledgeFiles(agentId, token.current);
-            trackMetaPixelOnce('onboarding-created-ai', 'trackCustom', 'Created_AI', 30000);
+            aiCreationTrackingVersionRef.current += 1;
+            setAiCreationTrackingVersion(aiCreationTrackingVersionRef.current);
             refreshUser().catch(() => { });
             go(15);
         } catch (e: any) {
