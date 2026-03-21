@@ -633,11 +633,9 @@ export function OnboardingV2() {
                             wordSize={29}
                         />
                     </div>
-                    {!(step === 1 && stepOneStage === 'welcome') && (
-                        <MobileProgress
-                            step={step}
-                        />
-                    )}
+                    <MobileProgress
+                        step={step}
+                    />
                     {error && <ErrorBanner msg={error} />}
                     <StepContent
                         step={step} form={form} set={set} toggleArr={toggleArr}
