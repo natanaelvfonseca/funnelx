@@ -186,6 +186,7 @@ export function OnboardingV2() {
     const activationAttemptedRef = useRef(false);
     const knowledgeUploadedAgentRef = useRef<string | null>(null);
     const onboardingCompletionRef = useRef<'idle' | 'done'>('idle');
+    const accountStepConfettiRef = useRef(false);
 
     const set = (k: keyof FormData, v: any) => setForm(f => ({ ...f, [k]: v }));
     const toggleArr = (k: keyof FormData, v: string) => {
@@ -241,10 +242,11 @@ export function OnboardingV2() {
                 phone: form.phone || undefined,
                 metadata: {
                     source: 'OnboardingV2',
+                    step_one_stage: step === 1 ? stepOneStage : null,
                 },
             }),
         }).catch(() => { });
-    }, [sessionId, step]);
+    }, [sessionId, step, stepOneStage]);
 
     const buildObjectionPlaybook = () => (
         form.objections.map((label, index) => ({
@@ -580,6 +582,25 @@ export function OnboardingV2() {
         void handleActivateAgent();
     }, [createdAgentId, step]);
 
+    useEffect(() => {
+        if (step === 1 && stepOneStage === 'account' && !accountStepConfettiRef.current) {
+            accountStepConfettiRef.current = true;
+            confetti({
+                particleCount: 90,
+                spread: 78,
+                startVelocity: 22,
+                scalar: 0.92,
+                ticks: 180,
+                gravity: 0.82,
+                origin: { y: 0.28 },
+                colors: ['#FF4C00', '#FF6A30', '#FFB090', '#FFD8C7'],
+            });
+        }
+        if (stepOneStage === 'welcome') {
+            accountStepConfettiRef.current = false;
+        }
+    }, [step, stepOneStage]);
+
     // Confetti on step 18
     useEffect(() => {
         if (step === 18) {
@@ -693,12 +714,12 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                     <Rocket className="w-10 h-10 text-[#FF4C00]" />
                 </div>
                 <h1 className="text-3xl font-bold text-gray-900 leading-tight">
-                    {token ? 'Sua conta ja esta pronta' : 'Crie sua conta para montar sua IA'}
+                    {token ? 'Sua conta ja esta pronta' : 'Ative sua IA de vendas no WhatsApp'}
                 </h1>
-                <p className="text-gray-500 mt-3 text-sm leading-relaxed max-w-sm mx-auto">
+                <p className="text-gray-500 mt-3 text-sm leading-relaxed max-w-sm mx-auto whitespace-pre-line">
                     {token
                         ? 'Agora vamos coletar os dados da operacao para configurar seu primeiro agente de vendas.'
-                        : 'Antes de criar sua IA, precisamos registrar sua conta na plataforma para salvar tudo com seguranca.'}
+                        : 'Leva menos de 1 minuto.\nSua IA já começa a responder e recuperar clientes automaticamente.'}
                 </p>
             </div>
 
@@ -727,14 +748,14 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
             ) : (
                 <>
                     <div className="space-y-3">
-                        <div><FieldLabel>Nome completo</FieldLabel><Input placeholder="Joao Silva" value={form.name} onChange={e => set('name', e.target.value)} /></div>
-                        <div><FieldLabel>E-mail</FieldLabel><Input type="email" placeholder="joao@empresa.com" value={form.email} onChange={e => set('email', e.target.value)} /></div>
-                        <div><FieldLabel>WhatsApp</FieldLabel><Input type="tel" placeholder="DDD + NUMERO" value={form.phone} onChange={e => set('phone', e.target.value)} /></div>
-                        <div><FieldLabel>Senha</FieldLabel><Input type="password" placeholder="Minimo 6 caracteres" value={form.password} onChange={e => set('password', e.target.value)} /></div>
-                        <div><FieldLabel>Confirmar senha</FieldLabel><Input type="password" placeholder="Confirme sua senha" value={form.confirmPassword} onChange={e => set('confirmPassword', e.target.value)} /></div>
+                        <div><FieldLabel>Seu nome</FieldLabel><Input placeholder="Seu nome" value={form.name} onChange={e => set('name', e.target.value)} /></div>
+                        <div><FieldLabel>Seu melhor e-mail</FieldLabel><Input type="email" placeholder="Seu melhor e-mail" value={form.email} onChange={e => set('email', e.target.value)} /></div>
+                        <div><FieldLabel>Seu WhatsApp</FieldLabel><Input type="tel" placeholder="Seu WhatsApp" value={form.phone} onChange={e => set('phone', e.target.value)} /></div>
+                        <div><FieldLabel>Crie uma senha</FieldLabel><Input type="password" placeholder="Crie uma senha" value={form.password} onChange={e => set('password', e.target.value)} /></div>
+                        <div><FieldLabel>Confirme sua senha</FieldLabel><Input type="password" placeholder="Confirme sua senha" value={form.confirmPassword} onChange={e => set('confirmPassword', e.target.value)} /></div>
                     </div>
-                    <NextBtn onClick={next} loading={loading} label="Criar conta e continuar" />
-                    <p className="text-center text-xs text-gray-400">Sem cartao de credito - Gratis para comecar</p>
+                    <NextBtn onClick={next} loading={loading} label="Criar minha IA agora" />
+                    <p className="text-center text-xs text-gray-400">Sem cartão / Sem mensalidade • Comece grátis em segundos</p>
                 </>
             )}
         </div>

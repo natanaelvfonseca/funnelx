@@ -9088,7 +9088,7 @@ app.get("/api/admin/onboarding-analytics", verifyJWT, verifyAdmin, async (req, r
     await ensureOnboardingAnalyticsTable();
 
     const identitySql = `COALESCE(NULLIF(user_id, ''), NULLIF(LOWER(email), ''), session_id)`;
-    const summaryRes = await pool.query(`
+    const dedupRes = await pool.query(`
       WITH base AS (
         SELECT
           ${identitySql} AS identity_key,
@@ -9097,7 +9097,8 @@ app.get("/api/admin/onboarding-analytics", verifyJWT, verifyAdmin, async (req, r
           completed_at,
           registered_at,
           last_seen_at,
-          started_at
+          started_at,
+          metadata
         FROM onboarding_progress_analytics
         WHERE onboarding_version = $1
       ),
@@ -9109,7 +9110,8 @@ app.get("/api/admin/onboarding-analytics", verifyJWT, verifyAdmin, async (req, r
           completed_at,
           registered_at,
           last_seen_at,
-          started_at
+          started_at,
+          metadata
         FROM base
         ORDER BY
           identity_key,
@@ -9120,89 +9122,54 @@ app.get("/api/admin/onboarding-analytics", verifyJWT, verifyAdmin, async (req, r
           started_at DESC
       )
       SELECT
-        COUNT(*)::int AS total_started,
-        COUNT(*) FILTER (WHERE registered_at IS NOT NULL)::int AS total_registered,
-        COUNT(*) FILTER (WHERE completed_at IS NOT NULL)::int AS total_completed
+        identity_key,
+        max_step_reached,
+        total_steps,
+        completed_at,
+        registered_at,
+        last_seen_at,
+        started_at,
+        metadata
       FROM dedup
     `, [ONBOARDING_ANALYTICS_VERSION]);
 
-    const stepsRes = await pool.query(`
-      WITH base AS (
-        SELECT
-          ${identitySql} AS identity_key,
-          max_step_reached,
-          total_steps,
-          completed_at,
-          registered_at,
-          last_seen_at,
-          started_at
-        FROM onboarding_progress_analytics
-        WHERE onboarding_version = $1
-      ),
-      dedup AS (
-        SELECT DISTINCT ON (identity_key)
-          identity_key,
-          max_step_reached,
-          total_steps,
-          completed_at,
-          registered_at,
-          last_seen_at,
-          started_at
-        FROM base
-        ORDER BY
-          identity_key,
-          max_step_reached DESC,
-          completed_at DESC NULLS LAST,
-          registered_at DESC NULLS LAST,
-          last_seen_at DESC,
-          started_at DESC
-      ),
-      steps AS (
-        SELECT generate_series(1, $2::int) AS step_number
-      )
-      SELECT
-        steps.step_number,
-        COUNT(d.identity_key) FILTER (WHERE d.max_step_reached >= steps.step_number)::int AS reached,
-        COUNT(d.identity_key) FILTER (
-          WHERE d.max_step_reached = steps.step_number
-            AND (
-              steps.step_number < $2::int
-              OR d.completed_at IS NULL
-            )
-        )::int AS abandoned
-      FROM steps
-      LEFT JOIN dedup d ON TRUE
-      GROUP BY steps.step_number
-      ORDER BY steps.step_number ASC
-    `, [ONBOARDING_ANALYTICS_VERSION, ONBOARDING_ANALYTICS_TOTAL_STEPS]);
+    const rawTotalSteps = ONBOARDING_ANALYTICS_TOTAL_STEPS;
+    const displayTotalSteps = rawTotalSteps + 1;
+    const journeys = dedupRes.rows || [];
 
-    const totalStarted = Number(summaryRes.rows[0]?.total_started || 0);
-    const totalRegistered = Number(summaryRes.rows[0]?.total_registered || 0);
-    const totalCompleted = Number(summaryRes.rows[0]?.total_completed || 0);
+    const totalStarted = journeys.length;
+    const totalRegistered = journeys.filter((row) => Boolean(row.registered_at)).length;
+    const totalCompleted = journeys.filter((row) => Boolean(row.completed_at)).length;
     const completionRate = totalStarted > 0 ? (totalCompleted / totalStarted) * 100 : 0;
 
-    const stepMap = new Map(
-      (stepsRes.rows || []).map((row) => [
-        Number(row.step_number),
-        {
-          step_number: Number(row.step_number),
-          reached: Number(row.reached || 0),
-          abandoned: Number(row.abandoned || 0),
-        },
-      ]),
-    );
+    const hasReachedDisplayStep = (journey, displayStepNumber) => {
+      const maxStepReached = Number(journey?.max_step_reached || 0);
+      if (displayStepNumber === 1) return true;
+      if (displayStepNumber === 2) {
+        const stage = journey?.metadata && typeof journey.metadata === "object"
+          ? journey.metadata.step_one_stage
+          : null;
+        return stage === "account" || maxStepReached >= 2 || Boolean(journey?.registered_at);
+      }
+      return maxStepReached >= (displayStepNumber - 1);
+    };
 
-    const steps = Array.from({ length: ONBOARDING_ANALYTICS_TOTAL_STEPS }, (_, index) => {
+    const steps = Array.from({ length: displayTotalSteps }, (_, index) => {
       const stepNumber = index + 1;
-      const current = stepMap.get(stepNumber) || { step_number: stepNumber, reached: 0, abandoned: 0 };
-      const next = stepMap.get(stepNumber + 1);
-      const dropOffRate = current.reached > 0 ? (current.abandoned / current.reached) * 100 : 0;
-      const progressionRate = stepNumber >= ONBOARDING_ANALYTICS_TOTAL_STEPS
-        ? (current.reached > 0 ? (totalCompleted / current.reached) * 100 : 0)
-        : (current.reached > 0 ? ((next?.reached || 0) / current.reached) * 100 : 0);
+      const reached = journeys.filter((journey) => hasReachedDisplayStep(journey, stepNumber)).length;
+      const nextReached = stepNumber >= displayTotalSteps
+        ? totalCompleted
+        : journeys.filter((journey) => hasReachedDisplayStep(journey, stepNumber + 1)).length;
+      const abandoned = stepNumber >= displayTotalSteps
+        ? journeys.filter((journey) => hasReachedDisplayStep(journey, stepNumber) && !journey.completed_at).length
+        : Math.max(reached - nextReached, 0);
+      const dropOffRate = reached > 0 ? (abandoned / reached) * 100 : 0;
+      const progressionRate = reached > 0 ? (nextReached / reached) * 100 : 0;
 
       return {
-        ...current,
+        step_number: stepNumber,
+        reached,
+        abandoned,
         drop_off_rate: dropOffRate,
         progression_rate: progressionRate,
       };
@@ -9230,7 +9197,8 @@ app.get("/api/admin/onboarding-analytics", verifyJWT, verifyAdmin, async (req, r
       },
       meta: {
         onboarding_version: ONBOARDING_ANALYTICS_VERSION,
-        total_steps: ONBOARDING_ANALYTICS_TOTAL_STEPS,
+        total_steps: displayTotalSteps,
+        raw_total_steps: rawTotalSteps,
       },
     });
   } catch (err) {
