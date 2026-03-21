@@ -749,6 +749,14 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                     0%, 100% { transform: translateY(0px); }
                     50% { transform: translateY(-4px); }
                 }
+                @keyframes kogna-cta-float {
+                    0%, 100% { transform: translateY(0px) scale(1); }
+                    50% { transform: translateY(-3px) scale(1.01); }
+                }
+                @keyframes kogna-cta-glow {
+                    0%, 100% { box-shadow: 0 18px 38px rgba(255, 76, 0, 0.22), 0 0 0 rgba(255, 106, 48, 0); }
+                    50% { box-shadow: 0 22px 46px rgba(255, 76, 0, 0.34), 0 0 28px rgba(255, 106, 48, 0.28); }
+                }
             `}</style>
             <div className="w-24 h-24 bg-gradient-to-br from-[#FF4C00]/20 to-[#FF6A30]/10 rounded-3xl flex items-center justify-center mx-auto border border-[#FF4C00]/20">
                 <Rocket className="w-12 h-12 text-[#FF4C00]" />
@@ -791,7 +799,16 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                     </div>
                 ))}
             </div>
-            <NextBtn onClick={() => setStepOneStage('account')} label="AUMENTAR MINHAS VENDAS" />
+            <button
+                onClick={() => setStepOneStage('account')}
+                className="w-full flex items-center justify-center gap-2 py-4 bg-gradient-to-r from-[#FF4C00] to-[#FF6A30] hover:brightness-110 text-white font-bold rounded-xl transition-all duration-200 mt-6"
+                style={{
+                    animation: 'kogna-cta-float 2.6s ease-in-out infinite, kogna-cta-glow 2.6s ease-in-out infinite',
+                    willChange: 'transform, box-shadow',
+                }}
+            >
+                AUMENTAR MINHAS VENDAS <ChevronRight className="w-4 h-4" />
+            </button>
             <p className="text-xs text-gray-400 max-w-sm mx-auto">+3.000 conversas analisadas. Sabemos o que funciona, por isso n&atilde;o cobramos mensalidade: &eacute; gratuito!</p>
         </div>
     );
