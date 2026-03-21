@@ -780,8 +780,8 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
             <div className="flex flex-col gap-3 max-w-sm mx-auto text-left">
                 {[
                     { icon: Brain, t: 'Criar sua IA de atendimento e vendas' },
-                    { icon: GitBranch, t: 'Organizar seus leads sem esfor&ccedil;o' },
-                    { icon: MessageSquare, t: 'Come&ccedil;ar a recuperar clientes perdidos' },
+                    { icon: GitBranch, t: 'Organizar seus leads sem esfor\u00e7o' },
+                    { icon: MessageSquare, t: 'Come\u00e7ar a recuperar clientes perdidos' },
                 ].map(({ icon: Icon, t }, index) => (
                     <div key={t} className="flex items-center gap-3 text-sm text-gray-600">
                         <div
