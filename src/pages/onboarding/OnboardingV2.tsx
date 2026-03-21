@@ -627,7 +627,7 @@ export function OnboardingV2() {
                     {/* Mobile Logo */}
                     <div className="lg:hidden flex justify-center mb-6">
                         <BrandLogo
-                            className="text-gray-900"
+                            className="text-gray-900 -translate-x-[19px]"
                             markWidth={26}
                             markHeight={34}
                             wordSize={29}
@@ -762,7 +762,6 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                 <Rocket className="w-12 h-12 text-[#FF4C00]" />
             </div>
             <div>
-                <p className="text-xs font-bold text-[#FF4C00] uppercase tracking-widest mb-3">ATIVA&Ccedil;&Atilde;O KOGNA</p>
                 <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 leading-[0.95] tracking-tight">
                     <span className="block whitespace-nowrap">Seu WhatsApp est&aacute;</span>
                     <span className="block whitespace-nowrap uppercase">PERDENDO VENDAS</span>
