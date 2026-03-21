@@ -27,7 +27,7 @@ function StatCard({
 }
 
 const STEP_LABELS = [
-    'Conta',
+    'Bem-vindo',
     'Agente',
     'Mercado',
     'Identidade',

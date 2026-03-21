@@ -131,19 +131,19 @@ function NextBtn({ onClick, loading, label = 'Continuar' }: { onClick: () => voi
 
 // ── Progress Sidebar ──────────────────────────────────────────────────────────
 const STEP_LABELS = [
-    'Conta', 'Agente', 'Mercado', 'Identidade', 'Produto',
+    'Bem-vindo', 'Agente', 'Mercado', 'Identidade', 'Produto',
     'Público', 'Canais', 'Ciclo', 'Meta', 'Objecoes',
     'Conducao', 'Conhecimento', 'Pipeline', 'Ativacao', 'Teste',
     'Melhorar', 'WhatsApp', 'Concluído'
 ];
 
 
-function MobileProgress({ step }: { step: number }) {
+function MobileProgress({ step, label }: { step: number; label: string }) {
     return (
         <div className="lg:hidden mb-6">
             <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
                 <span className="font-mono">Passo {step} de {TOTAL_STEPS}</span>
-                <span className="text-[#FF4C00] font-semibold">{STEP_LABELS[step - 1]}</span>
+                <span className="text-[#FF4C00] font-semibold">{label}</span>
             </div>
             <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
                 <div className="h-full bg-gradient-to-r from-[#FF4C00] to-[#FF6A30] rounded-full transition-all duration-500"
@@ -165,6 +165,10 @@ export function OnboardingV2() {
     const [accountReady, setAccountReady] = useState(() => {
         if (typeof window === 'undefined') return false;
         return Boolean(window.localStorage.getItem('kogna_token'));
+    });
+    const [stepOneStage, setStepOneStage] = useState<'welcome' | 'account'>(() => {
+        if (typeof window === 'undefined') return 'welcome';
+        return window.localStorage.getItem('kogna_token') ? 'account' : 'welcome';
     });
     // Step 16 improvement
     const [improvementSelected, setImprovementSelected] = useState<string | null>(null);
@@ -215,6 +219,9 @@ export function OnboardingV2() {
         const storedToken = authToken || (typeof window !== 'undefined' ? window.localStorage.getItem('kogna_token') : null);
         token.current = storedToken;
         setAccountReady(Boolean(storedToken));
+        if (storedToken) {
+            setStepOneStage('account');
+        }
     }, [authToken]);
 
     useEffect(() => {
@@ -637,7 +644,10 @@ export function OnboardingV2() {
                             wordSize={29}
                         />
                     </div>
-                    <MobileProgress step={step} />
+                    <MobileProgress
+                        step={step}
+                        label={step === 1 ? (stepOneStage === 'welcome' ? 'Bem-vindo' : 'Conta') : STEP_LABELS[step - 1]}
+                    />
                     {error && <ErrorBanner msg={error} />}
                     <StepContent
                         step={step} form={form} set={set} toggleArr={toggleArr}
@@ -651,6 +661,8 @@ export function OnboardingV2() {
                         qrCode={qrCode} wsStatus={wsStatus} wsTtl={wsTtl}
                         connectWhatsApp={connectWhatsApp} navigate={navigate}
                         retryActivation={handleActivateAgent}
+                        stepOneStage={stepOneStage}
+                        setStepOneStage={setStepOneStage}
                         improvementSelected={improvementSelected}
                         setImprovementSelected={setImprovementSelected}
                         improvementDetail={improvementDetail}
@@ -668,7 +680,7 @@ export function OnboardingV2() {
 // ── Step Content ───────────────────────────────────────────────────────────────
 function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleCurrencyBlur, handleCurrencyFocus, next, loading, go, files, setFiles,
     chatMessages, chatInput, setChatInput, sendChat, chatLoading, msgsUsed, chatEndRef,
-    pipelineVisible, qrCode, wsStatus, wsTtl, connectWhatsApp, navigate, retryActivation,
+    pipelineVisible, qrCode, wsStatus, wsTtl, connectWhatsApp, navigate, retryActivation, stepOneStage, setStepOneStage,
     improvementSelected, setImprovementSelected, improvementDetail, setImprovementDetail,
     improvementSending, setImprovementSending, token }: any) {
 
@@ -686,7 +698,7 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
 
     const selectedIndustry = INDUSTRIES.find(i => i.v === form.industry);
 
-    if (step === 1) return (
+    if (step === 1 && stepOneStage === 'account') return (
         <div className="space-y-5 animate-fade-in">
             <div className="text-center">
                 <div className="w-20 h-20 bg-gradient-to-br from-[#FF4C00]/20 to-[#FF6A30]/10 rounded-3xl flex items-center justify-center mx-auto border border-[#FF4C00]/20">
@@ -741,7 +753,7 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
         </div>
     );
 
-    if (step === 101) return (
+    if (step === 1) return (
         <div className="text-center space-y-6 animate-fade-in mt-10 sm:mt-16 min-w-0">
             <div className="w-24 h-24 bg-gradient-to-br from-[#FF4C00]/20 to-[#FF6A30]/10 rounded-3xl flex items-center justify-center mx-auto border border-[#FF4C00]/20">
                 <Rocket className="w-12 h-12 text-[#FF4C00]" />
@@ -767,7 +779,7 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                     </div>
                 ))}
             </div>
-            <NextBtn onClick={next} label="Iniciar Ativação" />
+            <NextBtn onClick={() => setStepOneStage('account')} label="Ir para cadastro" />
             <p className="text-xs text-gray-400">Sem cartão de crédito · Grátis para começar</p>
         </div>
     );
