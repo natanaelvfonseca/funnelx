@@ -644,10 +644,12 @@ export function OnboardingV2() {
                             wordSize={29}
                         />
                     </div>
-                    <MobileProgress
-                        step={step}
-                        label={step === 1 ? (stepOneStage === 'welcome' ? 'Bem-vindo' : 'Conta') : STEP_LABELS[step - 1]}
-                    />
+                    {!(step === 1 && stepOneStage === 'welcome') && (
+                        <MobileProgress
+                            step={step}
+                            label={step === 1 ? (stepOneStage === 'welcome' ? 'Bem-vindo' : 'Conta') : STEP_LABELS[step - 1]}
+                        />
+                    )}
                     {error && <ErrorBanner msg={error} />}
                     <StepContent
                         step={step} form={form} set={set} toggleArr={toggleArr}
@@ -755,13 +757,26 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
 
     if (step === 1) return (
         <div className="text-center space-y-6 animate-fade-in mt-10 sm:mt-16 min-w-0">
+            <style>{`
+                @keyframes kogna-icon-float {
+                    0%, 100% { transform: translateY(0px); }
+                    50% { transform: translateY(-4px); }
+                }
+            `}</style>
             <div className="w-24 h-24 bg-gradient-to-br from-[#FF4C00]/20 to-[#FF6A30]/10 rounded-3xl flex items-center justify-center mx-auto border border-[#FF4C00]/20">
                 <Rocket className="w-12 h-12 text-[#FF4C00]" />
             </div>
             <div>
                 <p className="text-xs font-bold text-[#FF4C00] uppercase tracking-widest mb-3">ATIVA&Ccedil;&Atilde;O KOGNA</p>
-                <h1 className="text-4xl font-bold text-gray-900 leading-tight">Seu WhatsApp est&aacute; perdendo vendas todos os dias.</h1>
-                <p className="text-gray-500 mt-4 text-lg leading-relaxed max-w-md mx-auto">
+                <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 leading-[0.95] tracking-tight">
+                    <span className="block whitespace-nowrap">Seu WhatsApp est&aacute;</span>
+                    <span className="block whitespace-nowrap uppercase">PERDENDO VENDAS</span>
+                    <span className="block whitespace-nowrap">todos os dias.</span>
+                </h1>
+                <p
+                    className="text-gray-500 mt-4 text-lg leading-relaxed max-w-md mx-auto"
+                    style={{ textShadow: '0 0 16px rgba(255, 106, 48, 0.16), 0 0 38px rgba(255, 76, 0, 0.12)' }}
+                >
                     A Kogna transforma suas conversas em oportunidades reais, respondendo, qualificando e conduzindo clientes automaticamente.
                 </p>
             </div>
@@ -773,9 +788,16 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                     { icon: Brain, t: 'Criar sua IA de atendimento e vendas' },
                     { icon: GitBranch, t: 'Organizar seus leads sem esfor&ccedil;o' },
                     { icon: MessageSquare, t: 'Come&ccedil;ar a recuperar clientes perdidos' },
-                ].map(({ icon: Icon, t }) => (
+                ].map(({ icon: Icon, t }, index) => (
                     <div key={t} className="flex items-center gap-3 text-sm text-gray-600">
-                        <div className="w-7 h-7 rounded-lg bg-[#FF4C00]/15 border border-[#FF4C00]/20 flex items-center justify-center shrink-0">
+                        <div
+                            className="w-7 h-7 rounded-lg bg-[#FF4C00]/15 border border-[#FF4C00]/20 flex items-center justify-center shrink-0"
+                            style={{
+                                animation: 'kogna-icon-float 3.2s ease-in-out infinite',
+                                animationDelay: `${index * 0.35}s`,
+                                willChange: 'transform',
+                            }}
+                        >
                             <Icon className="w-3.5 h-3.5 text-[#FF4C00]" />
                         </div>
                         {t}
