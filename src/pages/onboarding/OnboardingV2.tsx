@@ -54,6 +54,40 @@ const EMPTY_FORM: FormData = {
 };
 
 const TOTAL_STEPS = 18;
+type MetaPixelMethod = 'track' | 'trackCustom';
+
+function trackMetaPixelOnce(key: string, method: MetaPixelMethod, eventName: string, dedupeWindowMs = 1500) {
+    if (typeof window === 'undefined') return false;
+
+    const trackingWindow = window as Window & {
+        fbq?: (...args: unknown[]) => void;
+        __kognaMetaTrackedEvents?: Record<string, number>;
+    };
+
+    if (typeof trackingWindow.fbq !== 'function') {
+        return false;
+    }
+
+    const now = Date.now();
+    const trackedEvents = trackingWindow.__kognaMetaTrackedEvents || (trackingWindow.__kognaMetaTrackedEvents = {});
+    const lastTrackedAt = trackedEvents[key] || 0;
+
+    if (now - lastTrackedAt < dedupeWindowMs) {
+        return false;
+    }
+
+    trackedEvents[key] = now;
+    trackingWindow.fbq(method, eventName);
+    return true;
+}
+
+function WelcomeMetaPixelTracker() {
+    useEffect(() => {
+        trackMetaPixelOnce('onboarding-welcome-view-content', 'track', 'ViewContent');
+    }, []);
+
+    return null;
+}
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
@@ -367,6 +401,7 @@ export function OnboardingV2() {
             localStorage.setItem('kogna_user', JSON.stringify(data.user));
             token.current = data.token;
             setAccountReady(true);
+            trackMetaPixelOnce('onboarding-complete-registration', 'track', 'CompleteRegistration', 30000);
             refreshUser().catch(() => { });
             go(2);
         } catch (e: any) {
@@ -454,6 +489,7 @@ export function OnboardingV2() {
 
             setCreatedAgentId(agentId);
             await uploadKnowledgeFiles(agentId, token.current);
+            trackMetaPixelOnce('onboarding-created-ai', 'trackCustom', 'Created_AI', 30000);
             refreshUser().catch(() => { });
             go(15);
         } catch (e: any) {
@@ -763,6 +799,7 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
 
     if (step === 1) return (
         <div className="text-center space-y-6 animate-fade-in mt-10 sm:mt-16 min-w-0">
+            <WelcomeMetaPixelTracker />
             <style>{`
                 @keyframes kogna-icon-float {
                     0%, 100% { transform: translateY(0px); }
