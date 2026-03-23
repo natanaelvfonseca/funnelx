@@ -26,6 +26,7 @@ interface AdminUser {
     id: string;
     name: string;
     email: string;
+    phone: string | null;
     koins_balance: number;
     created_at: string;
     role: string;
@@ -297,6 +298,7 @@ export function AdminDashboard() {
     const filteredUsers = users.filter((user) =>
         user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.company_name?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
@@ -398,7 +400,7 @@ export function AdminDashboard() {
                                         <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
                                         <input
                                             type="text"
-                                            placeholder="Buscar por cliente, email ou empresa"
+                                            placeholder="Buscar por cliente, email, telefone ou empresa"
                                             value={searchTerm}
                                             onChange={(event) => setSearchTerm(event.target.value)}
                                             className="h-12 w-full rounded-2xl border border-black/[0.06] bg-[#F8F8F8] pl-11 pr-4 text-sm text-text-primary outline-none transition-all focus:border-orange-200 focus:bg-white dark:border-white/[0.08] dark:bg-white/[0.03]"
@@ -425,6 +427,7 @@ export function AdminDashboard() {
                                     <thead className="bg-[#FAFAFA] text-xs font-semibold uppercase tracking-[0.18em] text-text-muted dark:bg-white/[0.03]">
                                         <tr>
                                             <th className="px-6 py-4">Empresa</th>
+                                            <th className="px-6 py-4">Telefone</th>
                                             <th className="px-6 py-4">Plano</th>
                                             <th className="px-6 py-4">Saldo</th>
                                             <th className="px-6 py-4">Cadastro</th>
@@ -439,6 +442,9 @@ export function AdminDashboard() {
                                                         <span className="font-semibold text-text-primary">{user.company_name || 'Sem empresa'}</span>
                                                         <span className="mt-1 text-sm text-text-muted">{user.name} · {user.email}</span>
                                                     </div>
+                                                </td>
+                                                <td className="px-6 py-5 text-sm text-text-muted">
+                                                    {user.phone || 'Sem telefone'}
                                                 </td>
                                                 <td className="px-6 py-5">
                                                     <span className="inline-flex items-center rounded-full border border-black/[0.06] bg-[#F7F7F7] px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-text-muted dark:border-white/[0.08] dark:bg-white/[0.04]">

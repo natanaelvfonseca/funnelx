@@ -8587,6 +8587,7 @@ app.get("/api/admin/users", verifyJWT, verifyAdmin, async (req, res) => {
   try {
     const users = await pool.query(`
             SELECT u.id, u.name, u.email, u.koins_balance, u.created_at, u.role,
+                   COALESCE(NULLIF(u.personal_phone, ''), NULLIF(u.company_phone, '')) AS phone,
                    o.name as company_name, o.plan_type
             FROM users u
             LEFT JOIN organizations o ON u.organization_id = o.id
@@ -14638,6 +14639,7 @@ app.get("/api/admin/users", verifyAdmin, async (req, res) => {
     const result = await pool.query(`
             SELECT 
                 u.id, u.name, u.email, u.koins_balance, u.created_at, u.role,
+                COALESCE(NULLIF(u.personal_phone, ''), NULLIF(u.company_phone, '')) AS phone,
                 o.name as company_name, o.plan_type
             FROM users u
             LEFT JOIN organizations o ON o.id = u.organization_id
