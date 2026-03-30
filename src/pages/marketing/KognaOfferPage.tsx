@@ -32,8 +32,9 @@ export function KognaOfferPage() {
                 <section className="relative flex flex-1 items-center px-4 pb-16 pt-14 sm:px-6 lg:px-8">
                     <div className="mx-auto flex w-full max-w-[90rem] flex-col items-center gap-10 text-center sm:gap-14">
                         <div className="max-w-5xl space-y-6">
-                            <p className="inline-flex items-center rounded-full border border-white/12 bg-white/5 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.38em] text-white/72 shadow-[0_0_40px_rgba(255,255,255,0.06)] backdrop-blur">
-                                Oferta direta | Kogna 2026
+                            <p className="inline-flex items-center rounded-full border border-white/12 bg-white/5 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/72 shadow-[0_0_40px_rgba(255,255,255,0.06)] backdrop-blur sm:text-xs">
+                                O Dossie Meta 2026: O Fim do Atendimento Humano (E a Nova Ciencia das Vendas
+                                Automaticas)
                             </p>
 
                             <h1 className="mx-auto max-w-6xl bg-[linear-gradient(180deg,#f8fafc_0%,#d9dde5_34%,#7d848e_100%)] bg-clip-text font-display text-[clamp(2.55rem,4.1vw,3.95rem)] font-bold leading-[1.02] tracking-[-0.04em] text-transparent">
