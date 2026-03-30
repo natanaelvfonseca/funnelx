@@ -33,8 +33,7 @@ export function KognaOfferPage() {
                     <div className="mx-auto flex w-full max-w-[90rem] flex-col items-center gap-10 text-center sm:gap-14">
                         <div className="max-w-5xl space-y-6">
                             <p className="inline-flex items-center rounded-full border border-white/12 bg-white/5 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/72 shadow-[0_0_40px_rgba(255,255,255,0.06)] backdrop-blur sm:text-xs">
-                                O Dossie Meta 2026: O Fim do Atendimento Humano (E a Nova Ciencia das Vendas
-                                Automaticas)
+                                O Dossie Meta 2026
                             </p>
 
                             <h1 className="mx-auto max-w-6xl bg-[linear-gradient(180deg,#f8fafc_0%,#d9dde5_34%,#7d848e_100%)] bg-clip-text font-display text-[clamp(1.95rem,7.4vw,3.95rem)] font-bold leading-[1.04] tracking-[-0.04em] text-transparent sm:leading-[1.02]">
@@ -44,10 +43,8 @@ export function KognaOfferPage() {
                                 <span className="block lg:whitespace-nowrap">pode multiplicar suas conversoes</span>
                             </h1>
 
-                            <p className="mx-auto max-w-4xl text-sm leading-7 text-white/62 sm:text-base sm:leading-8">
-                                Os dados vazados da pesquisa global mostram por que voce perde vendas todos os dias e
-                                como a Kogna, a primeira "IA Humanizada" do mercado, pode estancar esse vazamento e
-                                transformar conversas em receita no piloto automatico.
+                            <p className="mx-auto max-w-4xl text-base font-semibold leading-7 text-white/74 sm:text-lg sm:leading-8">
+                                O Fim do Atendimento Humano (E a Nova Ciencia das Vendas Automaticas)
                             </p>
                         </div>
 
@@ -103,6 +100,12 @@ export function KognaOfferPage() {
                                     </div>
                                 </div>
                             </div>
+
+                            <p className="mx-auto mt-8 max-w-4xl text-center text-sm leading-7 text-white/62 sm:mt-10 sm:text-base sm:leading-8">
+                                Os dados vazados da pesquisa global mostram por que voce perde vendas todos os dias e
+                                como a Kogna, a primeira "IA Humanizada" do mercado, pode estancar esse vazamento e
+                                transformar conversas em receita no piloto automatico.
+                            </p>
                         </div>
                     </div>
                 </section>
