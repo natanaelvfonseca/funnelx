@@ -31,23 +31,9 @@ export function KognaOfferPage() {
 
                 <section className="relative flex flex-1 items-center px-4 pb-8 pt-6 sm:px-6 sm:pb-10 sm:pt-8 lg:px-8 lg:pb-12">
                     <div className="mx-auto flex w-full max-w-[84rem] flex-col items-center gap-6 text-center sm:gap-8 lg:gap-9">
-                        <div className="max-w-5xl space-y-3 sm:space-y-4">
-                            <p className="inline-flex items-center rounded-full border border-white/12 bg-white/5 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/72 shadow-[0_0_40px_rgba(255,255,255,0.06)] backdrop-blur sm:px-4 sm:py-2 sm:text-[11px]">
-                                O Dossie Meta 2026
-                            </p>
-
-                            <h1 className="mx-auto max-w-5xl bg-[linear-gradient(180deg,#f8fafc_0%,#d9dde5_34%,#7d848e_100%)] bg-clip-text font-display text-[clamp(1.18rem,4.2vw,1.9rem)] font-bold leading-[1.03] tracking-[-0.04em] text-transparent sm:text-[clamp(1.65rem,4.8vw,2.6rem)] lg:text-[clamp(2.22rem,2.8vw,3.35rem)]">
-                                <span className="block lg:whitespace-nowrap">Descubra por que 11.056 consumidores</span>
-                                <span className="block lg:whitespace-nowrap">revelam onde suas vendas estao vazando</span>
-                                <span className="block lg:whitespace-nowrap">e como a primeira "IA Humanizada".</span>
-                                <span className="block lg:whitespace-nowrap">pode multiplicar suas conversoes</span>
-                            </h1>
-
-                            <p className="mx-auto max-w-4xl text-sm font-semibold leading-6 text-white/74 sm:text-base sm:leading-7">
-                                <span className="block">O Fim do Atendimento Humano</span>
-                                <span className="block">(E a Nova Ciencia das Vendas Automaticas)</span>
-                            </p>
-                        </div>
+                        <p className="inline-flex items-center rounded-full border border-white/12 bg-white/5 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/72 shadow-[0_0_40px_rgba(255,255,255,0.06)] backdrop-blur sm:px-4 sm:py-2 sm:text-[11px]">
+                            O Dossie Meta 2026
+                        </p>
 
                         <div className="relative mx-auto w-full max-w-4xl pt-1 sm:pt-2">
                             <div className="pointer-events-none absolute left-1/2 top-1/2 h-[14rem] w-[14rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.22)_0%,rgba(245,121,59,0.2)_28%,rgba(239,68,68,0.12)_46%,transparent_72%)] blur-3xl sm:h-[18rem] sm:w-[18rem]" />
@@ -102,6 +88,21 @@ export function KognaOfferPage() {
                                 </div>
                             </div>
 
+                        </div>
+
+                        <div className="max-w-5xl space-y-3 sm:space-y-4">
+                            <h1 className="mx-auto max-w-5xl bg-[linear-gradient(180deg,#f8fafc_0%,#d9dde5_34%,#7d848e_100%)] bg-clip-text font-display text-[clamp(1.18rem,4.2vw,1.9rem)] font-bold leading-[1.03] tracking-[-0.04em] text-transparent sm:text-[clamp(1.65rem,4.8vw,2.6rem)] lg:text-[clamp(2.22rem,2.8vw,3.35rem)]">
+                                <span className="block lg:whitespace-nowrap">Descubra por que 11.056 consumidores</span>
+                                <span className="block lg:whitespace-nowrap">revelam onde suas vendas estao vazando</span>
+                                <span className="block lg:whitespace-nowrap">e como a primeira "IA Humanizada".</span>
+                                <span className="block lg:whitespace-nowrap">pode multiplicar suas conversoes</span>
+                            </h1>
+
+                            <p className="mx-auto max-w-5xl text-sm font-semibold leading-6 text-white/74 sm:text-base sm:leading-7">
+                                <span className="block lg:inline">O Fim do Atendimento Humano</span>
+                                <span className="hidden lg:inline"> </span>
+                                <span className="block lg:inline">(E a Nova Ciencia das Vendas Automaticas)</span>
+                            </p>
                         </div>
                     </div>
                 </section>
