@@ -36,7 +36,7 @@ export function KognaOfferPage() {
                                 O Dossie Meta 2026
                             </p>
 
-                            <h1 className="mx-auto max-w-6xl bg-[linear-gradient(180deg,#f8fafc_0%,#d9dde5_34%,#7d848e_100%)] bg-clip-text font-display text-[clamp(1.95rem,7.4vw,3.95rem)] font-bold leading-[1.04] tracking-[-0.04em] text-transparent sm:leading-[1.02]">
+                            <h1 className="mx-auto max-w-6xl bg-[linear-gradient(180deg,#f8fafc_0%,#d9dde5_34%,#7d848e_100%)] bg-clip-text font-display text-[clamp(1.36rem,5.2vw,2.76rem)] font-bold leading-[1.04] tracking-[-0.04em] text-transparent sm:text-[clamp(1.95rem,7.4vw,3.95rem)] sm:leading-[1.02]">
                                 <span className="block lg:whitespace-nowrap">Descubra por que 11.056 consumidores</span>
                                 <span className="block lg:whitespace-nowrap">revelam onde suas vendas estao vazando</span>
                                 <span className="block lg:whitespace-nowrap">e como a primeira "IA Humanizada".</span>
