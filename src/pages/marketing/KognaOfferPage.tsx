@@ -30,23 +30,26 @@ export function KognaOfferPage() {
                 </div>
 
                 <section className="relative flex flex-1 items-center px-4 pb-16 pt-14 sm:px-6 lg:px-8">
-                    <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-10 text-center sm:gap-14">
+                    <div className="mx-auto flex w-full max-w-[90rem] flex-col items-center gap-10 text-center sm:gap-14">
                         <div className="max-w-5xl space-y-6">
                             <p className="inline-flex items-center rounded-full border border-white/12 bg-white/5 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.38em] text-white/72 shadow-[0_0_40px_rgba(255,255,255,0.06)] backdrop-blur">
                                 Oferta direta | Kogna 2026
                             </p>
 
-                            <h1 className="mx-auto max-w-5xl bg-[linear-gradient(180deg,#f8fafc_0%,#d9dde5_34%,#7d848e_100%)] bg-clip-text font-display text-4xl font-bold leading-[1.02] text-transparent sm:text-5xl lg:text-7xl">
-                                Descubra os dados vazados da pesquisa global com 11.056 consumidores que provam por
-                                que voce esta perdendo vendas todos os dias - e como a primeira "IA Humanizada" do
-                                mercado pode estancar esse vazamento e multiplicar suas conversoes no piloto
-                                automatico.
+                            <h1 className="mx-auto max-w-6xl bg-[linear-gradient(180deg,#f8fafc_0%,#d9dde5_34%,#7d848e_100%)] bg-clip-text font-display text-[clamp(2.55rem,4.1vw,3.95rem)] font-bold leading-[1.02] tracking-[-0.04em] text-transparent">
+                                Descubra por que 11.056 consumidores
+                                <br className="hidden lg:block" />
+                                revelam onde suas vendas estao vazando
+                                <br className="hidden lg:block" />
+                                e como a primeira "IA Humanizada"
+                                <br className="hidden lg:block" />
+                                pode multiplicar suas conversoes
                             </h1>
 
-                            <p className="mx-auto max-w-3xl text-sm leading-7 text-white/62 sm:text-base sm:leading-8">
-                                Uma estrutura visual de oferta direta para posicionar a Kogna como a resposta mais
-                                rapida para recuperar conversoes perdidas no WhatsApp e transformar conversas em
-                                receita.
+                            <p className="mx-auto max-w-4xl text-sm leading-7 text-white/62 sm:text-base sm:leading-8">
+                                Os dados vazados da pesquisa global mostram por que voce perde vendas todos os dias e
+                                como a Kogna, a primeira "IA Humanizada" do mercado, pode estancar esse vazamento e
+                                transformar conversas em receita no piloto automatico.
                             </p>
                         </div>
 
