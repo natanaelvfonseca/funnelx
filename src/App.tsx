@@ -37,6 +37,7 @@ import { VideoOnboardingMvp } from './pages/admin/VideoOnboardingMvp';
 
 import { ReferralRedirect } from './pages/partners/ReferralRedirect';
 import { GuidedTourProvider } from './components/guided-tour/GuidedTourProvider';
+import { KognaOfferPage } from './pages/marketing/KognaOfferPage';
 
 declare global {
     interface Window {
@@ -73,6 +74,7 @@ function App() {
                     <NotificationProvider>
                         <Routes>
                             <Route path="/p/:code" element={<ReferralRedirect />} />
+                            <Route path="/oferta" element={<KognaOfferPage />} />
                             <Route path="/login" element={<Login />} />
                             <Route path="/register" element={<OnboardingV2 />} />
                             <Route path="/onboarding" element={<Onboarding />} />
