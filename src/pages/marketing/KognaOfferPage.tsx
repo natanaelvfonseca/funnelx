@@ -36,7 +36,7 @@ export function KognaOfferPage() {
                                 O Dossie Meta 2026
                             </p>
 
-                            <h1 className="mx-auto max-w-5xl bg-[linear-gradient(180deg,#f8fafc_0%,#d9dde5_34%,#7d848e_100%)] bg-clip-text font-display text-[clamp(1.18rem,4.2vw,1.9rem)] font-bold leading-[1.03] tracking-[-0.04em] text-transparent sm:text-[clamp(1.65rem,4.8vw,2.6rem)] lg:text-[clamp(2rem,2.55vw,3.05rem)]">
+                            <h1 className="mx-auto max-w-5xl bg-[linear-gradient(180deg,#f8fafc_0%,#d9dde5_34%,#7d848e_100%)] bg-clip-text font-display text-[clamp(1.18rem,4.2vw,1.9rem)] font-bold leading-[1.03] tracking-[-0.04em] text-transparent sm:text-[clamp(1.65rem,4.8vw,2.6rem)] lg:text-[clamp(2.22rem,2.8vw,3.35rem)]">
                                 <span className="block lg:whitespace-nowrap">Descubra por que 11.056 consumidores</span>
                                 <span className="block lg:whitespace-nowrap">revelam onde suas vendas estao vazando</span>
                                 <span className="block lg:whitespace-nowrap">e como a primeira "IA Humanizada".</span>
@@ -44,7 +44,8 @@ export function KognaOfferPage() {
                             </h1>
 
                             <p className="mx-auto max-w-4xl text-sm font-semibold leading-6 text-white/74 sm:text-base sm:leading-7">
-                                O Fim do Atendimento Humano (E a Nova Ciencia das Vendas Automaticas)
+                                <span className="block">O Fim do Atendimento Humano</span>
+                                <span className="block">(E a Nova Ciencia das Vendas Automaticas)</span>
                             </p>
                         </div>
 
@@ -101,11 +102,6 @@ export function KognaOfferPage() {
                                 </div>
                             </div>
 
-                            <p className="mx-auto mt-5 max-w-4xl text-center text-xs leading-6 text-white/62 sm:mt-6 sm:text-sm sm:leading-7">
-                                Os dados vazados da pesquisa global mostram por que voce perde vendas todos os dias e
-                                como a Kogna, a primeira "IA Humanizada" do mercado, pode estancar esse vazamento e
-                                transformar conversas em receita no piloto automatico.
-                            </p>
                         </div>
                     </div>
                 </section>
