@@ -37,14 +37,11 @@ export function KognaOfferPage() {
                                 Automaticas)
                             </p>
 
-                            <h1 className="mx-auto max-w-6xl bg-[linear-gradient(180deg,#f8fafc_0%,#d9dde5_34%,#7d848e_100%)] bg-clip-text font-display text-[clamp(2.55rem,4.1vw,3.95rem)] font-bold leading-[1.02] tracking-[-0.04em] text-transparent">
-                                Descubra por que 11.056 consumidores
-                                <br className="hidden lg:block" />
-                                revelam onde suas vendas estao vazando
-                                <br className="hidden lg:block" />
-                                e como a primeira "IA Humanizada"
-                                <br className="hidden lg:block" />
-                                pode multiplicar suas conversoes
+                            <h1 className="mx-auto max-w-6xl bg-[linear-gradient(180deg,#f8fafc_0%,#d9dde5_34%,#7d848e_100%)] bg-clip-text font-display text-[clamp(1.95rem,7.4vw,3.95rem)] font-bold leading-[1.04] tracking-[-0.04em] text-transparent sm:leading-[1.02]">
+                                <span className="block lg:whitespace-nowrap">Descubra por que 11.056 consumidores</span>
+                                <span className="block lg:whitespace-nowrap">revelam onde suas vendas estao vazando</span>
+                                <span className="block lg:whitespace-nowrap">e como a primeira "IA Humanizada".</span>
+                                <span className="block lg:whitespace-nowrap">pode multiplicar suas conversoes</span>
                             </h1>
 
                             <p className="mx-auto max-w-4xl text-sm leading-7 text-white/62 sm:text-base sm:leading-8">
