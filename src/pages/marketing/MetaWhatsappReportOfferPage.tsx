@@ -196,30 +196,29 @@ export function MetaWhatsappReportOfferPage() {
                             O que voce vai entender nesta analise
                         </p>
 
-                        <div className="mt-5 space-y-5 pb-4">
+                        <div className="mt-5 pb-10">
                             {mobileStoryCards.map(
                                 ({ eyebrow, title, description, icon: Icon, contextTitle, contextDescription, showAction }, index) => (
-                                    <article
-                                        key={title}
-                                        className="sticky top-4 flex min-h-[72vh] flex-col rounded-[32px] border border-[#d6e0ee] bg-white/94 p-6 shadow-[0_30px_90px_rgba(59,89,152,0.10)]"
-                                        style={{ zIndex: index + 1 }}
-                                    >
-                                        <div>
-                                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#4267b2]">
-                                                <Icon className="h-5 w-5" />
+                                    <div key={title} className={index === 0 ? 'relative' : 'relative -mt-24'}>
+                                        <article
+                                            className="sticky flex flex-col rounded-[32px] border border-[#d6e0ee] bg-white/96 p-6 shadow-[0_30px_90px_rgba(59,89,152,0.10)]"
+                                            style={{ zIndex: index + 1, top: `${16 + index * 14}px` }}
+                                        >
+                                            <div>
+                                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#4267b2]">
+                                                    <Icon className="h-5 w-5" />
+                                                </div>
+                                                <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#617492]">
+                                                    {eyebrow}
+                                                </p>
+                                                <h3 className="mt-2 text-[1.75rem] font-semibold leading-[1.05] tracking-[-0.04em] text-[#1f2d48]">
+                                                    {title}
+                                                </h3>
+                                                <p className="mt-4 text-sm leading-6 text-[#53657f]">{description}</p>
                                             </div>
-                                            <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#617492]">
-                                                {eyebrow}
-                                            </p>
-                                            <h3 className="mt-2 text-[1.75rem] font-semibold leading-[1.05] tracking-[-0.04em] text-[#1f2d48]">
-                                                {title}
-                                            </h3>
-                                            <p className="mt-4 text-sm leading-6 text-[#53657f]">{description}</p>
-                                        </div>
 
-                                        {showAction ? (
-                                            <div className="mt-auto pt-6">
-                                                <div className="rounded-[28px] border border-[#d4deec] bg-[linear-gradient(135deg,#f7faff_0%,#edf3ff_55%,#e6eefc_100%)] p-5 shadow-[0_18px_40px_rgba(59,89,152,0.08)]">
+                                            {showAction ? (
+                                                <div className="mt-8 rounded-[28px] border border-[#d4deec] bg-[linear-gradient(135deg,#f7faff_0%,#edf3ff_55%,#e6eefc_100%)] p-5 shadow-[0_18px_40px_rgba(59,89,152,0.08)]">
                                                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#607492]">
                                                         Contexto estrategico
                                                     </p>
@@ -240,13 +239,13 @@ export function MetaWhatsappReportOfferPage() {
                                                         Material independente. Sem afiliacao oficial com a Meta.
                                                     </p>
                                                 </div>
-                                            </div>
-                                        ) : (
-                                            <div className="mt-auto pt-6">
-                                                <div className="h-[3px] w-14 rounded-full bg-[#4267b2]/25" />
-                                            </div>
-                                        )}
-                                    </article>
+                                            ) : (
+                                                <div className="mt-8">
+                                                    <div className="h-[3px] w-14 rounded-full bg-[#4267b2]/25" />
+                                                </div>
+                                            )}
+                                        </article>
+                                    </div>
                                 ),
                             )}
                         </div>
