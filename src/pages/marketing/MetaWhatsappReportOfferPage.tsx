@@ -81,7 +81,7 @@ export function MetaWhatsappReportOfferPage() {
             </div>
 
             <div className="relative z-10">
-                <div className="border-b border-[#d7dfec] bg-[#3b5998] text-white shadow-[0_20px_50px_rgba(59,89,152,0.18)]">
+                <div className="border-b border-[#8ee0b6] bg-[#25d366] text-white shadow-[0_20px_50px_rgba(37,211,102,0.22)]">
                     <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-6 gap-y-2 px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.18em] sm:px-6">
                         <span>Briefing 2026</span>
                         <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:block" />
