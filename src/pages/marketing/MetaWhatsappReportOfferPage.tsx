@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from 'react';
 import {
     ArrowRight,
     FileText,
@@ -87,60 +86,8 @@ function toEmbedUrl(rawUrl: string) {
 }
 
 export function MetaWhatsappReportOfferPage() {
-    const mobileStoryRef = useRef<HTMLElement | null>(null);
     const videoEmbedUrl = toEmbedUrl(analysisVideoUrl);
     const isDirectVideo = videoEmbedUrl.endsWith('.mp4');
-    const [activeMobileCard, setActiveMobileCard] = useState(0);
-
-    useEffect(() => {
-        let frameId = 0;
-
-        const updateActiveCard = () => {
-            frameId = 0;
-
-            if (window.innerWidth >= 768) {
-                setActiveMobileCard(0);
-                return;
-            }
-
-            const section = mobileStoryRef.current;
-            if (!section) return;
-
-            const rect = section.getBoundingClientRect();
-            const totalScrollable = rect.height - window.innerHeight;
-
-            if (totalScrollable <= 0) {
-                setActiveMobileCard(0);
-                return;
-            }
-
-            const scrolled = Math.min(Math.max(-rect.top, 0), totalScrollable);
-            const progress = scrolled / totalScrollable;
-            const nextIndex = Math.min(
-                mobileStoryCards.length - 1,
-                Math.floor(progress * mobileStoryCards.length),
-            );
-
-            setActiveMobileCard(nextIndex);
-        };
-
-        const requestUpdate = () => {
-            if (frameId) return;
-            frameId = window.requestAnimationFrame(updateActiveCard);
-        };
-
-        requestUpdate();
-        window.addEventListener('scroll', requestUpdate, { passive: true });
-        window.addEventListener('resize', requestUpdate);
-
-        return () => {
-            if (frameId) {
-                window.cancelAnimationFrame(frameId);
-            }
-            window.removeEventListener('scroll', requestUpdate);
-            window.removeEventListener('resize', requestUpdate);
-        };
-    }, []);
 
     return (
         <main className="relative min-h-screen overflow-hidden bg-[#eef2f7] text-[#18263f]">
@@ -241,90 +188,65 @@ export function MetaWhatsappReportOfferPage() {
                     </div>
                 </section>
 
-                <section ref={mobileStoryRef} className="px-4 pb-8 md:hidden">
+                <section className="px-4 pb-12 md:hidden">
                     <div className="mx-auto max-w-md">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#607492]">
                             O que voce vai entender nesta analise
                         </p>
 
-                        <div className="mt-5" style={{ height: `${mobileStoryCards.length * 88}vh` }}>
-                            <div className="sticky top-4 h-[78vh] min-h-[32rem]">
-                                <div className="relative h-full">
-                                    {mobileStoryCards.map(
-                                        (
-                                            { eyebrow, title, description, icon: Icon, contextTitle, contextDescription, showAction },
-                                            index,
-                                        ) => {
-                                            const isActive = index === activeMobileCard;
-                                            const isPassed = index < activeMobileCard;
-                                            const isUpcoming = index > activeMobileCard;
+                        <div className="mt-5 space-y-5 pb-4">
+                            {mobileStoryCards.map(
+                                ({ eyebrow, title, description, icon: Icon, contextTitle, contextDescription, showAction }, index) => (
+                                    <article
+                                        key={title}
+                                        className="sticky top-4 flex min-h-[72vh] flex-col rounded-[32px] border border-[#d6e0ee] bg-white/94 p-6 shadow-[0_30px_90px_rgba(59,89,152,0.10)]"
+                                        style={{ zIndex: index + 1 }}
+                                    >
+                                        <div>
+                                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#4267b2]">
+                                                <Icon className="h-5 w-5" />
+                                            </div>
+                                            <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#617492]">
+                                                {eyebrow}
+                                            </p>
+                                            <h3 className="mt-2 text-[1.75rem] font-semibold leading-[1.05] tracking-[-0.04em] text-[#1f2d48]">
+                                                {title}
+                                            </h3>
+                                            <p className="mt-4 text-sm leading-6 text-[#53657f]">{description}</p>
+                                        </div>
 
-                                            return (
-                                                <article
-                                                    key={title}
-                                                    className="absolute inset-0 flex flex-col rounded-[32px] border border-[#d6e0ee] bg-white/94 p-6 shadow-[0_30px_90px_rgba(59,89,152,0.10)] transition-[transform,opacity,filter] duration-500 ease-out"
-                                                    style={{
-                                                        zIndex: index + 1,
-                                                        opacity: isActive ? 1 : isPassed ? 0.32 : 0,
-                                                        transform: isActive
-                                                            ? 'translate3d(0,0,0) scale(1)'
-                                                            : isPassed
-                                                                ? 'translate3d(0,-16px,0) scale(0.965)'
-                                                                : isUpcoming
-                                                                    ? 'translate3d(0,30px,0) scale(0.985)'
-                                                                    : 'translate3d(0,0,0) scale(1)',
-                                                        filter: isActive ? 'blur(0px)' : isPassed ? 'blur(0.4px)' : 'blur(2px)',
-                                                        pointerEvents: isActive ? 'auto' : 'none',
-                                                    }}
-                                                >
-                                                    <div>
-                                                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#4267b2]">
-                                                            <Icon className="h-5 w-5" />
-                                                        </div>
-                                                        <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#617492]">
-                                                            {eyebrow}
-                                                        </p>
-                                                        <h3 className="mt-2 text-[1.75rem] font-semibold leading-[1.05] tracking-[-0.04em] text-[#1f2d48]">
-                                                            {title}
-                                                        </h3>
-                                                        <p className="mt-4 text-sm leading-6 text-[#53657f]">
-                                                            {description}
-                                                        </p>
-                                                    </div>
-
-                                                    {showAction ? (
-                                                        <div className="mt-6 rounded-[28px] border border-[#d4deec] bg-[linear-gradient(135deg,#f7faff_0%,#edf3ff_55%,#e6eefc_100%)] p-5 shadow-[0_18px_40px_rgba(59,89,152,0.08)]">
-                                                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#607492]">
-                                                                Contexto estrategico
-                                                            </p>
-                                                            <h4 className="mt-3 text-2xl font-semibold leading-tight tracking-[-0.03em] text-[#20304b]">
-                                                                {contextTitle}
-                                                            </h4>
-                                                            <p className="mt-3 text-sm leading-6 text-[#52657f]">
-                                                                {contextDescription}
-                                                            </p>
-                                                            <a
-                                                                href="#analysis-video"
-                                                                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#4267b2] px-5 py-3.5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(66,103,178,0.24)] transition hover:bg-[#365899]"
-                                                            >
-                                                                Assistir a analise agora
-                                                                <ArrowRight className="h-4 w-4" />
-                                                            </a>
-                                                            <p className="mt-4 text-center text-xs leading-6 text-[#687892]">
-                                                                Material independente. Sem afiliacao oficial com a Meta.
-                                                            </p>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="mt-auto pt-6">
-                                                            <div className="h-[3px] w-14 rounded-full bg-[#4267b2]/25" />
-                                                        </div>
-                                                    )}
-                                                </article>
-                                            );
-                                        },
-                                    )}
-                                </div>
-                            </div>
+                                        {showAction ? (
+                                            <div className="mt-auto pt-6">
+                                                <div className="rounded-[28px] border border-[#d4deec] bg-[linear-gradient(135deg,#f7faff_0%,#edf3ff_55%,#e6eefc_100%)] p-5 shadow-[0_18px_40px_rgba(59,89,152,0.08)]">
+                                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#607492]">
+                                                        Contexto estrategico
+                                                    </p>
+                                                    <h4 className="mt-3 text-2xl font-semibold leading-tight tracking-[-0.03em] text-[#20304b]">
+                                                        {contextTitle}
+                                                    </h4>
+                                                    <p className="mt-3 text-sm leading-6 text-[#52657f]">
+                                                        {contextDescription}
+                                                    </p>
+                                                    <a
+                                                        href="#analysis-video"
+                                                        className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#4267b2] px-5 py-3.5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(66,103,178,0.24)] transition hover:bg-[#365899]"
+                                                    >
+                                                        Assistir a analise agora
+                                                        <ArrowRight className="h-4 w-4" />
+                                                    </a>
+                                                    <p className="mt-4 text-center text-xs leading-6 text-[#687892]">
+                                                        Material independente. Sem afiliacao oficial com a Meta.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="mt-auto pt-6">
+                                                <div className="h-[3px] w-14 rounded-full bg-[#4267b2]/25" />
+                                            </div>
+                                        )}
+                                    </article>
+                                ),
+                            )}
                         </div>
                     </div>
                 </section>
