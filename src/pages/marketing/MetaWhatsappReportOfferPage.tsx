@@ -107,24 +107,10 @@ export function MetaWhatsappReportOfferPage() {
                             tornar um canal de descoberta, confianca e decisao.
                         </p>
 
-                        <a
-                            href="#analysis-video"
-                            className="mt-7 inline-flex items-center justify-center gap-2 rounded-2xl bg-[#4267b2] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(66,103,178,0.28)] transition hover:bg-[#365899]"
-                        >
-                            Assistir a analise
-                            <ArrowRight className="h-4 w-4" />
-                        </a>
-
-                        <p className="mt-3 text-sm text-[#5f7393]">Direto ao ponto. Sem cadastro. Sem enrolacao.</p>
                     </div>
 
                     <div className="mx-auto mt-8 max-w-6xl">
-                        <p className="mx-auto max-w-3xl text-center text-sm leading-6 text-[#53657f] sm:text-base">
-                            Uma leitura pratica sobre a mudanca de comportamento dos consumidores dentro do WhatsApp e
-                            o que isso significa para empresas que querem vender melhor.
-                        </p>
-
-                        <div className="meta-report-float relative mx-auto mt-5 w-full max-w-[70rem]">
+                        <div className="meta-report-float relative mx-auto w-full max-w-[70rem]">
                             <div className="absolute inset-x-10 top-10 h-full rounded-[32px] bg-[#d5def0] shadow-[0_34px_90px_rgba(59,89,152,0.12)]" />
                             <div className="absolute inset-x-6 top-5 h-full rounded-[32px] border border-[#d8e2f0] bg-white/80 shadow-[0_28px_80px_rgba(59,89,152,0.12)]" />
 
