@@ -90,7 +90,7 @@ export function MetaWhatsappReportOfferPage() {
     const isDirectVideo = videoEmbedUrl.endsWith('.mp4');
 
     return (
-        <main className="relative min-h-screen overflow-hidden bg-[#eef2f7] text-[#18263f]">
+        <main className="relative min-h-screen overflow-x-hidden bg-[#eef2f7] text-[#18263f]">
             <div className="pointer-events-none absolute inset-0">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,89,152,0.18),transparent_28%),radial-gradient(circle_at_top_right,rgba(66,103,178,0.14),transparent_30%),linear-gradient(180deg,#f8fbff_0%,#eef2f7_48%,#e9eef7_100%)]" />
                 <div className="meta-classic-grid absolute inset-0 opacity-70" />
@@ -157,17 +157,19 @@ export function MetaWhatsappReportOfferPage() {
                                             />
                                         )
                                     ) : (
-                                        <div className="relative flex aspect-[1.08] min-h-[20rem] items-center justify-center px-5 pb-6 pt-14 text-center sm:aspect-video sm:min-h-0 sm:px-6 sm:pb-0 sm:pt-0">
+                                        <div className="relative aspect-[1.08] min-h-[20rem] overflow-hidden text-center sm:aspect-video sm:min-h-0">
                                             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.1),transparent_42%),linear-gradient(135deg,rgba(255,255,255,0.05),transparent_42%,rgba(255,255,255,0.03)_100%)]" />
                                             <div className="absolute inset-x-0 top-0 flex items-center justify-between border-b border-white/10 bg-black/25 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50 sm:px-6 sm:text-[11px]">
                                                 <span>Analise em video</span>
                                                 <span>Research Interface</span>
                                             </div>
-                                            <div className="relative z-10 flex max-w-xl -translate-y-2 flex-col items-center gap-4 sm:translate-y-0">
-                                                <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/16 bg-white/10 shadow-[0_0_40px_rgba(255,255,255,0.12)] backdrop-blur sm:h-20 sm:w-20">
+                                            <div className="absolute inset-0 z-10 flex items-center justify-center px-5 pt-10">
+                                                <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/20 bg-white/8 shadow-[0_0_40px_rgba(255,255,255,0.10)] backdrop-blur sm:h-20 sm:w-20">
                                                     <Play className="h-7 w-7 translate-x-[1px] fill-white text-white sm:h-8 sm:w-8" />
                                                 </div>
-                                                <div className="space-y-2">
+                                            </div>
+                                            <div className="absolute inset-x-0 bottom-0 z-10 bg-[linear-gradient(180deg,rgba(8,12,22,0)_0%,rgba(8,12,22,0.38)_24%,rgba(8,12,22,0.88)_100%)] px-5 pb-6 pt-16 sm:px-8 sm:pb-8">
+                                                <div className="mx-auto max-w-xl space-y-2">
                                                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/68">
                                                         Analise central
                                                     </p>

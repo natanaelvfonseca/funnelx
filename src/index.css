@@ -215,6 +215,16 @@
   }
 }
 
+@media (max-width: 767px) {
+  .meta-report-float {
+    animation: none;
+  }
+
+  .meta-paper-shine::after {
+    display: none;
+  }
+}
+
 @keyframes offer-grid-drift {
   from {
     background-position: 0 0, 0 0;
