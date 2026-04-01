@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react';
+
 import {
     ArrowRight,
     FileText,
@@ -86,8 +88,41 @@ function toEmbedUrl(rawUrl: string) {
 }
 
 export function MetaWhatsappReportOfferPage() {
+    const cardsRegionRef = useRef<HTMLDivElement | null>(null);
     const videoEmbedUrl = toEmbedUrl(analysisVideoUrl);
     const isDirectVideo = videoEmbedUrl.endsWith('.mp4');
+
+    useEffect(() => {
+        const region = cardsRegionRef.current;
+        if (!region) return;
+
+        const cards = Array.from(region.querySelectorAll<HTMLElement>('[data-reveal-card]'));
+        if (!cards.length) return;
+
+        if (!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            cards.forEach((card) => card.classList.add('revealed'));
+            return;
+        }
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    if (!entry.isIntersecting) return;
+
+                    entry.target.classList.add('revealed');
+                    observer.unobserve(entry.target);
+                });
+            },
+            {
+                threshold: 0.18,
+                rootMargin: '0px 0px -10% 0px',
+            },
+        );
+
+        cards.forEach((card) => observer.observe(card));
+
+        return () => observer.disconnect();
+    }, []);
 
     return (
         <main className="relative min-h-screen overflow-x-hidden bg-[#eef2f7] text-[#18263f]">
@@ -190,19 +225,21 @@ export function MetaWhatsappReportOfferPage() {
                     </div>
                 </section>
 
-                <section className="px-4 pb-12 md:hidden">
-                    <div className="mx-auto max-w-md">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#607492]">
-                            O que voce vai entender nesta analise
-                        </p>
+                <div ref={cardsRegionRef}>
+                    <section className="px-4 pb-12 md:hidden">
+                        <div className="mx-auto max-w-md">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#607492]">
+                                O que voce vai entender nesta analise
+                            </p>
 
-                        <div className="mt-5 pb-10">
-                            {mobileStoryCards.map(
-                                ({ eyebrow, title, description, icon: Icon, contextTitle, contextDescription, showAction }, index) => (
-                                    <div key={title} className={index === 0 ? 'relative' : 'relative -mt-24'}>
+                            <div className="mt-5 grid gap-4 pb-10">
+                                {mobileStoryCards.map(
+                                    ({ eyebrow, title, description, icon: Icon, contextTitle, contextDescription, showAction }, index) => (
                                         <article
-                                            className="sticky flex flex-col rounded-[32px] border border-[#d6e0ee] bg-white/96 p-6 shadow-[0_30px_90px_rgba(59,89,152,0.10)]"
-                                            style={{ zIndex: index + 1, top: `${16 + index * 14}px` }}
+                                            data-reveal-card
+                                            key={title}
+                                            className="reveal-card flex flex-col rounded-[32px] border border-[#d6e0ee] bg-white/96 p-6 shadow-[0_30px_90px_rgba(59,89,152,0.10)]"
+                                            style={{ transitionDelay: `${index * 90}ms` }}
                                         >
                                             <div>
                                                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#4267b2]">
@@ -245,42 +282,44 @@ export function MetaWhatsappReportOfferPage() {
                                                 </div>
                                             )}
                                         </article>
-                                    </div>
-                                ),
-                            )}
+                                    ),
+                                )}
+                            </div>
                         </div>
-                    </div>
-                </section>
+                    </section>
 
-                <section className="hidden px-4 pb-8 md:block md:px-6 lg:px-8">
-                    <div className="mx-auto max-w-6xl">
-                        <div className="max-w-2xl">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#607492]">
-                                O que voce vai entender nesta analise
-                            </p>
-                        </div>
+                    <section className="hidden px-4 pb-8 md:block md:px-6 lg:px-8">
+                        <div className="mx-auto max-w-6xl">
+                            <div className="max-w-2xl">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#607492]">
+                                    O que voce vai entender nesta analise
+                                </p>
+                            </div>
 
-                        <div className="mt-5 grid gap-3 sm:gap-4 md:grid-cols-3">
-                            {reasonsToWatch.map(({ eyebrow, title, description, icon: Icon }) => (
-                                <article
-                                    key={title}
-                                    className="rounded-[28px] border border-[#d6e0ee] bg-white/92 p-5 shadow-[0_18px_50px_rgba(59,89,152,0.08)]"
-                                >
-                                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#4267b2]">
-                                        <Icon className="h-5 w-5" />
-                                    </div>
-                                    <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#617492]">
-                                        {eyebrow}
-                                    </p>
-                                    <h3 className="mt-2 text-xl font-semibold leading-tight tracking-[-0.03em] text-[#1f2d48]">
-                                        {title}
-                                    </h3>
-                                    <p className="mt-3 text-sm leading-6 text-[#53657f]">{description}</p>
-                                </article>
-                            ))}
+                            <div className="mt-5 grid gap-3 sm:gap-4 md:grid-cols-3">
+                                {reasonsToWatch.map(({ eyebrow, title, description, icon: Icon }, index) => (
+                                    <article
+                                        data-reveal-card
+                                        key={title}
+                                        className="reveal-card rounded-[28px] border border-[#d6e0ee] bg-white/92 p-5 shadow-[0_18px_50px_rgba(59,89,152,0.08)]"
+                                        style={{ transitionDelay: `${index * 90}ms` }}
+                                    >
+                                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eaf1ff] text-[#4267b2]">
+                                            <Icon className="h-5 w-5" />
+                                        </div>
+                                        <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#617492]">
+                                            {eyebrow}
+                                        </p>
+                                        <h3 className="mt-2 text-xl font-semibold leading-tight tracking-[-0.03em] text-[#1f2d48]">
+                                            {title}
+                                        </h3>
+                                        <p className="mt-3 text-sm leading-6 text-[#53657f]">{description}</p>
+                                    </article>
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                </section>
+                    </section>
+                </div>
 
                 <section className="hidden px-4 pb-10 md:block md:px-6 lg:px-8">
                     <div className="mx-auto max-w-5xl rounded-[34px] border border-[#d4deec] bg-[linear-gradient(135deg,#f7faff_0%,#edf3ff_55%,#e6eefc_100%)] p-6 shadow-[0_24px_70px_rgba(59,89,152,0.10)] sm:p-8">
