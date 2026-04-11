@@ -14,7 +14,7 @@ export function ReferralRedirect() {
             }
 
             // 1. Save locally so the registration form can pick it up
-            localStorage.setItem('kogna_affiliate_data', JSON.stringify({
+            localStorage.setItem('funnelx_affiliate_data', JSON.stringify({
                 code: code,
                 timestamp: Date.now()
             }));

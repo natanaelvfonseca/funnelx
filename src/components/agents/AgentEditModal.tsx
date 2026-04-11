@@ -207,7 +207,7 @@ function ObjectionEditor({
 
 export default function AgentEditModal({ agent, initialSection = 'strategy', isOpen, onClose, onUpdate }: AgentEditModalProps) {
     const { token } = useAuth();
-    const authToken = token || localStorage.getItem('kogna_token') || '';
+    const authToken = token || localStorage.getItem('funnelx_token') || '';
     const [activeSection, setActiveSection] = useState<AgentSection>('strategy');
     const [companyProfile, setCompanyProfile] = useState<CompanyProfileData>(EMPTY_COMPANY_PROFILE);
     const [advancedInstructions, setAdvancedInstructions] = useState(agent.advanced_instructions || '');

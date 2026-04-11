@@ -67,8 +67,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             // Success
-            localStorage.setItem('kogna_token', data.token);
-            localStorage.setItem('kogna_user', JSON.stringify(data.user));
+            localStorage.setItem('funnelx_token', data.token);
+            localStorage.setItem('funnelx_user', JSON.stringify(data.user));
             setToken(data.token);
             setUser(data.user);
 
@@ -103,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Check for affiliate code
             let affiliateCode = undefined;
             try {
-                const storedAffiliate = localStorage.getItem('kogna_affiliate_data');
+                const storedAffiliate = localStorage.getItem('funnelx_affiliate_data');
                 if (storedAffiliate) {
                     const data = JSON.parse(storedAffiliate);
                     // Optional: check expiration (e.g. 30 days) if needed
@@ -127,10 +127,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             // Registration successful! Clear affiliate data
-            localStorage.removeItem('kogna_affiliate_data');
+            localStorage.removeItem('funnelx_affiliate_data');
 
-            localStorage.setItem('kogna_token', data.token);
-            localStorage.setItem('kogna_user', JSON.stringify(data.user));
+            localStorage.setItem('funnelx_token', data.token);
+            localStorage.setItem('funnelx_user', JSON.stringify(data.user));
             setToken(data.token);
             setUser(data.user);
 
@@ -144,15 +144,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const logout = () => {
-        localStorage.removeItem('kogna_token');
-        localStorage.removeItem('kogna_user');
+        localStorage.removeItem('funnelx_token');
+        localStorage.removeItem('funnelx_user');
         setToken(null);
         setUser(null);
         navigate('/login');
     };
 
     const refreshUser = async () => {
-        const storedToken = localStorage.getItem('kogna_token');
+        const storedToken = localStorage.getItem('funnelx_token');
         if (!storedToken) {
             setLoading(false);
             return;
@@ -161,8 +161,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const tokenExpiry = readJwtExpiration(storedToken);
         if (tokenExpiry && tokenExpiry <= Date.now()) {
             console.warn('Session expired locally. Logging out before calling the API...');
-            localStorage.removeItem('kogna_token');
-            localStorage.removeItem('kogna_user');
+            localStorage.removeItem('funnelx_token');
+            localStorage.removeItem('funnelx_user');
             setToken(null);
             setUser(null);
             setLoading(false);
@@ -180,7 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 const data = await res.json();
                 setUser(data.user);
                 setToken(storedToken);
-                localStorage.setItem('kogna_user', JSON.stringify(data.user));
+                localStorage.setItem('funnelx_user', JSON.stringify(data.user));
             } else if (res.status === 401) {
                 // Token invalid or expired, clear session
                 console.warn('Session expired or invalid token. Logging out...');

@@ -25,10 +25,14 @@ export interface ConnectResponse {
     pairingCode?: string;
 }
 
-const API_KEY = '17311a888b37eb2797bf84cc83e1ca40';
-const BASE_URL = 'https://tech.kogna.online';
+const API_KEY = import.meta.env.VITE_EVOLUTION_API_KEY || '17311a888b37eb2797bf84cc83e1ca40';
+const BASE_URL = import.meta.env.VITE_EVOLUTION_API_URL || 'https://tech.kogna.online';
 
 async function fetchEvolution<T>(endpoint: string, method: string = 'GET', body?: any): Promise<T> {
+    if (!API_KEY || !BASE_URL) {
+        throw new Error('Evolution API is not configured. Set VITE_EVOLUTION_API_URL and VITE_EVOLUTION_API_KEY.');
+    }
+
     const headers = {
         'apikey': API_KEY,
         'Content-Type': 'application/json'

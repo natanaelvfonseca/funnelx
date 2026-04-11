@@ -38,6 +38,7 @@ interface Commission {
 
 export const PartnerDashboard: React.FC = () => {
     const { token } = useAuth();
+    const appUrl = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/+$/, '');
     const [loading, setLoading] = useState(true);
     const [isPartner, setIsPartner] = useState(false);
     const [partnerData, setPartnerData] = useState<PartnerData | null>(null);
@@ -92,7 +93,7 @@ export const PartnerDashboard: React.FC = () => {
 
     const copyLink = () => {
         if (partnerData) {
-            navigator.clipboard.writeText(`https://ia.kogna.co/p/${partnerData.affiliateCode}`);
+            navigator.clipboard.writeText(`${appUrl}/p/${partnerData.affiliateCode}`);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         }
@@ -117,10 +118,10 @@ export const PartnerDashboard: React.FC = () => {
                     <div className="bg-gradient-to-r from-primary to-primary-light p-12 text-center text-white">
                         <Users className="w-16 h-16 mx-auto mb-6 opacity-90" />
                         <h1 className="text-4xl font-display font-bold mb-4">
-                            Seja um Parceiro Kogna
+                            Seja um Parceiro FunnelX
                         </h1>
                         <p className="text-lg opacity-90 max-w-2xl mx-auto">
-                            Indique a Kogna para outras empresas e ganhe comissões recorrentes por cada venda realizada.
+                            Indique o FunnelX para outras empresas e ganhe comissões recorrentes por cada venda realizada.
                         </p>
                     </div>
 
@@ -172,7 +173,7 @@ export const PartnerDashboard: React.FC = () => {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h1 className="text-3xl font-display font-bold text-text-primary">
-                        Parceiro Kogna
+                        Parceiro FunnelX
                     </h1>
                     <p className="text-text-secondary">
                         Acompanhe seu desempenho e comissões
@@ -184,7 +185,7 @@ export const PartnerDashboard: React.FC = () => {
                         Seu Link:
                     </div>
                     <div className="px-4 font-mono text-primary font-medium">
-                        ia.kogna.co/p/{partnerData?.affiliateCode}
+                        {appUrl}/p/{partnerData?.affiliateCode}
                     </div>
                     <button
                         onClick={copyLink}

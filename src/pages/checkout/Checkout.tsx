@@ -291,7 +291,7 @@ export function Checkout() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('kogna_token')}`
+                    'Authorization': `Bearer ${localStorage.getItem('funnelx_token')}`
                 },
                 body: JSON.stringify(paymentData)
             });
@@ -307,7 +307,7 @@ export function Checkout() {
                 // Verify and credit Koins
                 try {
                     await fetch(`${apiBase}/api/payments/verify/${result.id}`, {
-                        headers: { 'Authorization': `Bearer ${localStorage.getItem('kogna_token')}` }
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('funnelx_token')}` }
                     });
                     addLog('success', 'Pagamento aprovado e verificado!');
                 } catch (e) { /* verification is best-effort, IPN will handle it */ }
@@ -361,7 +361,7 @@ export function Checkout() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('kogna_token')}`
+                    'Authorization': `Bearer ${localStorage.getItem('funnelx_token')}`
                 },
                 body: JSON.stringify(paymentData)
             });
@@ -413,7 +413,7 @@ export function Checkout() {
             try {
                 const response = await fetch(`/api/payments/verify/${paymentId}`, {
                     headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('kogna_token')}`
+                        'Authorization': `Bearer ${localStorage.getItem('funnelx_token')}`
                     }
                 });
 
@@ -796,7 +796,7 @@ export function Checkout() {
                                         {/* Trust Signals */}
                                         <div className="space-y-3">
                                             <p className="text-center text-sm text-gray-500 font-medium">
-                                                Mais de <span className="text-gray-900 font-bold">500 empresas</span> mantêm seus atendimentos rodando com a Kogna todos os dias.
+                                                Mais de <span className="text-gray-900 font-bold">500 empresas</span> mantem seus atendimentos rodando com o FunnelX todos os dias.
                                             </p>
 
                                             <div className="flex items-center justify-center gap-4">

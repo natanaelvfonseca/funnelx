@@ -103,7 +103,7 @@ export const PartnerRegister = () => {
                 <div className="w-full max-w-md space-y-8">
                     <div className="text-center md:text-left">
                         <h2 className="text-3xl font-bold text-white">Crie sua conta de Parceiro</h2>
-                        <p className="mt-2 text-gray-400">Já tem uma conta Kogna? <Link to="/login" className="text-primary hover:text-primary-light transition-colors font-medium">Faça login e ative sua parceria.</Link></p>
+                        <p className="mt-2 text-gray-400">Ja tem uma conta FunnelX? <Link to="/login" className="text-primary hover:text-primary-light transition-colors font-medium">Faça login e ative sua parceria.</Link></p>
                     </div>
 
                     <motion.form

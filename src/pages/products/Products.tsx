@@ -1,4 +1,4 @@
-﻿import {
+import {
   useState,
   useEffect,
   useCallback,
@@ -29,11 +29,11 @@ const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const CATALOG_API_BASE = `${API_BASE}/catalog`;
 const PROMOTION_API_BASE = `${CATALOG_API_BASE}/promotions`;
 const authHeader = () => ({
-  Authorization: `Bearer ${localStorage.getItem("kogna_token")}`,
+  Authorization: `Bearer ${localStorage.getItem("funnelx_token")}`,
   "Content-Type": "application/json",
 });
 const authUploadHeader = () => ({
-  Authorization: `Bearer ${localStorage.getItem("kogna_token")}`,
+  Authorization: `Bearer ${localStorage.getItem("funnelx_token")}`,
 });
 const TRIGGER_TYPES = [
   {
@@ -1576,7 +1576,7 @@ export function Products() {
                           }))
                         }
                         rows={4}
-                        placeholder="Se deixar vazio, a Kogna monta automaticamente a mensagem com o preço promocional."
+                        placeholder="Se deixar vazio, o FunnelX monta automaticamente a mensagem com o preco promocional."
                         className={textareaClass}
                       />
                     </div>

@@ -275,7 +275,7 @@ export function ProfileSettings() {
 
                 <div className="p-6 space-y-4">
                     <p className="text-sm leading-7 text-text-secondary">
-                        Refaca o guia da Kogna para revisar como cada area da plataforma ajuda a transformar o WhatsApp em um canal previsivel de vendas.
+                        Refaca o guia do FunnelX para revisar como cada area da plataforma ajuda a transformar o WhatsApp em um canal previsivel de vendas.
                     </p>
 
                     <button

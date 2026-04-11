@@ -31,7 +31,7 @@ export function BrandLogo({
   return (
     <span className={cn("brand-logo text-text-primary", className)} style={style}>
       <span className={cn("brand-mark", markClassName)} aria-hidden="true"></span>
-      {showWord && <span className={cn("brand-word", wordClassName)}>Kogna</span>}
+      {showWord && <span className={cn("brand-word", wordClassName)}>FunnelX</span>}
       {trailing}
     </span>
   );

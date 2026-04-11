@@ -68,7 +68,7 @@ function MetaPixelTracker() {
 
 function App() {
     return (
-        <ThemeProvider defaultTheme="light" storageKey="kogna-theme-v2">
+        <ThemeProvider defaultTheme="light" storageKey="funnelx-theme-v2">
             <BrowserRouter>
                 <MetaPixelTracker />
                 <AuthProvider>

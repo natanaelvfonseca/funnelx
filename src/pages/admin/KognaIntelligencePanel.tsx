@@ -96,7 +96,7 @@ export function KognaIntelligencePanel() {
                 <div>
                     <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
                         <Brain className="w-6 h-6 text-primary" />
-                        Kogna Intelligence Panel
+                        FunnelX Intelligence Panel
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">
                         Dados agregados e anonimizados de todas as empresas na plataforma.

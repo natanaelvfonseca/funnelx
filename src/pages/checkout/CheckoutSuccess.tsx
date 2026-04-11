@@ -33,7 +33,7 @@ export function CheckoutSuccess() {
             }
 
             try {
-                const token = localStorage.getItem('kogna_token');
+                const token = localStorage.getItem('funnelx_token');
                 const response = await fetch(`${apiBase}/api/payments/verify/${paymentId}`, {
                     headers: {
                         'Authorization': `Bearer ${token}`

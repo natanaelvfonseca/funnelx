@@ -217,7 +217,7 @@ function ApiKeysManager() {
             <div className="bg-surface border border-border/50 rounded-xl p-6">
                 <h3 className="text-lg font-semibold text-text-primary mb-2">API Documentation</h3>
                 <p className="text-text-secondary text-sm mb-4">
-                    Access our comprehensive API documentation to learn how to integrate Kogna into your applications.
+                    Access our comprehensive API documentation to learn how to integrate FunnelX into your applications.
                 </p>
                 <a
                     href={`${API_BASE_URL.replace('/api', '')}/api-docs`}

@@ -29,13 +29,13 @@ interface VideoOnboardingStep {
     required: boolean;
 }
 
-const STORAGE_KEY = 'kogna-video-onboarding-mvp-definition';
+const STORAGE_KEY = 'funnelx-video-onboarding-mvp-definition';
 
 const DEFAULT_STEPS: VideoOnboardingStep[] = [
     {
         id: crypto.randomUUID(),
         title: 'Boas-vindas',
-        subtitle: 'Abra a jornada explicando rapidamente o que a Kogna vai organizar para o cliente.',
+        subtitle: 'Abra a jornada explicando rapidamente o que o FunnelX vai organizar para o cliente.',
         prompt: 'Dê o contexto do onboarding em vídeo e prepare a pessoa para responder de forma rápida.',
         videoUrl: '',
         inputType: 'none',
@@ -266,7 +266,7 @@ export function VideoOnboardingMvp() {
                             Laboratório local
                         </div>
                         <h1 className="mt-4 text-3xl font-semibold tracking-tight text-text-primary md:text-5xl">
-                            MVP de onboarding em vídeo da Kogna
+                            MVP de onboarding em video do FunnelX
                         </h1>
                         <p className="mt-3 max-w-2xl text-sm leading-6 text-text-muted md:text-base">
                             Etapas fixas, avanço só por botão e texto, placeholder de vídeo e editor visual local.

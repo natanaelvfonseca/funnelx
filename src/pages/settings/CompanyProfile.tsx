@@ -162,7 +162,7 @@ export function CompanyProfile() {
             <form onSubmit={handleSave} className="space-y-6">
                 <Surface eyebrow="Negocio" title="Oferta, ICP e operacao" description="Defina o contexto comercial que move a venda.">
                     <div className="grid gap-4 md:grid-cols-2">
-                        <div><Label>Nome da empresa</Label><Input value={data.companyName} onChange={(e) => setField('companyName', e.target.value)} placeholder="Ex: Kogna" /></div>
+                        <div><Label>Nome da empresa</Label><Input value={data.companyName} onChange={(e) => setField('companyName', e.target.value)} placeholder="Ex: FunnelX" /></div>
                         <div><Label>Nome principal da IA</Label><Input value={data.agentName} onChange={(e) => setField('agentName', e.target.value)} placeholder="Ex: Atlas" /></div>
                         <div><Label>Mercado</Label><Input value={data.industry} onChange={(e) => setField('industry', e.target.value)} placeholder="Ex: SaaS" /></div>
                         <div><Label>Detalhe do mercado</Label><Input value={data.industryDetail} onChange={(e) => setField('industryDetail', e.target.value)} placeholder="Ex: CRM para imobiliarias" /></div>
@@ -231,7 +231,7 @@ export function CompanyProfile() {
                     <div className="grid gap-4 md:grid-cols-2">
                         <div><Label>Como quebrar objecoes</Label><Textarea rows={4} value={data.objectionHandling} onChange={(e) => setField('objectionHandling', e.target.value)} placeholder="Descreva a linha mestra para contornar objecoes." /></div>
                         <div><Label>O que a IA nunca deve dizer</Label><Textarea rows={4} value={data.restrictions} onChange={(e) => setField('restrictions', e.target.value)} placeholder="Ex: nao prometer desconto, nao citar concorrente..." /></div>
-                        <div className="md:col-span-2"><Label>Instrucoes complementares</Label><Textarea rows={5} value={data.advancedInstructions} onChange={(e) => setField('advancedInstructions', e.target.value)} placeholder="Use este campo para refinamentos extras do playbook gerado pela Kogna." /></div>
+                        <div className="md:col-span-2"><Label>Instrucoes complementares</Label><Textarea rows={5} value={data.advancedInstructions} onChange={(e) => setField('advancedInstructions', e.target.value)} placeholder="Use este campo para refinamentos extras do playbook gerado pelo FunnelX." /></div>
                     </div>
                 </Surface>
 

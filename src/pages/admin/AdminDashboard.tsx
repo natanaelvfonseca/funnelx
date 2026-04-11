@@ -312,10 +312,10 @@ export function AdminDashboard() {
                     <div className="max-w-3xl">
                         <div className="inline-flex items-center gap-2 rounded-full border border-orange-200/80 bg-orange-50/90 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-orange-700 shadow-[0_10px_24px_rgba(255,76,0,0.08)] dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-200">
                             <ShieldCheck className="h-4 w-4" />
-                            Admin Kogna
+                            Admin FunnelX
                         </div>
                         <h1 className="mt-4 text-3xl font-semibold tracking-tight text-text-primary md:text-5xl">
-                            Painel executivo da operacao Kogna.
+                            Painel executivo da operacao FunnelX.
                         </h1>
                         <p className="mt-3 max-w-2xl text-sm leading-6 text-text-muted md:text-base">
                             Monitore clientes, consumo, receita e inteligencia comercial com a mesma linguagem premium do restante da plataforma.

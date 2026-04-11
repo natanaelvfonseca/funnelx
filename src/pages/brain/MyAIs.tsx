@@ -447,7 +447,7 @@ export function MyAIs() {
                             <div className="max-w-2xl">
                                 <div className="inline-flex items-center gap-2 rounded-full border border-primary/[0.15] bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
                                     <Sparkles size={14} />
-                                    Curadoria Kogna
+                                    Curadoria FunnelX
                                 </div>
                                 <h2 className="mt-4 text-2xl font-display font-bold tracking-tight text-text-primary">
                                     {profile.icon} Agentes recomendados para {profile.name}

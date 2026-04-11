@@ -158,7 +158,7 @@ export function Billing() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const headers = { 'Authorization': `Bearer ${localStorage.getItem('kogna_token')}` };
+                const headers = { 'Authorization': `Bearer ${localStorage.getItem('funnelx_token')}` };
 
                 const balanceRes = await fetch('/api/credits', { headers });
                 if (balanceRes.ok) {

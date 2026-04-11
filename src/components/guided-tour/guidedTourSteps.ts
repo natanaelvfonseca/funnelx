@@ -20,7 +20,7 @@ export const GUIDED_TOUR_STEPS: GuidedTourStep[] = [
         targetId: "tour-revenue-header",
         placement: "center",
         title: "Seu comercial no WhatsApp, organizado para vender mais",
-        description: "A Kogna reúne atendimento, operação, CRM, automações e inteligência em um só lugar. Aqui você acompanha o que está acontecendo, entende onde agir e transforma conversa em oportunidade real de venda.",
+        description: "O FunnelX reúne atendimento, operacao, CRM, automacoes e inteligencia em um so lugar. Aqui voce acompanha o que esta acontecendo, entende onde agir e transforma conversa em oportunidade real de venda.",
     },
     {
         id: "sidebar",
@@ -44,7 +44,7 @@ export const GUIDED_TOUR_STEPS: GuidedTourStep[] = [
         targetId: "tour-revenue-urgency",
         placement: "top",
         title: "Saiba onde agir primeiro",
-        description: "Aqui a Kogna destaca leads, movimentos e alertas que merecem atenção agora. Em vez de tentar olhar tudo ao mesmo tempo, você enxerga o que é prioridade para acelerar respostas, recuperar oportunidades e aumentar conversão.",
+        description: "Aqui o FunnelX destaca leads, movimentos e alertas que merecem atencao agora. Em vez de tentar olhar tudo ao mesmo tempo, voce enxerga o que e prioridade para acelerar respostas, recuperar oportunidades e aumentar conversao.",
     },
     {
         id: "whatsapp",

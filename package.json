@@ -1,5 +1,5 @@
 {
-    "name": "kogna-ia-sales",
+    "name": "funnelx",
     "private": true,
     "version": "0.0.0",
     "type": "module",
@@ -8,6 +8,10 @@
         "build": "tsc && vite build",
         "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
         "preview": "vite preview",
+        "db:prepare": "node scripts/bootstrap-database.mjs",
+        "db:push": "npm run db:prepare && prisma db push",
+        "db:generate": "prisma generate",
+        "db:sync": "npm run db:push && npm run db:generate",
         "db:init": "node init_db.js",
         "dev:full": "concurrently \"npm run dev\" \"node server.js\"",
         "dev:all": "concurrently \"node server.js\" \"npm run dev\" \"ngrok http 3000\""

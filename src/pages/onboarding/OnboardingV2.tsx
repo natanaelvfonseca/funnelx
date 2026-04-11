@@ -61,7 +61,7 @@ function trackMetaPixelOnce(key: string, method: MetaPixelMethod, eventName: str
 
     const trackingWindow = window as Window & {
         fbq?: (...args: unknown[]) => void;
-        __kognaMetaTrackedEvents?: Record<string, number>;
+        __funnelxMetaTrackedEvents?: Record<string, number>;
     };
 
     if (typeof trackingWindow.fbq !== 'function') {
@@ -69,7 +69,7 @@ function trackMetaPixelOnce(key: string, method: MetaPixelMethod, eventName: str
     }
 
     const now = Date.now();
-    const trackedEvents = trackingWindow.__kognaMetaTrackedEvents || (trackingWindow.__kognaMetaTrackedEvents = {});
+    const trackedEvents = trackingWindow.__funnelxMetaTrackedEvents || (trackingWindow.__funnelxMetaTrackedEvents = {});
     const lastTrackedAt = trackedEvents[key] || 0;
 
     if (now - lastTrackedAt < dedupeWindowMs) {
@@ -191,11 +191,11 @@ export function OnboardingV2() {
     const [loading, setLoading] = useState(false);
     const [accountReady, setAccountReady] = useState(() => {
         if (typeof window === 'undefined') return false;
-        return Boolean(window.localStorage.getItem('kogna_token'));
+        return Boolean(window.localStorage.getItem('funnelx_token'));
     });
     const [stepOneStage, setStepOneStage] = useState<'welcome' | 'account'>(() => {
         if (typeof window === 'undefined') return 'welcome';
-        return window.localStorage.getItem('kogna_token') ? 'account' : 'welcome';
+        return window.localStorage.getItem('funnelx_token') ? 'account' : 'welcome';
     });
     // Step 16 improvement
     const [improvementSelected, setImprovementSelected] = useState<string | null>(null);
@@ -209,9 +209,9 @@ export function OnboardingV2() {
     const [sessionId] = useState(() => {
         const fallback = `sess_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         if (typeof window === 'undefined') return fallback;
-        const existing = window.sessionStorage.getItem('kogna_onboarding_session_id');
+        const existing = window.sessionStorage.getItem('funnelx_onboarding_session_id');
         if (existing) return existing;
-        window.sessionStorage.setItem('kogna_onboarding_session_id', fallback);
+        window.sessionStorage.setItem('funnelx_onboarding_session_id', fallback);
         return fallback;
     });
     const [pipelineVisible, setPipelineVisible] = useState(false);
@@ -248,7 +248,7 @@ export function OnboardingV2() {
     const go = (n: number) => { setError(''); setStep(n); window.scrollTo(0, 0); };
 
     useEffect(() => {
-        const storedToken = authToken || (typeof window !== 'undefined' ? window.localStorage.getItem('kogna_token') : null);
+        const storedToken = authToken || (typeof window !== 'undefined' ? window.localStorage.getItem('funnelx_token') : null);
         token.current = storedToken;
         setAccountReady(Boolean(storedToken));
         if (storedToken) {
@@ -404,7 +404,7 @@ export function OnboardingV2() {
         try {
             let affiliateCode: string | undefined;
             try {
-                const storedAffiliate = localStorage.getItem('kogna_affiliate_data');
+                const storedAffiliate = localStorage.getItem('funnelx_affiliate_data');
                 if (storedAffiliate) {
                     affiliateCode = JSON.parse(storedAffiliate)?.code;
                 }
@@ -424,9 +424,9 @@ export function OnboardingV2() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Erro ao criar conta.');
 
-            localStorage.removeItem('kogna_affiliate_data');
-            localStorage.setItem('kogna_token', data.token);
-            localStorage.setItem('kogna_user', JSON.stringify(data.user));
+            localStorage.removeItem('funnelx_affiliate_data');
+            localStorage.setItem('funnelx_token', data.token);
+            localStorage.setItem('funnelx_user', JSON.stringify(data.user));
             token.current = data.token;
             setAccountReady(true);
             registrationTrackingVersionRef.current += 1;
@@ -793,7 +793,7 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                 <div className="space-y-4">
                     <div className="rounded-2xl border border-[#FF4C00]/15 bg-[#FF4C00]/5 p-4">
                         <p className="text-sm font-semibold text-gray-900">{form.name || 'Conta criada com sucesso'}</p>
-                        <p className="text-xs text-gray-500 mt-1">{form.email || 'Sessao autenticada na Kogna'}</p>
+                        <p className="text-xs text-gray-500 mt-1">{form.email || 'Sessao autenticada no FunnelX'}</p>
                     </div>
                     <div className="flex flex-col gap-3 text-left">
                         {[
@@ -831,15 +831,15 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
         <div className="text-center space-y-6 animate-fade-in mt-10 sm:mt-16 min-w-0">
             <WelcomeMetaPixelTracker />
             <style>{`
-                @keyframes kogna-icon-float {
+                @keyframes funnelx-icon-float {
                     0%, 100% { transform: translateY(0px); }
                     50% { transform: translateY(-4px); }
                 }
-                @keyframes kogna-cta-float {
+                @keyframes funnelx-cta-float {
                     0%, 100% { transform: translateY(0px) scale(1); }
                     50% { transform: translateY(-3px) scale(1.01); }
                 }
-                @keyframes kogna-cta-glow {
+                @keyframes funnelx-cta-glow {
                     0%, 100% { box-shadow: 0 18px 38px rgba(255, 76, 0, 0.22), 0 0 0 rgba(255, 106, 48, 0); }
                     50% { box-shadow: 0 22px 46px rgba(255, 76, 0, 0.34), 0 0 28px rgba(255, 106, 48, 0.28); }
                 }
@@ -857,7 +857,7 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                     className="text-gray-500 mt-4 text-lg leading-relaxed max-w-md mx-auto"
                     style={{ textShadow: '0 0 16px rgba(255, 106, 48, 0.16), 0 0 38px rgba(255, 76, 0, 0.12)' }}
                 >
-                    A Kogna transforma suas conversas em oportunidades reais, respondendo, qualificando e conduzindo clientes automaticamente.
+                    O FunnelX transforma suas conversas em oportunidades reais, respondendo, qualificando e conduzindo clientes automaticamente.
                 </p>
             </div>
             <div className="max-w-sm mx-auto text-left">
@@ -873,7 +873,7 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                         <div
                             className="w-7 h-7 rounded-lg bg-[#FF4C00]/15 border border-[#FF4C00]/20 flex items-center justify-center shrink-0"
                             style={{
-                                animation: 'kogna-icon-float 3.2s ease-in-out infinite',
+                                animation: 'funnelx-icon-float 3.2s ease-in-out infinite',
                                 animationDelay: `${index * 0.35}s`,
                                 willChange: 'transform',
                             }}
@@ -888,7 +888,7 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                 onClick={() => setStepOneStage('account')}
                 className="w-full flex items-center justify-center gap-2 py-4 bg-gradient-to-r from-[#FF4C00] to-[#FF6A30] hover:brightness-110 text-white font-bold rounded-xl transition-all duration-200 mt-6"
                 style={{
-                    animation: 'kogna-cta-float 2.6s ease-in-out infinite, kogna-cta-glow 2.6s ease-in-out infinite',
+                    animation: 'funnelx-cta-float 2.6s ease-in-out infinite, funnelx-cta-glow 2.6s ease-in-out infinite',
                     willChange: 'transform, box-shadow',
                 }}
             >
@@ -904,10 +904,10 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                 <Rocket className="w-12 h-12 text-[#FF4C00]" />
             </div>
             <div>
-                <p className="text-xs font-bold text-[#FF4C00] uppercase tracking-widest mb-3">Ativacao Kogna</p>
+                <p className="text-xs font-bold text-[#FF4C00] uppercase tracking-widest mb-3">Ativacao FunnelX</p>
                 <h1 className="text-4xl font-bold text-gray-900 leading-tight">Seu WhatsApp estÃ¡ perdendo vendas todos os dias.</h1>
                 <p className="text-gray-500 mt-4 text-lg leading-relaxed max-w-md mx-auto">
-                    A Kogna transforma suas conversas em oportunidades reais, respondendo, qualificando e conduzindo clientes automaticamente.
+                    O FunnelX transforma suas conversas em oportunidades reais, respondendo, qualificando e conduzindo clientes automaticamente.
                 </p>
             </div>
             <div className="max-w-sm mx-auto text-left">
@@ -1097,7 +1097,7 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
         <div className="space-y-5 animate-fade-in">
             <div>
                 <h2 className="text-2xl font-bold text-gray-900">Qual sua meta mensal de vendas?</h2>
-                <p className="text-gray-500 text-sm mt-2">A Kogna usará essa meta para gerar recomendações e priorizar oportunidades.</p>
+                <p className="text-gray-500 text-sm mt-2">O FunnelX usara essa meta para gerar recomendacoes e priorizar oportunidades.</p>
             </div>
             <div>
                 <FieldLabel>Meta mensal (R$)</FieldLabel>
@@ -1258,7 +1258,7 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
         <div className="space-y-6 animate-fade-in text-center">
             <div>
                 <h2 className="text-2xl font-bold text-gray-900">Seu sistema de vendas está sendo criado</h2>
-                <p className="text-gray-500 text-sm mt-2">A Kogna organiza automaticamente suas conversas em um pipeline inteligente.</p>
+                <p className="text-gray-500 text-sm mt-2">O FunnelX organiza automaticamente suas conversas em um pipeline inteligente.</p>
             </div>
             <div className="relative py-6">
                 {['Novo Lead', 'Qualificação', 'Diagnóstico', 'Proposta', 'Fechamento'].map((stage, i) => (
@@ -1285,7 +1285,7 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
         <div className="space-y-6 animate-fade-in text-center">
             <div>
                 <h2 className="text-2xl font-bold text-gray-900">Estamos criando sua IA agora</h2>
-                <p className="text-gray-500 text-sm mt-2">Com a conta pronta, a Kogna esta salvando o perfil da sua empresa e provisionando seu primeiro agente.</p>
+                <p className="text-gray-500 text-sm mt-2">Com a conta pronta, o FunnelX esta salvando o perfil da sua empresa e provisionando seu primeiro agente.</p>
             </div>
             <div className="relative py-6">
                 {[
@@ -1329,7 +1329,7 @@ function StepContent({ step, form, set, toggleArr, handleCurrencyChange, handleC
                 <div><FieldLabel>Confirmar senha</FieldLabel><Input type="password" placeholder="Confirme sua senha" value={form.confirmPassword} onChange={e => set('confirmPassword', e.target.value)} /></div>
             </div>
             <NextBtn onClick={next} loading={loading} label="Criar Conta e Ativar IA" />
-            <p className="text-center text-xs text-gray-400">Ao continuar, você concorda com os termos de uso da Kogna.</p>
+            <p className="text-center text-xs text-gray-400">Ao continuar, você concorda com os termos de uso do FunnelX.</p>
         </div>
     );
 

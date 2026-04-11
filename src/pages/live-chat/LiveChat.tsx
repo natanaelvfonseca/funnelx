@@ -1589,7 +1589,7 @@ export function LiveChat() {
                                     <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
                                 </svg>
                             </div>
-                            <h1 className="mb-4 text-3xl font-display font-bold tracking-tight text-gray-900 dark:text-white">Kogna Live Chat</h1>
+                            <h1 className="mb-4 text-3xl font-display font-bold tracking-tight text-gray-900 dark:text-white">FunnelX Live Chat</h1>
                             <p className="max-w-md text-sm leading-7 text-gray-500 dark:text-gray-400">
                                 Envie e receba mensagens sem precisar manter seu celular conectado à internet.
                             </p>

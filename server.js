@@ -1,4 +1,4 @@
-﻿import { createRequire } from "module";
+import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 import express from "express";
 import fetch from "node-fetch";
@@ -30,6 +30,44 @@ console.log("Starting server.js...");
 
 import dotenv from "dotenv";
 dotenv.config();
+
+function sanitizeSqlIdentifier(value, fallback = "public") {
+  const normalized = String(value || "").trim();
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(normalized) ? normalized : fallback;
+}
+
+function getSchemaFromConnectionString(connectionValue) {
+  if (!connectionValue) return null;
+
+  try {
+    const parsed = new URL(connectionValue);
+    const schema = parsed.searchParams.get("schema");
+    return schema ? schema.trim() : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+const APP_NAME = String(process.env.APP_NAME || "FunnelX").trim() || "FunnelX";
+const APP_SLUG = String(process.env.APP_SLUG || "funnelx")
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9_-]+/g, "-")
+  .replace(/^-+|-+$/g, "") || "funnelx";
+const APP_PUBLIC_URL = String(process.env.APP_URL || "http://localhost:8080")
+  .trim()
+  .replace(/\/+$/, "");
+const APP_BILLING_URL = `${APP_PUBLIC_URL}/billing`;
+const DATABASE_SCHEMA = sanitizeSqlIdentifier(
+  process.env.DATABASE_SCHEMA ||
+    getSchemaFromConnectionString(process.env.PRISMA_DATABASE_URL) ||
+    getSchemaFromConnectionString(process.env.DATABASE_URL) ||
+    "public",
+);
+const DATABASE_SEARCH_PATH = DATABASE_SCHEMA === "public"
+  ? "public"
+  : `${DATABASE_SCHEMA},public`;
+const DEFAULT_EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || "https://evo.kogna.co";
 
 console.log("STEP 1: Starting initialization");
 import pg from "pg";
@@ -97,6 +135,8 @@ if (!connectionString) {
 
 let poolConfig = {
   connectionString,
+  application_name: APP_SLUG,
+  options: `-c search_path=${DATABASE_SEARCH_PATH}`,
   ssl: (process.env.DATABASE_URL &&
     !process.env.DATABASE_URL.includes('localhost') &&
     !process.env.DATABASE_URL.includes('127.0.0.1') &&
@@ -413,9 +453,9 @@ async function tableExists(tableName, client = pool) {
     `SELECT EXISTS (
        SELECT 1
        FROM information_schema.tables
-       WHERE table_schema = 'public' AND table_name = $1
+       WHERE table_schema = $1 AND table_name = $2
      ) AS exists`,
-    [tableName],
+    [DATABASE_SCHEMA, tableName],
   );
   return Boolean(result.rows[0]?.exists);
 }
@@ -454,9 +494,9 @@ async function deleteOrganizationCascade(orgId, client = pool) {
   const scopedTablesRes = await client.query(`
     SELECT DISTINCT table_name
     FROM information_schema.columns
-    WHERE table_schema = 'public' AND column_name = 'organization_id'
+    WHERE table_schema = $1 AND column_name = 'organization_id'
     ORDER BY table_name
-  `);
+  `, [DATABASE_SCHEMA]);
   const excludedTables = new Set(["organizations", "users"]);
 
   for (const row of scopedTablesRes.rows) {
@@ -706,7 +746,7 @@ async function generateOrchestratorPlaybook(profile, { feedbackEntries = [], tes
   if (!process.env.OPENAI_API_KEY) return fallback;
 
   try {
-    const prompt = `Voce e o Prompt Architect da Kogna Revenue OS.
+    const prompt = `Voce e o Prompt Architect da FunnelX Revenue OS.
 Crie um playbook operacional estruturado em JSON para uma IA de vendas via WhatsApp.
 Retorne APENAS JSON valido com os campos:
 - response_playbook
@@ -1097,7 +1137,7 @@ function composeAgentSystemPrompt({
     .map((item) => `${item.label}: ${item.recommended_approach}`)
     .join("\n");
 
-  return `Voce e ${agentName || profile.agentName || "um agente da Kogna"}, agente ${agentType || "comercial"} da empresa ${profile.companyName || "cliente Kogna"}.
+  return `Voce e ${agentName || profile.agentName || "um agente do FunnelX"}, agente ${agentType || "comercial"} da empresa ${profile.companyName || "cliente FunnelX"}.
 
 Missao principal: ${profile.agentObjective || "gerar avancos comerciais no WhatsApp"}.
 Oferta principal: ${offerStrategy.primary_offer || profile.companyProduct || "entender a oferta e conduzir o proximo passo"}.
@@ -1286,7 +1326,7 @@ const ensureConversationIntelligenceTables = async () => {
     await pool.query(`ALTER TABLE conversation_intelligence ADD COLUMN IF NOT EXISTS processed_by_cie BOOLEAN DEFAULT FALSE`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ci_processed ON conversation_intelligence(organization_id, processed_by_cie)`);
 
-    // ── New extraction fields (Kogna Intelligence Panel) ──────────────────────
+    // ── New extraction fields (FunnelX Intelligence Panel) ────────────────────
     await pool.query(`ALTER TABLE conversation_intelligence ADD COLUMN IF NOT EXISTS lead_interest_category TEXT`);
     await pool.query(`ALTER TABLE conversation_intelligence ADD COLUMN IF NOT EXISTS industry_segment TEXT`);
 
@@ -1813,11 +1853,11 @@ async function doesColumnExist(tableName, columnName) {
   const result = await pool.query(
     `SELECT 1
        FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = $1
-        AND column_name = $2
+      WHERE table_schema = $1
+        AND table_name = $2
+        AND column_name = $3
       LIMIT 1`,
-    [tableName, columnName],
+    [DATABASE_SCHEMA, tableName, columnName],
   );
 
   const exists = result.rows.length > 0;
@@ -1832,7 +1872,10 @@ async function getOrganizationIdForUser(userId) {
 
 async function syncLegacyRecoverySequencesToV2() {
   try {
-    const tableCheck = await pool.query(`SELECT to_regclass('public.followup_sequences') AS table_name`);
+    const tableCheck = await pool.query(
+      `SELECT to_regclass($1) AS table_name`,
+      [`${DATABASE_SCHEMA}.followup_sequences`],
+    );
     if (!tableCheck.rows[0]?.table_name) return;
 
     const legacyRes = await pool.query(`
@@ -3662,7 +3705,7 @@ function buildSystemPrompt({
 Data: ${currentDate} | Hora: ${currentTime} (Brasília)
 
 [IDENTIDADE E VOZ]
-Empresa: ${profile.companyName || 'Operacao Kogna'}
+Empresa: ${profile.companyName || 'Operacao FunnelX'}
 Oferta principal: ${profile.companyProduct || 'Conduza a conversa para valor e proximo passo.'}
 ICP: ${profile.targetAudience || 'Descubra fit, dor e timing do lead.'}
 Dor central: ${profile.customerPain || 'Descobrir a principal dor e o impacto comercial.'}
@@ -4516,7 +4559,7 @@ async function sendProductToLead(orgId, instanceName, remoteJid, leadStage, user
     }
 
     const { offer, product } = selected;
-    const evoBase = process.env.EVOLUTION_API_URL || 'https://evo.kogna.co';
+    const evoBase = DEFAULT_EVOLUTION_API_URL;
     const evoKey = process.env.EVOLUTION_API_KEY || '';
     const headers = { 'Content-Type': 'application/json', apikey: evoKey };
 
@@ -4795,7 +4838,7 @@ const ensureGuidedTourColumns = async () => {
 
 const ensureKognaAICoreTables = async () => {
   try {
-    log("[SYSTEM] Ensuring Kogna AI Core 2.1 columns...");
+    log("[SYSTEM] Ensuring FunnelX AI Core 2.1 columns...");
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ia_configs (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -4928,7 +4971,7 @@ const ensureKognaAICoreTables = async () => {
     await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS advanced_instructions TEXT`).catch(() => { });
     await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS knowledge_summary TEXT`).catch(() => { });
 
-    log("[SYSTEM] Kogna AI Core 2.1 columns verified.");
+    log("[SYSTEM] FunnelX AI Core 2.1 columns verified.");
   } catch (err) {
     log("[ERROR] ensureKognaAICoreTables: " + err.message);
   }
@@ -5553,7 +5596,7 @@ Objecoes: ${(previewPlaybook.objection_playbook || []).map((item) => `${item.lab
 ${ctx.restrictions ? `\nNunca diga: ${ctx.restrictions}` : ''}
 
 IMPORTANTE:
-- Este e um teste com o dono da operacao. Mostre o potencial da Kogna.
+- Este e um teste com o dono da operacao. Mostre o potencial do FunnelX.
 - Nao responda de forma passiva como "Oi, como posso ajudar?".
 - Entre com contexto, valor ou proximo passo.
 - Seja natural, comercial e em portugues do Brasil.
@@ -6261,7 +6304,7 @@ async function sendEmail(to, subject, html) {
   const transporter = createSmtpTransporter();
   if (!transporter) { log('[SMTP] Skipped – nodemailer not available'); return; }
   await transporter.sendMail({
-    from: process.env.SMTP_FROM || '"Kogna" <news@kogna.co>',
+    from: process.env.SMTP_FROM || `"${APP_NAME}" <${process.env.SMTP_USER || "news@kogna.co"}>`,
     to, subject, html,
   });
   log(`[SMTP] Sent to ${to}: ${subject}`);
@@ -6280,7 +6323,7 @@ async function sendWhatsAppMsg(instanceName, phone, message, options = {}) {
   });
 }
 
-async function sendInternalNotification(userId, message, title = 'Mensagem da Kogna') {
+async function sendInternalNotification(userId, message, title = 'Mensagem do FunnelX') {
   try {
     await pool.query(
       `INSERT INTO notifications (user_id, title, message, read, created_at)
@@ -6368,8 +6411,8 @@ function getAutomationTemplateVars(user, extraVars = {}) {
     empresa: user?.company_name || '',
     koins: user?.koins_balance ?? '',
     email: user?.email || '',
-    link_dashboard: 'https://ia.kogna.co',
-    link_pagamento: 'https://ia.kogna.co/billing',
+    link_dashboard: APP_PUBLIC_URL,
+    link_pagamento: APP_BILLING_URL,
     ...extraVars,
   };
 }
@@ -6449,7 +6492,7 @@ async function dispatchAutomationToRecipient(automation, recipient, options = {}
 
   try {
     if (channels.includes('internal')) {
-      await sendInternalNotification(recipient.id, finalMessage, automation.name || 'Mensagem da Kogna');
+      await sendInternalNotification(recipient.id, finalMessage, automation.name || 'Mensagem do FunnelX');
       delivered = true;
     }
   } catch (err) {
@@ -6674,7 +6717,7 @@ app.post('/api/admin/automations/:id/trigger', verifyJWT, requireAdmin, async (r
     for (const u of recipients) {
       const vars = {
         nome: u.name, empresa: u.company_name || '', email: u.email,
-        link_dashboard: 'https://ia.kogna.co', link_pagamento: 'https://ia.kogna.co/billing'
+        link_dashboard: APP_PUBLIC_URL, link_pagamento: APP_BILLING_URL
       };
       const msg = interpolateTemplate(auto.message_template, vars);
       try {
@@ -6780,13 +6823,13 @@ app.post('/api/admin/notifications/send', verifyJWT, requireAdmin, async (req, r
 
     // Process internal + email IMMEDIATELY
     for (const u of recipients) {
-      const vars = { nome: u.name, email: u.email, link_dashboard: 'https://ia.kogna.co' };
+      const vars = { nome: u.name, email: u.email, link_dashboard: APP_PUBLIC_URL };
       const msg = interpolateTemplate(message, vars);
       if (chs.includes('email') && u.email) {
-        await sendEmail(u.email, subject || 'Mensagem da Kogna', `<p>${msg.replace(/\n/g, '<br>')}</p>`).catch(() => { });
+        await sendEmail(u.email, subject || 'Mensagem do FunnelX', `<p>${msg.replace(/\n/g, '<br>')}</p>`).catch(() => { });
       }
       if (chs.includes('internal')) {
-        await sendInternalNotification(u.id, msg, notification_title || 'Mensagem da Kogna');
+        await sendInternalNotification(u.id, msg, notification_title || 'Mensagem do FunnelX');
       }
       if (chs.includes('whatsapp') && wa_instance && userPhones[u.id]) {
         waQueue.push({ u, msg });
@@ -6985,9 +7028,9 @@ const swaggerOptions = {
   definition: {
     openapi: "3.0.0",
     info: {
-      title: "Kogna API",
+      title: "FunnelX API",
       version: "1.0.0",
-      description: "API Integration for Kogna Platform",
+      description: "API Integration for FunnelX Platform",
     },
     servers: [
       {
@@ -7707,7 +7750,7 @@ app.post("/api/register", async (req, res) => {
 
     // Check for affiliate referral (from cookie or body)
     const affiliateCode =
-      req.body.affiliateCode || req.cookies?.kogna_affiliate;
+      req.body.affiliateCode || req.cookies?.funnelx_affiliate;
     let referredByPartnerId = null;
     if (affiliateCode) {
       const partnerRes = await pool.query(
@@ -7742,7 +7785,7 @@ app.post("/api/register", async (req, res) => {
 
     // Clear affiliate cookie after use
     if (affiliateCode) {
-      res.clearCookie("kogna_affiliate");
+      res.clearCookie("funnelx_affiliate");
     }
 
     // Create Welcome Notification
@@ -7750,7 +7793,7 @@ app.post("/api/register", async (req, res) => {
       `INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)`,
       [
         user.id,
-        "Bem-vindo à Kogna!",
+        "Bem-vindo ao FunnelX!",
         "Estamos felizes em tê-lo conosco. Complete o onboarding para ganhar 100 Koins grátis!",
       ],
     );
@@ -7813,7 +7856,7 @@ app.get("/p/:code", async (req, res) => {
     );
 
     // Set cookie for 30 days
-    res.cookie("kogna_affiliate", code, {
+    res.cookie("funnelx_affiliate", code, {
       maxAge: 30 * 24 * 60 * 60 * 1000,
       httpOnly: false,
       sameSite: "lax",
@@ -7839,7 +7882,7 @@ app.post("/api/partners/apply", verifyJWT, async (req, res) => {
       [userId],
     );
     if (existing.rows.length > 0) {
-      return res.status(409).json({ error: "Você já é um parceiro Kogna" });
+      return res.status(409).json({ error: "Voce ja e um parceiro FunnelX" });
     }
 
     // Generate unique affiliate code
@@ -10659,7 +10702,8 @@ app.post("/chat/findMessages/:instanceName", async (req, res) => {
 async function ensureLeadsColumns() {
   try {
     const check = await pool.query(
-      "SELECT column_name FROM information_schema.columns WHERE table_name = 'leads' AND column_name IN ('phone', 'email', 'assigned_to', 'temperature')",
+      "SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'leads' AND column_name IN ('phone', 'email', 'assigned_to', 'temperature')",
+      [DATABASE_SCHEMA],
     );
     const existing = check.rows.map((r) => r.column_name);
     if (!existing.includes("phone")) {
@@ -10963,7 +11007,7 @@ app.post("/api/whatsapp/connect", verifyJWT, async (req, res) => {
       log(`Instance ${instanceName} is disconnected. Fetching new QR Code...`);
 
       const evolutionApiUrl =
-        process.env.EVOLUTION_API_URL || "https://evo.kogna.co";
+        DEFAULT_EVOLUTION_API_URL;
       const evolutionApiKey = process.env.EVOLUTION_API_KEY || "";
 
       // 1. Check actual status on Evolution API first
@@ -11080,7 +11124,7 @@ app.post("/api/whatsapp/connect", verifyJWT, async (req, res) => {
     // --- CREATION / RE-CREATION LOGIC ---
 
     const evolutionApiUrl =
-      process.env.EVOLUTION_API_URL || "https://evo.kogna.co";
+      DEFAULT_EVOLUTION_API_URL;
     const evolutionApiKey = process.env.EVOLUTION_API_KEY || "";
     const webhookUrl =
       process.env.WEBHOOK_URL || "http://localhost:3000/api/webhooks/whatsapp";
@@ -11855,7 +11899,7 @@ app.post("/api/instance", verifyJWT, async (req, res) => {
   try {
     // The instanceName is now derived from the user's email in /api/whatsapp/connect
     // This endpoint is more for manual creation/linking, so we'll use a generic name or the provided one.
-    const finalInstanceName = instanceName || `kogna_${userId.substring(0, 8)}`;
+    const finalInstanceName = instanceName || `funnelx_${userId.substring(0, 8)}`;
 
     // Ensure organization_id is passed. limits.orgId should have it.
     const orgIdToUse =
@@ -11929,7 +11973,7 @@ app.delete("/api/instance/:id", verifyJWT, async (req, res) => {
 
     // 2. Delete from Evolution API (logout + destroy instance)
     const evolutionApiUrl =
-      process.env.EVOLUTION_API_URL || "https://evo.kogna.co";
+      DEFAULT_EVOLUTION_API_URL;
     const evolutionApiKey = process.env.EVOLUTION_API_KEY || "";
 
     try {
@@ -11983,10 +12027,10 @@ const proxyToEvolution = async (req, res, endpoint) => {
   // endpoint is passed from the route handler, e.g., '/chat/findChats'
 
   const evolutionApiUrl =
-    process.env.EVOLUTION_API_URL || "https://evo.kogna.co";
+    DEFAULT_EVOLUTION_API_URL;
   const evolutionApiKey = process.env.EVOLUTION_API_KEY || "";
 
-  // Construct full URL: https://evo.kogna.co/chat/findChats/instanceName
+  // Construct full URL from EVOLUTION_API_URL + /chat/findChats/:instanceName
   const targetUrl = `${evolutionApiUrl}${endpoint}/${instance}`;
 
   log(`Proxying ${method} to ${targetUrl}`);
@@ -12290,11 +12334,11 @@ cron.schedule("0 18 * * 5", async () => {
       const vendedor = vendRes.rows[0];
       if (!vendedor || !vendedor.whatsapp) continue;
 
-      let msg = `*Kogna Revenue OS - Coaching Semanal*\nOlá ${vendedor.nome}! Aqui estão seus insights de desempenho desta semana:\n\n`;
+      let msg = `*FunnelX Revenue OS - Coaching Semanal*\nOlá ${vendedor.nome}! Aqui estão seus insights de desempenho desta semana:\n\n`;
       data.insights.forEach(i => {
         msg += `💡 ${i.message}\n\n`;
       });
-      msg += `Continue acelerando as vendas e conte com a Kogna para otimizar seus contatos! 🚀`;
+      msg += `Continue acelerando as vendas e conte com o FunnelX para otimizar seus contatos! 🚀`;
 
       // Encontrar uma instância da organização para enviar
       const instRes = await pool.query("SELECT instance_name FROM whatsapp_instances WHERE organization_id = $1 AND status = 'CONNECTED' LIMIT 1", [data.orgId]);
@@ -12338,9 +12382,9 @@ app.get("/api/vendedores/debug-report", verifyAdmin, async (req, res) => {
     for (const vendedor of vendRes.rows) {
       if (!vendedor.whatsapp) continue;
 
-      let msg = `*Kogna Revenue OS - Coaching Semanal*\nOlá ${vendedor.nome}! Aqui estão seus insights de desempenho (TESTE DEBUG):\n\n`;
+      let msg = `*FunnelX Revenue OS - Coaching Semanal*\nOlá ${vendedor.nome}! Aqui estão seus insights de desempenho (TESTE DEBUG):\n\n`;
       msg += `💡 Seu tempo de resposta está excelente.\n\n`;
-      msg += `Continue acelerando as vendas e conte com a Kogna para otimizar seus contatos! 🚀`;
+      msg += `Continue acelerando as vendas e conte com o FunnelX para otimizar seus contatos! 🚀`;
 
       if (instanceName) {
         // Enviar teste via Evolution API
@@ -12843,7 +12887,7 @@ app.post("/api/evolution/webhook", async (req, res) => {
       content = "[AUDIO]"; // Default fallback
 
       try {
-        const evolutionApiUrl = process.env.EVOLUTION_API_URL || "https://evo.kogna.co";
+        const evolutionApiUrl = DEFAULT_EVOLUTION_API_URL;
         const evolutionApiKey = process.env.EVOLUTION_API_KEY || "";
 
         // Fetch the audio media from Evolution API
@@ -12991,7 +13035,7 @@ app.use((err, req, res, next) => {
 app.post("/message/:action/:instance", async (req, res) => {
   const { action, instance } = req.params;
   const evolutionApiUrl =
-    process.env.EVOLUTION_API_URL || "https://evo.kogna.co";
+    DEFAULT_EVOLUTION_API_URL;
   const evolutionApiKey = process.env.EVOLUTION_API_KEY || "";
 
   log(`Proxying POST /message/${action}/${instance}`);
@@ -13071,7 +13115,7 @@ app.get("/api/media-proxy", async (req, res) => {
 app.post("/chat/:action/:instance", async (req, res) => {
   const { action, instance } = req.params;
   const evolutionApiUrl =
-    process.env.EVOLUTION_API_URL || "https://evo.kogna.co";
+    DEFAULT_EVOLUTION_API_URL;
   const evolutionApiKey = process.env.EVOLUTION_API_KEY || "";
 
   log(`Proxying POST /chat/${action}/${instance}`);
@@ -13789,7 +13833,7 @@ const generateWeeklyCoachingReports = async (orgId) => {
     const instanceName = instRes.rows[0].instance_name;
 
     let enviados = 0;
-    const evolutionApiUrl = process.env.EVOLUTION_API_URL || "https://evo.kogna.co";
+    const evolutionApiUrl = DEFAULT_EVOLUTION_API_URL;
     const evolutionApiKey = process.env.EVOLUTION_API_KEY || "";
 
     // 4. Monta e envia as mensagens
@@ -13797,7 +13841,7 @@ const generateWeeklyCoachingReports = async (orgId) => {
       const data = porVendedor[vid];
       const items = data.insights.map(i => `- Lead ${i.lead_name || 'Desconhecido'}: ${i.message}`).join('\\n');
 
-      const text = `🤖 *Kogna Revenue OS: Relatório de Coaching*\\nOlá ${data.info.nome.split(' ')[0]}! Aqui estão seus insights da semana:\\n\\n📉 *Pontos de Atenção:*\\n${items}\\n\\nVamos acelerar essa conversão na próxima semana! 🚀`;
+      const text = `🤖 *FunnelX Revenue OS: Relatorio de Coaching*\\nOlá ${data.info.nome.split(' ')[0]}! Aqui estão seus insights da semana:\\n\\n📉 *Pontos de Atenção:*\\n${items}\\n\\nVamos acelerar essa conversão na próxima semana! 🚀`;
 
       let wpp = data.info.whatsapp.replace(/\\D/g, '');
       if (!wpp.startsWith('55')) wpp = '55' + wpp;
@@ -14554,7 +14598,7 @@ app.get("/api/dashboard/winloss", verifyJWT, async (req, res) => {
     const wins = result.rows.filter(r => ['cliente', 'fechado', 'closed', 'won', 'ganho'].includes(r.status?.toLowerCase()));
     const losses = result.rows.filter(r => ['perdido', 'lost'].includes(r.status?.toLowerCase()));
 
-    const prompt = `Você é um analista de vendas da Kogna Revenue OS.
+    const prompt = `Voce e um analista de vendas da FunnelX Revenue OS.
 Analise os dados abaixo de leads ganhos e perdidos e identifique padrões.
 
 LEADS GANHOS (${wins.length}):
@@ -16204,7 +16248,7 @@ async function updateLeadScore(agentId, remoteJid, organizationId, historyMessag
       .join('\n');
 
     // 3. Revenue OS Intent Classification Prompt
-    const scoringPrompt = `Você é o motor de inteligência comercial da Kogna Revenue OS.
+    const scoringPrompt = `Voce e o motor de inteligencia comercial da FunnelX Revenue OS.
 Analise a conversa abaixo e retorne APENAS um JSON válido.
 
 CAMPOS OBRIGATÓRIOS:
@@ -16338,7 +16382,7 @@ async function triggerIntelligentHandoff(agentId, remoteJid, orgId, leadId, lead
     }
 
     // 1. Generate intelligent Lead Brief via GPT
-    const briefPrompt = `Você é um gerente de vendas sênior da Kogna Revenue OS.
+    const briefPrompt = `Voce e um gerente de vendas senior da FunnelX Revenue OS.
 Um lead atingiu score ${score}/100, indicando alta intenção de compra e necessidade de atendimento humano.
 Baseado na conversa abaixo, crie um brief operacional conciso para o vendedor humano que precisa priorizar esse lead.
 
@@ -17018,7 +17062,7 @@ async function processAIResponse(
 
     // 3. Send Response back to WhatsApp
     const evolutionApiUrl =
-      process.env.EVOLUTION_API_URL || "https://evo.kogna.co";
+      DEFAULT_EVOLUTION_API_URL;
     const evolutionApiKey = process.env.EVOLUTION_API_KEY || "";
 
     // --- AUDIO RESPONSE MODE ---
@@ -20143,7 +20187,7 @@ app.get('/api/offer-events', verifyJWT, async (req, res) => {
 
 // ── END Product & Dynamic Offer Engine CRUD API ───────────────────────────────
 
-// ── END Kogna Intelligence Panel API Routes ───────────────────────────────────
+// ── END FunnelX Intelligence Panel API Routes ─────────────────────────────────
 
 // ── END Conversation Intelligence Engine API Routes ───────────────────────────
 

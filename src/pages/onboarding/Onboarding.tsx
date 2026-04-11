@@ -564,7 +564,7 @@ export function Onboarding() {
                         <h1 className="text-4xl font-display font-bold text-text-primary bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-500">
                             Construindo sua Máquina
                         </h1>
-                        <p className="text-text-secondary mt-2 text-lg">Jornada de Ativação da Elite Kogna</p>
+                        <p className="text-text-secondary mt-2 text-lg">Jornada de Ativacao FunnelX</p>
                     </div>
 
                     <div className="w-full bg-surface border border-border rounded-2xl p-8 shadow-2xl relative overflow-hidden transition-all duration-500 hover:shadow-primary/5">

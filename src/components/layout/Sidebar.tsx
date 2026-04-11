@@ -159,10 +159,10 @@ export function Sidebar({ collapsed, setCollapsed, isMobile }: SidebarProps) {
                                 className={`transition-all duration-300 ${location.pathname === '/admin/dashboard' ? 'text-amber-500 shadow-glow' : 'group-hover:text-amber-500'}`}
                                 strokeWidth={location.pathname === '/admin/dashboard' ? 2.5 : 2}
                             />
-                            {!collapsed && <span className="text-sm tracking-wide">Gestão Kogna</span>}
+                            {!collapsed && <span className="text-sm tracking-wide">Gestão FunnelX</span>}
                             {collapsed && (
                                 <div className="absolute left-16 top-1/2 -translate-y-1/2 bg-[#111] border border-purple-500/50 px-3 py-1.5 rounded-md text-sm text-amber-500 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap shadow-2xl">
-                                    Gestão Kogna
+                                    Gestão FunnelX
                                 </div>
                             )}
                         </Link>
@@ -282,7 +282,7 @@ export function Sidebar({ collapsed, setCollapsed, isMobile }: SidebarProps) {
                             <span className="text-sm font-semibold text-text-primary truncate group-hover:text-primary transition-colors">
                                 {user?.name || 'Usuário'}
                             </span>
-                            <span className="text-xs text-text-muted truncate">{user?.email || 'user@kogna.co'}</span>
+                            <span className="text-xs text-text-muted truncate">{user?.email || 'user@funnelx.app'}</span>
                         </div>
                     )}
                 </div>

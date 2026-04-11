@@ -42,7 +42,7 @@ interface SpotlightRect {
 }
 
 const GuidedTourContext = createContext<GuidedTourContextValue | undefined>(undefined);
-const TOUR_SESSION_PREFIX = "kogna_guided_tour_session";
+const TOUR_SESSION_PREFIX = "funnelx_guided_tour_session";
 const TARGET_PADDING = 14;
 const CARD_WIDTH = 380;
 const DEFAULT_CARD_HEIGHT = 360;

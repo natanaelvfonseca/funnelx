@@ -47,7 +47,7 @@ export function KognaOfferPage() {
                                                 <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
                                                 <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
                                             </div>
-                                            <span>Kogna Presentation Deck</span>
+                                            <span>FunnelX Presentation Deck</span>
                                             <span>VSL 01</span>
                                         </div>
 

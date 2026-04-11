@@ -1,58 +1,46 @@
-# Kogna.co - AI-Powered CRM & Automation Platform
+# FunnelX
 
-Kogna is a premium SaaS application designed for high-conversion leads management, AI-driven automation, and WhatsApp integration.
+FunnelX e a replica operacional desta base, preparada para rodar separada da Kogna usando o mesmo PostgreSQL com tabelas isoladas em um `schema` proprio.
 
-## 🚀 Features
+## Setup
 
-- **WhatsApp CRM**: Multi-instance WhatsApp management via Evolution API.
-- **AI Agents**: Custom AI agents for lead qualification and support.
-- **Dynamic Checkout**: Integration with Mercado Pago for seamless payments.
-- **Partner Dashboard**: Affiliate system with commission tracking.
-- **Modern UI**: Dark-mode primary dashboard built with Vite, React, and Tailwind CSS.
-
-## 🛠️ Tech Stack
-
-- **Frontend**: Vite, React, TypeScript, Tailwind CSS, Framer Motion, Lucide Icons.
-- **Backend**: Node.js, Express, JWT Authentication, RBAC.
-- **Database**: PostgreSQL with Prisma ORM.
-- **Integrations**: Mercado Pago API, Evolution API.
-
-## 📦 Installation
-
-1. **Clone the repository**:
+1. Clone o repositorio:
    ```bash
-   git clone https://github.com/your-username/kogna-co.git
-   cd kogna-co
+   git clone https://github.com/natanaelvfonseca/funnelx.git
+   cd funnelx
    ```
 
-2. **Install dependencies**:
+2. Instale as dependencias:
    ```bash
    npm install
    ```
 
-3. **Configure Environment Variables**:
-   Copy `.env.example` to `.env` and fill in your credentials:
+3. Configure o `.env` com foco nestas variaveis:
    ```bash
-   cp .env.example .env
+   APP_URL=http://localhost:8080
+   VITE_APP_URL=http://localhost:8080
+   DATABASE_URL=postgresql://postgres:password@localhost:5432/postgres
+   DATABASE_SCHEMA=funnelx
+   PRISMA_DATABASE_URL=postgresql://postgres:password@localhost:5432/postgres?schema=funnelx
+   EVOLUTION_API_URL=https://evo.kogna.co
+   EVOLUTION_API_KEY=seu-token
+   VITE_EVOLUTION_API_URL=https://tech.kogna.online
+   VITE_EVOLUTION_API_KEY=seu-token
    ```
 
-4. **Database Setup**:
+4. Prepare o banco e publique as tabelas do FunnelX:
    ```bash
-   npx prisma generate
-   npx prisma db push
+   npm run db:sync
    ```
 
-5. **Run Development Server**:
+5. Suba frontend e backend:
    ```bash
-   npm run dev
+   npm run dev:full
    ```
 
-## 🔐 Security
+## Separacao do banco
 
-- **JWT Auth**: Standardized JWT verification across all API endpoints.
-- **RBAC**: Admin and Partner roles with strict route permissions.
-- **Hardened Production**: Secure cookie handling and stripped debug logs.
-
-## 📄 License
-
-This project is licensed under the MIT License.
+- O backend usa `DATABASE_URL` e `DATABASE_SCHEMA` para aplicar `search_path` no schema do FunnelX.
+- O Prisma usa `PRISMA_DATABASE_URL` com `?schema=funnelx`.
+- As integrações externas podem continuar as mesmas da Kogna; a separação aqui ficou concentrada no Postgres.
+- Isso permite manter o mesmo servidor/PostgreSQL da Kogna sem misturar as tabelas entre as duas aplicacoes.

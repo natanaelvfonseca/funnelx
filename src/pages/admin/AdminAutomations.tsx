@@ -872,7 +872,7 @@ function AutomationModal({
                                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">Bloco 3</p>
                                 <h3 className="mt-3 text-2xl font-bold tracking-tight text-foreground">Mensagem</h3>
                                 <div className="mt-5 space-y-3">
-                                    <textarea value={form.message_template} onChange={(event) => setField('message_template', event.target.value)} rows={7} placeholder="Ola {nome}, sua conta foi criada e a Kogna ja esta pronta para acelerar suas vendas." className="w-full rounded-[24px] border border-black/[0.08] bg-white px-4 py-4 text-sm leading-7 text-foreground outline-none transition focus:border-primary/35 dark:border-white/[0.08] dark:bg-white/[0.04]" />
+                                    <textarea value={form.message_template} onChange={(event) => setField('message_template', event.target.value)} rows={7} placeholder="Ola {nome}, sua conta foi criada e o FunnelX ja esta pronto para acelerar suas vendas." className="w-full rounded-[24px] border border-black/[0.08] bg-white px-4 py-4 text-sm leading-7 text-foreground outline-none transition focus:border-primary/35 dark:border-white/[0.08] dark:bg-white/[0.04]" />
                                     <div className="flex flex-wrap gap-2">
                                         {TEMPLATE_VARS.map((variable) => <button key={variable} type="button" onClick={() => insertVar(variable)} className="rounded-full border border-black/[0.08] bg-white px-3 py-1 text-xs font-semibold text-muted-foreground transition hover:border-primary/15 hover:text-primary dark:border-white/[0.08] dark:bg-white/[0.04]">{variable}</button>)}
                                     </div>
@@ -954,7 +954,7 @@ function ManualSendPanel({
     const [error, setError] = useState('');
     const [waInstances, setWaInstances] = useState<WaInstance[]>([]);
     const [waInstance, setWaInstance] = useState('');
-    const [notifTitle, setNotifTitle] = useState('Mensagem da Kogna');
+    const [notifTitle, setNotifTitle] = useState('Mensagem do FunnelX');
 
     useEffect(() => {
         fetch('/api/admin/whatsapp-instances', { headers: apiHeaders() })
@@ -1002,7 +1002,7 @@ function ManualSendPanel({
             subject,
             channels,
             audience_type: audienceType,
-            notification_title: notifTitle || 'Mensagem da Kogna',
+            notification_title: notifTitle || 'Mensagem do FunnelX',
         };
 
         if (audienceType === 'filtered' && tagFilter.trim()) {
@@ -1102,14 +1102,14 @@ function ManualSendPanel({
                         {channels.includes('email') && (
                             <div className="space-y-2">
                                 <label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Assunto do e-mail</label>
-                                <input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Ex: Atualizacao importante da Kogna" className="h-12 w-full rounded-2xl border border-black/[0.08] bg-white px-4 text-sm text-foreground outline-none transition focus:border-primary/35 dark:border-white/[0.08] dark:bg-white/[0.04]" />
+                                <input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Ex: Atualizacao importante do FunnelX" className="h-12 w-full rounded-2xl border border-black/[0.08] bg-white px-4 text-sm text-foreground outline-none transition focus:border-primary/35 dark:border-white/[0.08] dark:bg-white/[0.04]" />
                             </div>
                         )}
 
                         {channels.includes('internal') && (
                             <div className="space-y-2">
                                 <label className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Titulo interno</label>
-                                <input value={notifTitle} onChange={(event) => setNotifTitle(event.target.value)} placeholder="Mensagem da Kogna" className="h-12 w-full rounded-2xl border border-black/[0.08] bg-white px-4 text-sm text-foreground outline-none transition focus:border-primary/35 dark:border-white/[0.08] dark:bg-white/[0.04]" />
+                                <input value={notifTitle} onChange={(event) => setNotifTitle(event.target.value)} placeholder="Mensagem do FunnelX" className="h-12 w-full rounded-2xl border border-black/[0.08] bg-white px-4 text-sm text-foreground outline-none transition focus:border-primary/35 dark:border-white/[0.08] dark:bg-white/[0.04]" />
                             </div>
                         )}
 
