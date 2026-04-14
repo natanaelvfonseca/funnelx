@@ -14,7 +14,7 @@ import bcrypt from "bcryptjs";
 import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import cron from "node-cron";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -4978,6 +4978,29 @@ const ensureKognaAICoreTables = async () => {
 };
 
 // Inicia as conexões e migrações em segundo plano para não travar o boot da Vercel
+async function ensureMessageBuffer() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS message_buffer (
+        id BIGSERIAL PRIMARY KEY,
+        remote_jid TEXT NOT NULL,
+        agent_id UUID NOT NULL,
+        instance_name TEXT NOT NULL,
+        content TEXT,
+        image_url TEXT,
+        is_audio BOOLEAN DEFAULT FALSE,
+        received_at TIMESTAMPTZ DEFAULT NOW(),
+        processed BOOLEAN DEFAULT FALSE
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_message_buffer_lookup ON message_buffer(remote_jid, agent_id, processed, received_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_message_buffer_cleanup ON message_buffer(processed, received_at)`);
+    log("[SYSTEM] Message buffer table verified.");
+  } catch (err) {
+    log("[ERROR] ensureMessageBuffer: " + err.message);
+  }
+}
+
 initPool().then(() => {
   ensureKognaAICoreTables();
   ensureLeadsColumns();
@@ -5530,7 +5553,7 @@ app.post("/api/login", async (req, res) => {
 const onboardingPreviewLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 25,
-  keyGenerator: (req) => req.body?.session_id || req.ip,
+  keyGenerator: (req) => req.body?.session_id || ipKeyGenerator(req.ip || ""),
   message: { error: 'Limite de mensagens de teste atingido.' }
 });
 
@@ -10706,6 +10729,20 @@ async function ensureLeadsColumns() {
       [DATABASE_SCHEMA],
     );
     const existing = check.rows.map((r) => r.column_name);
+    const vendedorIdReferenceRes = await pool.query(
+      `SELECT 1
+         FROM pg_index idx
+         JOIN pg_class tbl ON tbl.oid = idx.indrelid
+         JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+         JOIN pg_attribute attr ON attr.attrelid = tbl.oid AND attr.attnum = ANY(idx.indkey)
+        WHERE ns.nspname = $1
+          AND tbl.relname = 'vendedores'
+          AND attr.attname = 'id'
+          AND (idx.indisprimary OR idx.indisunique)
+        LIMIT 1`,
+      [DATABASE_SCHEMA],
+    );
+    const vendedorIdHasUniqueKey = vendedorIdReferenceRes.rows.length > 0;
     if (!existing.includes("phone")) {
       await pool.query("ALTER TABLE leads ADD COLUMN phone TEXT DEFAULT ''");
       log("[MIGRATION] Added phone column to leads table");
@@ -10715,8 +10752,13 @@ async function ensureLeadsColumns() {
       log("[MIGRATION] Added email column to leads table");
     }
     if (!existing.includes("assigned_to")) {
-      await pool.query("ALTER TABLE leads ADD COLUMN assigned_to UUID REFERENCES vendedores(id) ON DELETE SET NULL");
-      log("[MIGRATION] Added assigned_to column to leads table");
+      if (vendedorIdHasUniqueKey) {
+        await pool.query("ALTER TABLE leads ADD COLUMN assigned_to UUID REFERENCES vendedores(id) ON DELETE SET NULL");
+        log("[MIGRATION] Added assigned_to column to leads table with vendedores FK");
+      } else {
+        await pool.query("ALTER TABLE leads ADD COLUMN assigned_to UUID");
+        log("[MIGRATION] Added assigned_to column to leads table without FK because vendedores.id is not unique in this schema");
+      }
     }
     if (!existing.includes("temperature")) {
       await pool.query("ALTER TABLE leads ADD COLUMN temperature TEXT DEFAULT 'frio'");
